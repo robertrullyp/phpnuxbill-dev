@@ -29,6 +29,55 @@ switch ($do) {
             _alert(Lang::T('Invalid or Expired CSRF Token') . ".", 'danger', "admin");
         }
         run_hook('admin_login'); #HOOK
+
+        // ==== Cloudflare Turnstile server-side validation ====
+        // Aktif jika toggle Admin ON dan secret tersedia (bypass untuk API)
+        $tsEnabled = (!empty($_c['turnstile_admin_enabled']) && $_c['turnstile_admin_enabled'] == '1');
+        $secret = $_c['turnstile_secret_key'] ?? '';
+        if ($secret === '' && defined('TURNSTILE_SECRET_KEY')) {
+            $secret = TURNSTILE_SECRET_KEY;
+        }
+        if (!$isApi && $tsEnabled && !empty($secret)) {
+            $token = _post('cf-turnstile-response');
+            if (empty($token)) {
+                _alert(Lang::T('Please verify you are human'), 'danger', "admin");
+            }
+            $ch = curl_init('https://challenges.cloudflare.com/turnstile/v0/siteverify');
+            $payload = http_build_query([
+                'secret'   => $secret,
+                'response' => $token,
+                // 'remoteip' => $_SERVER['REMOTE_ADDR'], // opsional
+            ]);
+            curl_setopt_array($ch, [
+                CURLOPT_POST => true,
+                CURLOPT_POSTFIELDS => $payload,
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_TIMEOUT => 10,
+                CURLOPT_HTTPHEADER => ['Content-Type: application/x-www-form-urlencoded'],
+            ]);
+            $resp = curl_exec($ch);
+            $http = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            $err  = curl_error($ch);
+            curl_close($ch);
+            $ok = false;
+            if ($http === 200 && $resp) {
+                $json = json_decode($resp, true);
+                $ok = isset($json['success']) && $json['success'] === true;
+            }
+            if (!$ok) {
+                // Pesan lebih rinci jika tersedia
+                $msg = Lang::T('Verification failed');
+                if (!empty($json['error-codes'])) {
+                    $msg .= ' (' . implode(', ', (array)$json['error-codes']) . ')';
+                } elseif (!empty($err)) {
+                    $msg .= ' (' . $err . ')';
+                }
+                _log($username . ' ' . Lang::T('Failed Turnstile verification'), 'Admin');
+                _alert($msg, 'danger', "admin");
+            }
+        }
+        // ==== end Turnstile validation ====
+
         if ($username != '' and $password != '') {
             $d = ORM::for_table('tbl_users')->where('username', $username)->find_one();
             if ($d) {
@@ -61,6 +110,12 @@ switch ($do) {
         break;
     default:
         run_hook('view_login'); #HOOK
+        // Oper ke template: gunakan site key dari setting, fallback ke konstanta
+        $sitekey = $_c['turnstile_site_key'] ?? '';
+        if ($sitekey === '' && defined('TURNSTILE_SITE_KEY')) {
+            $sitekey = TURNSTILE_SITE_KEY;
+        }
+        $ui->assign('turnstile_site_key', $sitekey);
         $csrf_token = Csrf::generateAndStoreToken();
         $ui->assign('csrf_token', $csrf_token);
         $ui->display('admin/admin/login.tpl');

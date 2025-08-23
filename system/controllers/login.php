@@ -29,6 +29,42 @@ switch ($do) {
             _msglog('e', Lang::T('Invalid or Expired CSRF Token'));
             r2(getUrl('login'));
         }
+
+        // ==== Cloudflare Turnstile (Customer Login) ====
+        $tsEnabled = (!empty($_c['turnstile_client_enabled']) && $_c['turnstile_client_enabled'] == '1');
+        $secret = $_c['turnstile_secret_key'] ?? '';
+        if ($secret === '' && defined('TURNSTILE_SECRET_KEY')) { $secret = TURNSTILE_SECRET_KEY; }
+        if ($tsEnabled && $secret !== '') {
+            $token = _post('cf-turnstile-response');
+            if (empty($token)) {
+                _msglog('e', Lang::T('Verification required'));
+                r2(getUrl('login'));
+            }
+            $ch = curl_init('https://challenges.cloudflare.com/turnstile/v0/siteverify');
+            $payload = http_build_query([
+                'secret'   => $secret,
+                'response' => $token,
+                // 'remoteip' => $_SERVER['REMOTE_ADDR'] ?? '',
+            ]);
+            curl_setopt_array($ch, [
+                CURLOPT_POST => true,
+                CURLOPT_POSTFIELDS => $payload,
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_TIMEOUT => 10,
+                CURLOPT_HTTPHEADER => ['Content-Type: application/x-www-form-urlencoded'],
+            ]);
+            $resp = curl_exec($ch); $http = curl_getinfo($ch, CURLINFO_HTTP_CODE); $err = curl_error($ch); curl_close($ch);
+            $ok = false; $json = null;
+            if ($http === 200 && $resp) { $json = json_decode($resp, true); $ok = !empty($json['success']); }
+            if (!$ok) {
+                $msg = Lang::T('Captcha verification failed');
+                if (!empty($json['error-codes'])) { $msg .= ' (' . implode(', ', (array)$json['error-codes']) . ')'; }
+                elseif (!empty($err)) { $msg .= ' (' . $err . ')'; }
+                _msglog('e', $msg);
+                r2(getUrl('login'));
+            }
+        }
+
         run_hook('customer_login'); #HOOK
         if ($username != '' and $password != '') {
             $d = ORM::for_table('tbl_customers')->where('username', $username)->find_one();
