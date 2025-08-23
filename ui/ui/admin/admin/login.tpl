@@ -55,9 +55,9 @@
                     <input type="password" required class="form-control" name="password" placeholder="{Lang::T('Password')}">
                     <span class="glyphicon glyphicon-lock form-control-feedback"></span>
                 </div>
-                {if $_c['turnstile_client_enabled']=='1' && $_c['turnstile_site_key'] ne ''}
+                {if $_c['turnstile_admin_enabled']=='1' && $_c['turnstile_site_key'] ne ''}
                     <div class="form-group">
-                        <div class="cf-turnstile" data-sitekey="{$_c['turnstile_site_key']}" data-theme="auto" data-action="client_login"></div>
+                        <div class="cf-turnstile" data-sitekey="{$_c['turnstile_site_key']}" data-theme="auto" data-action="admin_login"></div>
                     </div>
                     <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
                 {/if}
