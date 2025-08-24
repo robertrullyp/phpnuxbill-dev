@@ -23,17 +23,21 @@ class Csrf
     public static function check($token)
     {
         global $config, $isApi;
-        if($config['csrf_enabled'] == 'yes' && !$isApi) {
-            if (isset($_SESSION['csrf_token'], $_SESSION['csrf_token_time'], $token)) {
-                $storedToken = $_SESSION['csrf_token'];
-                $tokenTime = $_SESSION['csrf_token_time'];
-
-                if (time() - $tokenTime > self::$tokenExpiration) {
-                    self::clearToken();
-                    return false;
+        if ($config['csrf_enabled'] == 'yes' && !$isApi) {
+            if (!empty($_SESSION['csrf_tokens']) && isset($token)) {
+                foreach ($_SESSION['csrf_tokens'] as $index => $data) {
+                    if (self::validateToken($token, $data['token'])) {
+                        if (time() - $data['time'] > self::$tokenExpiration) {
+                            unset($_SESSION['csrf_tokens'][$index]);
+                            return false;
+                        }
+                        unset($_SESSION['csrf_tokens'][$index]);
+                        return true;
+                    }
+                    if (time() - $data['time'] > self::$tokenExpiration) {
+                        unset($_SESSION['csrf_tokens'][$index]);
+                    }
                 }
-
-                return self::validateToken($token, $storedToken);
             }
             return false;
         }
@@ -43,13 +47,31 @@ class Csrf
     public static function generateAndStoreToken()
     {
         $token = self::generateToken();
-        $_SESSION['csrf_token'] = $token;
-        $_SESSION['csrf_token_time'] = time();
+        if (!isset($_SESSION['csrf_tokens']) || !is_array($_SESSION['csrf_tokens'])) {
+            $_SESSION['csrf_tokens'] = [];
+        }
+        $_SESSION['csrf_tokens'][] = ['token' => $token, 'time' => time()];
         return $token;
     }
 
-    public static function clearToken()
+    public static function clearToken($token = null)
     {
-        unset($_SESSION['csrf_token'], $_SESSION['csrf_token_time']);
+        if ($token === null) {
+            unset($_SESSION['csrf_tokens']);
+            return;
+        }
+
+        if (!empty($_SESSION['csrf_tokens'])) {
+            foreach ($_SESSION['csrf_tokens'] as $index => $data) {
+                if (self::validateToken($token, $data['token'])) {
+                    unset($_SESSION['csrf_tokens'][$index]);
+                    break;
+                }
+            }
+
+            if (empty($_SESSION['csrf_tokens'])) {
+                unset($_SESSION['csrf_tokens']);
+            }
+        }
     }
 }
