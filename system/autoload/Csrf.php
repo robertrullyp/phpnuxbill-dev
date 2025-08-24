@@ -31,7 +31,7 @@ class Csrf
                             self::clearToken($token);
                             return false;
                         }
-                        self::clearToken($token);
+                        // Token is valid and within the allowed time window; keep it
                         return true;
                     }
                     if (time() - $data['time'] > self::$tokenExpiration) {
@@ -56,6 +56,7 @@ class Csrf
 
     public static function clearToken($token = null)
     {
+        // When no token is provided, remove all stored tokens (e.g., during logout)
         if ($token === null) {
             unset($_SESSION['csrf_tokens']);
             return;
