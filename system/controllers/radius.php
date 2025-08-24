@@ -136,7 +136,10 @@ switch ($action) {
         }
         break;
     case 'nas-delete':
-        $csrf_token = _get('csrf_token');
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+            r2(getUrl('radius/nas-list'), 'e', Lang::T('Invalid Request'));
+        }
+        $csrf_token = _post('csrf_token');
         if (!Csrf::check($csrf_token)) {
             r2(getUrl('radius/nas-list'), 'e', Lang::T('Invalid or Expired CSRF Token') . '.');
         }
@@ -145,9 +148,11 @@ switch ($action) {
         $d = ORM::for_table('nas', 'radius')->find_one($id);
         if ($d) {
             $d->delete();
+            r2(getUrl('radius/nas-list'), 's', Lang::T('NAS Deleted'));
         } else {
             r2(getUrl('radius/nas-list'), 'e', 'NAS Not found');
         }
+        break;
     default:
         $ui->assign('_system_menu', 'radius');
         $ui->assign('_title', "Network Access Server");
