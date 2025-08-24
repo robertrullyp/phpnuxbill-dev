@@ -9,6 +9,7 @@
             <div class="panel-body">
                 <form class="form-horizontal" method="post" role="form" action="{Text::url('')}plan/edit-post">
                     <input type="hidden" name="id" value="{$d['id']}">
+                    <input type="hidden" name="csrf_token" value="{$csrf_token}">
                     <div class="form-group">
                         <label class="col-md-2 control-label">{Lang::T('Select Account')}</label>
                         <div class="col-md-6">
