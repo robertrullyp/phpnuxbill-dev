@@ -17,7 +17,7 @@ class Csrf
 
     public static function validateToken($token, $storedToken)
     {
-        return hash_equals($token, $storedToken);
+        return hash_equals($storedToken, $token);
     }
 
     public static function check($token)
