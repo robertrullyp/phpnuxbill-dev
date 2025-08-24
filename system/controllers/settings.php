@@ -194,6 +194,7 @@ switch ($action) {
         if (!Csrf::check($csrf_token)) {
             r2(getUrl('settings/app'), 'e', Lang::T('Invalid or Expired CSRF Token') . ".");
         }
+        Csrf::generateAndStoreToken();
         $company = _post('CompanyName');
         $custom_tax_rate = filter_var(_post('custom_tax_rate'), FILTER_SANITIZE_SPECIAL_CHARS);
         if (preg_match('/[^0-9.]/', $custom_tax_rate)) {
@@ -258,6 +259,7 @@ switch ($action) {
             if (!Csrf::check($csrf_token)) {
                 r2(getUrl('settings/app'), 'e', Lang::T('Invalid or Expired CSRF Token') . ".");
             }
+            Csrf::generateAndStoreToken();
 
             if ($login_page_type == 'custom' && (empty($login_Page_template) || empty($login_page_title) || empty($login_page_description))) {
                 r2(getUrl('settings/app'), 'e', 'Please fill all required fields');
@@ -397,6 +399,7 @@ switch ($action) {
         if (!Csrf::check($csrf_token)) {
             r2(getUrl('settings/localisation'), 'e', Lang::T('Invalid or Expired CSRF Token') . ".");
         }
+        Csrf::generateAndStoreToken();
         $tzone = _post('tzone');
         $date_format = _post('date_format');
         $country_code_phone = _post('country_code_phone');
@@ -695,6 +698,7 @@ switch ($action) {
         if (!Csrf::check($csrf_token)) {
             r2(getUrl('settings/users-add'), 'e', Lang::T('Invalid or Expired CSRF Token') . ".");
         }
+        Csrf::generateAndStoreToken();
         $username = _post('username');
         $fullname = _post('fullname');
         $password = _post('password');
@@ -766,6 +770,7 @@ switch ($action) {
         if (!Csrf::check($csrf_token)) {
             r2(getUrl('settings/users-edit/'), 'e', Lang::T('Invalid or Expired CSRF Token') . ".");
         }
+        Csrf::generateAndStoreToken();
         $username = _post('username');
         $fullname = _post('fullname');
         $password = _post('password');
@@ -924,6 +929,7 @@ switch ($action) {
         if (!Csrf::check($csrf_token)) {
             r2(getUrl('settings/change-password'), 'e', Lang::T('Invalid or Expired CSRF Token') . ".");
         }
+        Csrf::generateAndStoreToken();
         if ($password != '') {
             $d = ORM::for_table('tbl_users')->where('username', $admin['username'])->find_one();
             run_hook('change_password'); #HOOK
@@ -985,6 +991,7 @@ switch ($action) {
         if (!Csrf::check($csrf_token)) {
             r2(getUrl('settings/notifications'), 'e', Lang::T('Invalid or Expired CSRF Token') . ".");
         }
+        Csrf::generateAndStoreToken();
         file_put_contents($UPLOAD_PATH . "/notifications.json", json_encode($_POST));
         r2(getUrl('settings/notifications'), 's', Lang::T('Settings Saved Successfully'));
         break;
@@ -1110,6 +1117,7 @@ switch ($action) {
         if (!Csrf::check($csrf_token)) {
             r2(getUrl('settings/language'), 'e', Lang::T('Invalid or Expired CSRF Token') . ".");
         }
+        Csrf::generateAndStoreToken();
         file_put_contents($lan_file, json_encode($_POST, JSON_PRETTY_PRINT));
         r2(getUrl('settings/language'), 's', Lang::T('Translation saved Successfully'));
         break;
@@ -1128,6 +1136,7 @@ switch ($action) {
             if (!Csrf::check($csrf_token)) {
                 r2(getUrl('settings/maintenance'), 'e', Lang::T('Invalid or Expired CSRF Token') . ".");
             }
+            Csrf::generateAndStoreToken();
             $status = isset($_POST['maintenance_mode']) ? 1 : 0; // Checkbox returns 1 if checked, otherwise 0
             $force_logout = isset($_POST['maintenance_mode_logout']) ? 1 : 0; // Checkbox returns 1 if checked, otherwise 0
             $date = isset($_POST['maintenance_date']) ? $_POST['maintenance_date'] : null;
@@ -1173,6 +1182,7 @@ switch ($action) {
             if (!Csrf::check($csrf_token)) {
                 r2(getUrl('settings/miscellaneous'), 'e', Lang::T('Invalid or Expired CSRF Token') . ".");
             }
+            Csrf::generateAndStoreToken();
             foreach ($_POST as $key => $value) {
                 $d = ORM::for_table('tbl_appconfig')->where('setting', $key)->find_one();
                 if ($d) {

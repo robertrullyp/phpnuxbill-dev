@@ -29,6 +29,7 @@ switch ($do) {
             _msglog('e', Lang::T('Invalid or Expired CSRF Token'));
             r2(getUrl('login'));
         }
+        Csrf::generateAndStoreToken();
 
         // ==== Cloudflare Turnstile (Customer Login) ====
         $tsEnabled = (!empty($_c['turnstile_client_enabled']) && $_c['turnstile_client_enabled'] == '1');
@@ -110,6 +111,7 @@ switch ($do) {
                 _msglog('e', Lang::T('Invalid or Expired CSRF Token'));
                 r2(getUrl('login'));
             }
+            Csrf::generateAndStoreToken();
             $voucher = Text::alphanumeric(_post('voucher_only'), "-_.,");
             $tur = ORM::for_table('tbl_user_recharges')
                 ->where('username', $voucher)

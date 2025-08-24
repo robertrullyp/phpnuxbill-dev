@@ -22,6 +22,7 @@ switch ($do) {
         if (!Csrf::check($csrf_token)) {
             r2(getUrl('register'), 'e', Lang::T('Invalid or Expired CSRF Token') . ".");
         }
+        Csrf::generateAndStoreToken();
         $otp_code = _post('otp_code');
         $username = alphanumeric(_post('username'), "+_.@-");
         $email = _post('email');
