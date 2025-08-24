@@ -112,13 +112,17 @@
                 </ul>
                 <div class="row">
                     <div class="col-xs-4">
-                        <a href="{Text::url('customers/delete/', $d['id'], '&csrf_token=', $csrf_token)}" id="{$d['id']}"
-                            class="btn btn-danger btn-block btn-sm"
-                            onclick="return ask(this, '{Lang::T('Delete')}?')"><span class="fa fa-trash"></span></a>
+                        <form method="post" action="{Text::url('customers/delete/', $d['id'])}">
+                            <input type="hidden" name="csrf_token" value="{$csrf_token}">
+                            <button type="submit" id="{$d['id']}" class="btn btn-danger btn-block btn-sm"
+                                onclick="return ask(this, '{Lang::T('Delete')}?')"><span class="fa fa-trash"></span></button>
+                        </form>
                     </div>
                     <div class="col-xs-8">
-                        <a href="{Text::url('customers/edit/', $d['id'], '&csrf_token=', $csrf_token)}"
-                            class="btn btn-warning btn-sm btn-block">{Lang::T('Edit')}</a>
+                        <form method="post" action="{Text::url('customers/edit/', $d['id'])}">
+                            <input type="hidden" name="csrf_token" value="{$csrf_token}">
+                            <button type="submit" class="btn btn-warning btn-sm btn-block">{Lang::T('Edit')}</button>
+                        </form>
                     </div>
                 </div>
             </div>
@@ -242,13 +246,17 @@
                         </ul>
                         <div class="row">
                             <div class="col-xs-4">
-                                <a href="{Text::url('customers/deactivate/', $d['id'],'/',$package['plan_id'], '&csrf_token=', $csrf_token)}"
-                                    id="{$d['id']}" class="btn btn-danger btn-block btn-sm"
-                                    onclick="return ask(this, '{Lang::T('This will deactivate Customer Plan, and make it expired')}')">{Lang::T('Deactivate')}</a>
+                                <form method="post" action="{Text::url('customers/deactivate/', $d['id'],'/',$package['plan_id'])}">
+                                    <input type="hidden" name="csrf_token" value="{$csrf_token}">
+                                    <button type="submit" id="{$d['id']}" class="btn btn-danger btn-block btn-sm"
+                                        onclick="return ask(this, '{Lang::T('This will deactivate Customer Plan, and make it expired')}')">{Lang::T('Deactivate')}</button>
+                                </form>
                             </div>
                             <div class="col-xs-8">
-                                <a href="{Text::url('customers/recharge/', $d['id'], '/', $package['plan_id'], '&csrf_token=', $csrf_token)}"
-                                    class="btn btn-success btn-sm btn-block">{Lang::T('Recharge')}</a>
+                                <form method="post" action="{Text::url('customers/recharge/', $d['id'], '/', $package['plan_id'])}">
+                                    <input type="hidden" name="csrf_token" value="{$csrf_token}">
+                                    <button type="submit" class="btn btn-success btn-sm btn-block">{Lang::T('Recharge')}</button>
+                                </form>
                             </div>
                         </div>
                     </div>
@@ -264,21 +272,27 @@
         <a href="{Text::url('customers/list')}" class="btn btn-primary btn-sm btn-block">{Lang::T('Back')}</a>
     </div>
     <div class="col-xs-6 col-md-3">
-        <a href="{Text::url('customers/sync/', $d['id'], '&csrf_token=', $csrf_token)}"
-            onclick="return ask(this, '{Lang::T('This will sync Customer to Mikrotik')}?')"
-            class="btn btn-info btn-sm btn-block">{Lang::T('Sync')}</a>
+        <form method="post" action="{Text::url('customers/sync/', $d['id'])}">
+            <input type="hidden" name="csrf_token" value="{$csrf_token}">
+            <button type="submit" class="btn btn-info btn-sm btn-block"
+                onclick="return ask(this, '{Lang::T('This will sync Customer to Mikrotik')}?')">{Lang::T('Sync')}</button>
+        </form>
     </div>
     <div class="col-xs-6 col-md-3">
-        <a href="{Text::url('message/send/', $d['id'], '&csrf_token=', $csrf_token)}"
-            class="btn btn-success btn-sm btn-block">
-            {Lang::T('Send Message')}
-        </a>
+        <form method="post" action="{Text::url('message/send/', $d['id'])}">
+            <input type="hidden" name="csrf_token" value="{$csrf_token}">
+            <button type="submit" class="btn btn-success btn-sm btn-block">
+                {Lang::T('Send Message')}
+            </button>
+        </form>
     </div>
     <div class="col-xs-6 col-md-3">
-        <a href="{Text::url('customers/login/', $d['id'], '&csrf_token=', $csrf_token)}" target="_blank"
-            class="btn btn-warning btn-sm btn-block">
-            {Lang::T('Login as Customer')}
-        </a>
+        <form method="post" action="{Text::url('customers/login/', $d['id'])}" target="_blank">
+            <input type="hidden" name="csrf_token" value="{$csrf_token}">
+            <button type="submit" class="btn btn-warning btn-sm btn-block">
+                {Lang::T('Login as Customer')}
+            </button>
+        </form>
     </div>
 </div>
 
