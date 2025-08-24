@@ -55,6 +55,7 @@ $ui->assign('_system_menu', 'dashboard');
 // CSRF token for logout form
 $csrf_token_logout = Csrf::generateAndStoreToken();
 $ui->assign('csrf_token_logout', $csrf_token_logout);
+$ui->assign('csrf_token', Csrf::generateAndStoreToken());
 
 function _msglog($type, $msg)
 {
