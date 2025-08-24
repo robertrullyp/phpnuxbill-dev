@@ -56,9 +56,10 @@
                                     <td align="center">
                                         <a href="{Text::url('')}radius/nas-edit/{$ds['id']}"
                                             class="btn btn-info btn-xs">{Lang::T('Edit')}</a>
-                                        <a href="{Text::url('')}radius/nas-delete/{$ds['id']}?csrf_token={$csrf_token}" id="{$ds['id']}"
-                                            onclick="return ask(this, '{Lang::T('Delete')}?')"
-                                            class="btn btn-danger btn-xs"><i class="glyphicon glyphicon-trash"></i></a>
+                                        <form method="post" action="{Text::url('')}radius/nas-delete/{$ds['id']}" style="display:inline;">
+                                            <input type="hidden" name="csrf_token" value="{$csrf_token}">
+                                            <button type="submit" onclick="return ask(this, '{Lang::T('Delete')}?')" class="btn btn-danger btn-xs"><i class="glyphicon glyphicon-trash"></i></button>
+                                        </form>
                                     </td>
                                     <td align="center">{$ds['id']}</td>
                                 </tr>
