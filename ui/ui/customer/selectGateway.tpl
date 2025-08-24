@@ -74,6 +74,7 @@
                 {if $discount == '' && $plan['type'] neq 'Balance' && $custom == '' && $_c['enable_coupons'] == 'yes'}
                     <!-- Coupon Code Form -->
                     <form action="{Text::url('order/gateway/')}{$route2}/{$route3}" method="post">
+                        <input type="hidden" name="csrf_token" value="{$csrf_token}">
                         <div class="form-group row">
                             <label class="col-md-4 control-label">{Lang::T('Coupon Code')}</label>
                             <div class="col-md-8">
@@ -144,6 +145,7 @@
 
                 <!-- Payment Gateway Form -->
                 <form method="post" action="{Text::url('order/buy/')}{$route2}/{$route3}">
+                    <input type="hidden" name="csrf_token" value="{$csrf_token}">
                     <input type="hidden" name="coupon" value="{$discount}">
                     {if $custom == '1' && $amount neq ''}
                         <input type="hidden" name="custom" value="1">
