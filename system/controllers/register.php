@@ -90,6 +90,11 @@ switch ($do) {
         if ($d) {
             $msg .= Lang::T('Account already exists') . '<br>';
         }
+        // Check if phone number already exists
+        $d = ORM::for_table('tbl_customers')->where('phonenumber', $phone_number)->find_one();
+        if ($d) {
+            $msg .= Lang::T('Phone number already registered by another customer') . '<br>';
+        }
 
         if ($msg == '') {
             $d = ORM::for_table('tbl_customers')->create();
@@ -203,9 +208,9 @@ switch ($do) {
         if ($_c['sms_otp_registration'] == 'yes') {
             $phone_number = _post('phone_number');
             if (!empty($phone_number)) {
-                $d = ORM::for_table('tbl_customers')->where('username', $phone_number)->find_one();
+                $d = ORM::for_table('tbl_customers')->where('phonenumber', $phone_number)->find_one();
                 if ($d) {
-                    r2(getUrl('register'), 's', Lang::T('Account already exists'));
+                    r2(getUrl('register'), 'e', Lang::T('Phone number already registered by another customer'));
                 }
                 if (!file_exists($otpPath)) {
                     mkdir($otpPath);
