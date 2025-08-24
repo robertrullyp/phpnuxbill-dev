@@ -5,8 +5,9 @@
 		<div class="panel panel-primary panel-hovered panel-stacked mb30">
 			<div class="panel-heading">{Lang::T('Add New Bandwidth')}</div>
 			<div class="panel-body">
-				<form class="form-horizontal" method="post" role="form" action="{Text::url('bandwidth/add-post')}">
-					<div class="form-group">
+                                <form class="form-horizontal" method="post" role="form" action="{Text::url('bandwidth/add-post')}">
+                                        <input type="hidden" name="csrf_token" value="{$csrf_token}">
+                                        <div class="form-group">
 						<label class="col-md-3 control-label">{Lang::T('Bandwidth Name')}</label>
 						<div class="col-md-9">
 							<input type="text" class="form-control" id="name" name="name">
