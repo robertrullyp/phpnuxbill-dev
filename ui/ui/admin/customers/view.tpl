@@ -112,12 +112,12 @@
                 </ul>
                 <div class="row">
                     <div class="col-xs-4">
-                        <a href="{Text::url('customers/delete/', $d['id'], '&token=', $csrf_token)}" id="{$d['id']}"
+                        <a href="{Text::url('customers/delete/', $d['id'], '&csrf_token=', $csrf_token)}" id="{$d['id']}"
                             class="btn btn-danger btn-block btn-sm"
                             onclick="return ask(this, '{Lang::T('Delete')}?')"><span class="fa fa-trash"></span></a>
                     </div>
                     <div class="col-xs-8">
-                        <a href="{Text::url('customers/edit/', $d['id'], '&token=', $csrf_token)}"
+                        <a href="{Text::url('customers/edit/', $d['id'], '&csrf_token=', $csrf_token)}"
                             class="btn btn-warning btn-sm btn-block">{Lang::T('Edit')}</a>
                     </div>
                 </div>
@@ -242,12 +242,12 @@
                         </ul>
                         <div class="row">
                             <div class="col-xs-4">
-                                <a href="{Text::url('customers/deactivate/', $d['id'],'/',$package['plan_id'], '&token=', $csrf_token)}"
+                                <a href="{Text::url('customers/deactivate/', $d['id'],'/',$package['plan_id'], '&csrf_token=', $csrf_token)}"
                                     id="{$d['id']}" class="btn btn-danger btn-block btn-sm"
                                     onclick="return ask(this, '{Lang::T('This will deactivate Customer Plan, and make it expired')}')">{Lang::T('Deactivate')}</a>
                             </div>
                             <div class="col-xs-8">
-                                <a href="{Text::url('customers/recharge/', $d['id'], '/', $package['plan_id'], '&token=', $csrf_token)}"
+                                <a href="{Text::url('customers/recharge/', $d['id'], '/', $package['plan_id'], '&csrf_token=', $csrf_token)}"
                                     class="btn btn-success btn-sm btn-block">{Lang::T('Recharge')}</a>
                             </div>
                         </div>
@@ -264,18 +264,18 @@
         <a href="{Text::url('customers/list')}" class="btn btn-primary btn-sm btn-block">{Lang::T('Back')}</a>
     </div>
     <div class="col-xs-6 col-md-3">
-        <a href="{Text::url('customers/sync/', $d['id'], '&token=', $csrf_token)}"
+        <a href="{Text::url('customers/sync/', $d['id'], '&csrf_token=', $csrf_token)}"
             onclick="return ask(this, '{Lang::T('This will sync Customer to Mikrotik')}?')"
             class="btn btn-info btn-sm btn-block">{Lang::T('Sync')}</a>
     </div>
     <div class="col-xs-6 col-md-3">
-        <a href="{Text::url('message/send/', $d['id'], '&token=', $csrf_token)}"
+        <a href="{Text::url('message/send/', $d['id'], '&csrf_token=', $csrf_token)}"
             class="btn btn-success btn-sm btn-block">
             {Lang::T('Send Message')}
         </a>
     </div>
     <div class="col-xs-6 col-md-3">
-        <a href="{Text::url('customers/login/', $d['id'], '&token=', $csrf_token)}" target="_blank"
+        <a href="{Text::url('customers/login/', $d['id'], '&csrf_token=', $csrf_token)}" target="_blank"
             class="btn btn-warning btn-sm btn-block">
             {Lang::T('Login as Customer')}
         </a>

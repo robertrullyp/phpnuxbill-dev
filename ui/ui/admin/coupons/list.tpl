@@ -188,7 +188,7 @@
                     </td> -->
                             <td colspan="10" style="text-align: center;">
                                 <div style="display: flex; justify-content: center; gap: 10px; flex-wrap: wrap;">
-                                    <a href="{Text::url('coupons/edit/', $coupon['id'], '&token=', $csrf_token)}"
+                                    <a href="{Text::url('coupons/edit/', $coupon['id'], '&csrf_token=', $csrf_token)}"
                                         id="{$coupon['id']}" class="btn btn-success btn-xs">{Lang::T('Edit')}</a>
                                     {if $coupon['status'] neq 'inactive'}
                                         <a href="javascript:void(0);"
