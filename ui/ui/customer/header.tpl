@@ -111,7 +111,7 @@
                                 <li class="user-footer">
                                     <div class="pull-right">
                                         <form method="post" action="{Text::url('logout')}" style="display:inline;">
-                                            <input type="hidden" name="csrf_token" value="{$csrf_token_logout}">
+                                            <input type="hidden" name="csrf_token_logout" value="{$csrf_token_logout}">
                                             <button type="submit" class="btn btn-default btn-flat"><i
                                                     class="ion ion-power"></i> {Lang::T('Logout')}</button>
                                         </form>
