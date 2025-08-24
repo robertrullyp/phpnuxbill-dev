@@ -11,6 +11,7 @@
         </div>
     </div>
     <form enctype="multipart/form-data" action="{Text::url('register/post')}" method="post">
+        <input type="hidden" name="csrf_token" value="{$csrf_token}">
         <div class="col-md-4">
             <div class="panel panel-primary">
                 <div class="panel-heading">1. {Lang::T('Register as Member')}</div>
