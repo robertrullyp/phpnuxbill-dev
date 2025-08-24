@@ -7,6 +7,7 @@
             <div class="panel-body">
                 <form class="form-horizontal" method="post" role="form" action="{Text::url('')}plan/deposit-post">
                     <input type="hidden" name="stoken" value="{App::getToken()}">
+                    <input type="hidden" name="csrf_token" value="{$csrf_token}">
                     <div class="form-group">
                         <label class="col-md-3 control-label">{Lang::T('Select Account')}</label>
                         <div class="col-md-9">

@@ -20,6 +20,7 @@
                 {Lang::T('Active Customers')}
             </div>
             <form id="site-search" method="post" action="{Text::url('')}plan/list/">
+                <input type="hidden" name="csrf_token" value="{$csrf_token}">
                 <div class="panel-body">
                     <div class="row row-no-gutters" style="padding: 5px">
                         <div class="col-lg-2">
