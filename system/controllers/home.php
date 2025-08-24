@@ -17,6 +17,11 @@ if (isset($_GET['renewal'])) {
 }
 
 if (_post('send') == 'balance') {
+    $csrf_token = _post('csrf_token');
+    if (!Csrf::check($csrf_token)) {
+        r2(getUrl('home'), 'e', Lang::T('Invalid or Expired CSRF Token') . '.');
+    }
+    Csrf::generateAndStoreToken();
     if ($config['enable_balance'] == 'yes' && $config['allow_balance_transfer'] == 'yes') {
         if ($user['status'] != 'Active') {
             _alert(Lang::T('This account status') . ' : ' . Lang::T($user['status']), 'danger', "");
@@ -81,6 +86,11 @@ if (_post('send') == 'balance') {
         r2(getUrl('home'), 'd', Lang::T('Failed, balance is not available'));
     }
 } else if (_post('send') == 'plan') {
+    $csrf_token = _post('csrf_token');
+    if (!Csrf::check($csrf_token)) {
+        r2(getUrl('home'), 'e', Lang::T('Invalid or Expired CSRF Token') . '.');
+    }
+    Csrf::generateAndStoreToken();
     if ($user['status'] != 'Active') {
         _alert(Lang::T('This account status') . ' : ' . Lang::T($user['status']), 'danger', "");
     }
@@ -309,6 +319,9 @@ if (!empty($_SESSION['nux-mac']) && !empty($_SESSION['nux-ip'] && !empty($_SESSI
     }
 }
 
+
+$csrf_token = Csrf::generateAndStoreToken();
+$ui->assign('csrf_token', $csrf_token);
 
 $widgets = ORM::for_table('tbl_widgets')->where("enabled", 1)->where('user', 'Customer')->order_by_asc("orders")->findArray();
 $count = count($widgets);

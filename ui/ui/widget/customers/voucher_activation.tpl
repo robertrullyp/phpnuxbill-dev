@@ -6,6 +6,7 @@
         </div>
         <div class="box-body">
             <form method="post" role="form" class="form-horizontal" action="{Text::url('voucher/activation-post')}">
+                <input type="hidden" name="csrf_token" value="{$csrf_token}">
                 <div class="input-group">
                     <span class="input-group-btn">
                         <a class="btn btn-default"
