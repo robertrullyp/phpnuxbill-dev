@@ -24,7 +24,7 @@ class Csrf
     {
         global $config, $isApi;
         if ($config['csrf_enabled'] == 'yes' && !$isApi) {
-            if (!empty($_SESSION['csrf_tokens']) && isset($token)) {
+            if (!empty($_SESSION['csrf_tokens']) && !empty($token)) {
                 foreach ($_SESSION['csrf_tokens'] as $index => $data) {
                     if (self::validateToken($token, $data['token'])) {
                         if (time() - $data['time'] > self::$tokenExpiration) {
@@ -38,8 +38,13 @@ class Csrf
                         unset($_SESSION['csrf_tokens'][$index]);
                     }
                 }
+                return false;
+            } else {
+                if (empty($token)) {
+                    error_log('CSRF token not provided.');
+                }
+                return false;
             }
-            return false;
         }
         return true;
     }
