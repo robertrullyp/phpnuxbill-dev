@@ -39,6 +39,7 @@ switch ($action) {
         $r = ORM::for_table('tbl_routers')->find_many();
         $ui->assign('r', $r);
         run_hook('view_add_pool'); #HOOK
+        $ui->assign('csrf_token', Csrf::generateAndStoreToken());
         $ui->display('admin/pool/add.tpl');
         break;
 
@@ -48,6 +49,7 @@ switch ($action) {
         if ($d) {
             $ui->assign('d', $d);
             run_hook('view_edit_pool'); #HOOK
+            $ui->assign('csrf_token', Csrf::generateAndStoreToken());
             $ui->display('admin/pool/edit.tpl');
         } else {
             r2(getUrl('pool/list'), 'e', Lang::T('Account Not Found'));
@@ -80,6 +82,11 @@ switch ($action) {
         r2(getUrl('pool/list'), 's', $log);
         break;
     case 'add-post':
+        $csrf_token = _post('csrf_token');
+        if (!Csrf::check($csrf_token)) {
+            r2(getUrl('pool/add'), 'e', Lang::T('Invalid or Expired CSRF Token') . '.');
+        }
+        Csrf::generateAndStoreToken();
         $name = _post('name');
         $ip_address = _post('ip_address');
         $local_ip = _post('local_ip');
@@ -115,6 +122,12 @@ switch ($action) {
 
 
     case 'edit-post':
+        $csrf_token = _post('csrf_token');
+        $id = _post('id');
+        if (!Csrf::check($csrf_token)) {
+            r2(getUrl('pool/edit/') . $id, 'e', Lang::T('Invalid or Expired CSRF Token') . '.');
+        }
+        Csrf::generateAndStoreToken();
         $local_ip = _post('local_ip');
         $ip_address = _post('ip_address');
         $routers = _post('routers');
@@ -125,7 +138,6 @@ switch ($action) {
             $msg .= Lang::T('All field is required') . '<br>';
         }
 
-        $id = _post('id');
         $d = ORM::for_table('tbl_pool')->find_one($id);
         $old = ORM::for_table('tbl_pool')->find_one($id);
         if (!$d) {
@@ -167,6 +179,7 @@ switch ($action) {
         $r = ORM::for_table('tbl_routers')->find_many();
         $ui->assign('r', $r);
         run_hook('view_add_port'); #HOOK
+        $ui->assign('csrf_token', Csrf::generateAndStoreToken());
         $ui->display('admin/port/add.tpl');
         break;
 
@@ -176,6 +189,7 @@ switch ($action) {
         if ($d) {
             $ui->assign('d', $d);
             run_hook('view_edit_port'); #HOOK
+            $ui->assign('csrf_token', Csrf::generateAndStoreToken());
             $ui->display('admin/port/edit.tpl');
         } else {
             r2(getUrl('pool/port'), 'e', Lang::T('Account Not Found'));
@@ -205,6 +219,11 @@ switch ($action) {
         r2(getUrl('pool/list'), 's', $log);
         break;
     case 'add-port-post':
+        $csrf_token = _post('csrf_token');
+        if (!Csrf::check($csrf_token)) {
+            r2(getUrl('pool/add-port'), 'e', Lang::T('Invalid or Expired CSRF Token') . '.');
+        }
+        Csrf::generateAndStoreToken();
         $name = _post('name');
         $port_range = _post('port_range');
         $public_ip = _post('public_ip');
@@ -237,12 +256,17 @@ switch ($action) {
 
 
     case 'edit-port-post':
+        $csrf_token = _post('csrf_token');
+        $id = _post('id');
+        if (!Csrf::check($csrf_token)) {
+            r2(getUrl('pool/edit-port/') . $id, 'e', Lang::T('Invalid or Expired CSRF Token') . '.');
+        }
+        Csrf::generateAndStoreToken();
         $name = _post('name');
         $public_ip = _post('public_ip');
         $range_port = _post('range_port');
         $routers = _post('routers');
         run_hook('edit_port'); #HOOK
-        $msg = '';
         $msg = '';
         if (Validator::Length($name, 30, 2) == false) {
             $msg .= 'Name should be between 3 to 30 characters' . '<br>';
@@ -251,7 +275,6 @@ switch ($action) {
             $msg .= Lang::T('All field is required') . '<br>';
         }
 
-        $id = _post('id');
         $d = ORM::for_table('tbl_port_pool')->find_one($id);
         $old = ORM::for_table('tbl_port_pool')->find_one($id);
         if (!$d) {

@@ -5,11 +5,12 @@
 		<div class="panel panel-primary panel-hovered panel-stacked mb30">
 			<div class="panel-heading">{Lang::T('Add Port Pool')}</div>
 			<div class="panel-body">
-				<form class="form-horizontal" method="post" role="form" action="{Text::url('')}pool/add-port-post">
-					<div class="form-group">
-						<label class="col-md-2 control-label">{Lang::T('Port Name')}</label>
-						<div class="col-md-6">
-							<input type="text" class="form-control" id="name" name="name" placeholder="Vpn Tunnel">
+                                <form class="form-horizontal" method="post" role="form" action="{Text::url('')}pool/add-port-post">
+                                        <input type="hidden" name="csrf_token" value="{$csrf_token}">
+                                        <div class="form-group">
+                                                <label class="col-md-2 control-label">{Lang::T('Port Name')}</label>
+                                                <div class="col-md-6">
+                                                        <input type="text" class="form-control" id="name" name="name" placeholder="Vpn Tunnel">
 						</div>
 					</div>
 					<div class="form-group">
