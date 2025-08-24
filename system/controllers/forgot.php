@@ -19,6 +19,12 @@ if (!empty($_COOKIE['forgot_username']) && in_array($step, [0, 1])) {
 }
 
 if ($step == 1) {
+    $csrf_token = _post('csrf_token');
+    if (!Csrf::check($csrf_token)) {
+        r2(getUrl('forgot'), 'e', Lang::T('Invalid or Expired CSRF Token'));
+    }
+    Csrf::generateAndStoreToken();
+
     $username = _post('username');
     if (!empty($username)) {
         $ui->assign('username', $username);
@@ -62,6 +68,12 @@ if ($step == 1) {
         $step = 0;
     }
 } else if ($step == 2) {
+    $csrf_token = _post('csrf_token');
+    if (!Csrf::check($csrf_token)) {
+        r2(getUrl('forgot&step=1'), 'e', Lang::T('Invalid or Expired CSRF Token'));
+    }
+    Csrf::generateAndStoreToken();
+
     $username = _post('username');
     $otp_code = _post('otp_code');
     if (!empty($username) && !empty($otp_code)) {
@@ -94,6 +106,12 @@ if ($step == 1) {
         r2(getUrl('forgot&step=1'), 'e', Lang::T('Invalid Username or Verification Code'));
     }
 } else if ($step == 7) {
+    $csrf_token = _post('csrf_token');
+    if (!Csrf::check($csrf_token)) {
+        r2(getUrl('forgot&step=6'), 'e', Lang::T('Invalid or Expired CSRF Token'));
+    }
+    Csrf::generateAndStoreToken();
+
     $find = _post('find');
     $step = 6;
     if (!empty($find)) {
@@ -166,4 +184,5 @@ foreach ($fs as $file) {
 
 $ui->assign('step', $step);
 $ui->assign('_title', Lang::T('Forgot Password'));
+$ui->assign('csrf_token', Csrf::generateAndStoreToken());
 $ui->display('customer/forgot.tpl');
