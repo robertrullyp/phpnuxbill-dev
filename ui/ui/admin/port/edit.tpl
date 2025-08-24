@@ -6,12 +6,13 @@
 			<div class="panel-heading">{Lang::T('Edit Port')}</div>
 			<div class="panel-body">
 
-				<form class="form-horizontal" method="post" role="form" action="{Text::url('')}pool/edit-port-post">
-					<input type="hidden" name="id" value="{$d['id']}">
-					<div class="form-group">
-						<label class="col-md-2 control-label">{Lang::T('Port Name')}</label>
-						<div class="col-md-6">
-							<input type="text" class="form-control" id="name" name="name" value="{$d['port_name']}">
+                                <form class="form-horizontal" method="post" role="form" action="{Text::url('')}pool/edit-port-post">
+                                        <input type="hidden" name="csrf_token" value="{$csrf_token}">
+                                        <input type="hidden" name="id" value="{$d['id']}">
+                                        <div class="form-group">
+                                                <label class="col-md-2 control-label">{Lang::T('Port Name')}</label>
+                                                <div class="col-md-6">
+                                                        <input type="text" class="form-control" id="name" name="name" value="{$d['port_name']}">
 						</div>
 					</div>
 					<div class="form-group">

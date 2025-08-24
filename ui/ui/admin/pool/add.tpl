@@ -7,10 +7,11 @@
 						<div class="panel-body">
 
                 <form class="form-horizontal" method="post" role="form" action="{Text::url('')}pool/add-post" >
+                    <input type="hidden" name="csrf_token" value="{$csrf_token}">
                     <div class="form-group">
-						<label class="col-md-2 control-label">{Lang::T('Name Pool')}</label>
-						<div class="col-md-6">
-							<input type="text" class="form-control" id="name" name="name">
+                                                <label class="col-md-2 control-label">{Lang::T('Name Pool')}</label>
+                                                <div class="col-md-6">
+                                                        <input type="text" class="form-control" id="name" name="name">
 						</div>
                     </div>
                     <div class="form-group">
