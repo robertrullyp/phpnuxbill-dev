@@ -9,6 +9,7 @@
 class Csrf
 {
     private static $tokenExpiration = 1800; // 30 minutes
+    private static $maxTokens = 20; // limit stored CSRF tokens
 
     public static function generateToken($length = 16)
     {
@@ -57,8 +58,8 @@ class Csrf
             $_SESSION['csrf_tokens'] = [];
         }
         $_SESSION['csrf_tokens'][] = ['token' => $token, 'time' => time()];
-        // Keep only the most recent 20 tokens to prevent session growth
-        $_SESSION['csrf_tokens'] = array_slice($_SESSION['csrf_tokens'], -20);
+        // Keep only the most recent tokens to prevent session growth
+        $_SESSION['csrf_tokens'] = array_slice($_SESSION['csrf_tokens'], -self::$maxTokens);
         return $token;
     }
 
