@@ -35,6 +35,7 @@ switch ($action) {
         if (!Csrf::check($csrf_token)) {
             r2($_SERVER['HTTP_REFERER'], 'e', Lang::T('Invalid or Expired CSRF Token') . ".");
         }
+        Csrf::generateAndStoreToken();
         $code = Text::alphanumeric(_post('code', ''));
         $type = _post('type', '');
         $value = floatval(_post('value', ''));
@@ -145,6 +146,7 @@ switch ($action) {
         if (!Csrf::check($csrf_token)) {
             r2($_SERVER['HTTP_REFERER'], 'e', Lang::T('Invalid or Expired CSRF Token') . ".");
         }
+        Csrf::generateAndStoreToken();
 
         $code = Text::alphanumeric(_post('code', ''));
         $type = _post('type', '');
@@ -255,6 +257,7 @@ switch ($action) {
                 r2($_SERVER['HTTP_REFERER'], 'e', Lang::T("Invalid request"));
                 exit;
             }
+            Csrf::generateAndStoreToken();
             $coupon = ORM::for_table('tbl_coupons')->where('id', $couponId)->find_one();
             if (!$coupon) {
                 r2($_SERVER['HTTP_REFERER'], 'e', Lang::T("Coupon not found."));

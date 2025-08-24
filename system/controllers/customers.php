@@ -29,6 +29,7 @@ switch ($action) {
         if (!Csrf::check($csrf_token)) {
             r2(getUrl('customers'), 'e', Lang::T('Invalid or Expired CSRF Token') . ".");
         }
+        Csrf::generateAndStoreToken();
 
         $cs = ORM::for_table('tbl_customers')
             ->select('tbl_customers.id', 'id')
@@ -170,6 +171,7 @@ switch ($action) {
         if (!Csrf::check($csrf_token)) {
             r2(getUrl('customers/view/') . $id_customer, 'e', Lang::T('Invalid or Expired CSRF Token') . ".");
         }
+        Csrf::generateAndStoreToken();
         $b = ORM::for_table('tbl_user_recharges')->where('customer_id', $id_customer)->where('plan_id', $plan_id)->find_one();
         if ($b) {
             $gateway = 'Recharge';
@@ -245,6 +247,7 @@ switch ($action) {
         if (!Csrf::check($csrf_token)) {
             r2(getUrl('customers/view/') . $id_customer, 'e', Lang::T('Invalid or Expired CSRF Token') . ".");
         }
+        Csrf::generateAndStoreToken();
         $b = ORM::for_table('tbl_user_recharges')->where('customer_id', $id_customer)->where('plan_id', $plan_id)->find_one();
         if ($b) {
             $p = ORM::for_table('tbl_plans')->where('id', $b['plan_id'])->find_one();
@@ -277,6 +280,7 @@ switch ($action) {
         if (!Csrf::check($csrf_token)) {
             r2(getUrl('customers/view/') . $id_customer, 'e', Lang::T('Invalid or Expired CSRF Token') . ".");
         }
+        Csrf::generateAndStoreToken();
         $bs = ORM::for_table('tbl_user_recharges')->where('customer_id', $id_customer)->where('status', 'on')->findMany();
         if ($bs) {
             $routers = [];
@@ -313,6 +317,7 @@ switch ($action) {
         if (!Csrf::check($csrf_token)) {
             r2(getUrl('customers/view/') . $id, 'e', Lang::T('Invalid or Expired CSRF Token') . ".");
         }
+        Csrf::generateAndStoreToken();
         $customer = ORM::for_table('tbl_customers')->find_one($id);
         if ($customer) {
             $_SESSION['uid'] = $id;
@@ -463,6 +468,7 @@ switch ($action) {
         if (!Csrf::check($csrf_token)) {
             r2(getUrl('customers/add'), 'e', Lang::T('Invalid or Expired CSRF Token') . ".");
         }
+        Csrf::generateAndStoreToken();
         $username = alphanumeric(_post('username'), ":+_.@-");
         $fullname = _post('fullname');
         $password = trim(_post('password'));
@@ -592,6 +598,7 @@ switch ($action) {
         if (!Csrf::check($csrf_token)) {
             r2(getUrl('customers/edit/') . $id, 'e', Lang::T('Invalid or Expired CSRF Token') . ".");
         }
+        Csrf::generateAndStoreToken();
         $username = alphanumeric(_post('username'), ":+_.@-");
         $fullname = _post('fullname');
         $account_type = _post('account_type');
@@ -863,6 +870,7 @@ switch ($action) {
             if (!Csrf::check($csrf_token)) {
                 r2(getUrl('customers'), 'e', Lang::T('Invalid or Expired CSRF Token') . ".");
             }
+            Csrf::generateAndStoreToken();
             $d = $query->findMany();
             $h = false;
             set_time_limit(-1);

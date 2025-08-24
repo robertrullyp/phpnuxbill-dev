@@ -28,10 +28,10 @@ class Csrf
                 foreach ($_SESSION['csrf_tokens'] as $index => $data) {
                     if (self::validateToken($token, $data['token'])) {
                         if (time() - $data['time'] > self::$tokenExpiration) {
-                            unset($_SESSION['csrf_tokens'][$index]);
+                            self::clearToken($token);
                             return false;
                         }
-                        unset($_SESSION['csrf_tokens'][$index]);
+                        self::clearToken($token);
                         return true;
                     }
                     if (time() - $data['time'] > self::$tokenExpiration) {

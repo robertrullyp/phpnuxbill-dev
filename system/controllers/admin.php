@@ -28,6 +28,7 @@ switch ($do) {
         if (!Csrf::check($csrf_token)) {
             _alert(Lang::T('Invalid or Expired CSRF Token') . ".", 'danger', "admin");
         }
+        Csrf::generateAndStoreToken();
         run_hook('admin_login'); #HOOK
 
         // ==== Cloudflare Turnstile server-side validation ====
