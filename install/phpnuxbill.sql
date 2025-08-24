@@ -327,7 +327,8 @@ ALTER TABLE `tbl_bandwidth`
   ADD PRIMARY KEY (`id`);
 
 ALTER TABLE `tbl_customers`
-  ADD PRIMARY KEY (`id`);
+  ADD PRIMARY KEY (`id`),
+  ADD UNIQUE KEY `uniq_phonenumber` (`phonenumber`);
 
 ALTER TABLE `tbl_customers_fields`
   ADD PRIMARY KEY (`id`),
