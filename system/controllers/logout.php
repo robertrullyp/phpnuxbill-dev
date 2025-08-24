@@ -10,13 +10,16 @@ header("Expires: Tue, 01 Jan 2000 00:00:00 GMT");
 header("Pragma: no-cache");
 
 $csrf_token_logout = _post('csrf_token_logout');
-$token_valid       = Csrf::check($csrf_token_logout);
 
-if (!$token_valid) {
+if (!Csrf::check($csrf_token_logout)) {
     error_log('Invalid CSRF token during logout from IP ' . ($_SERVER['REMOTE_ADDR'] ?? ''));
 }
+
 run_hook('customer_logout'); #HOOK
-if (session_status() == PHP_SESSION_NONE) session_start();
+
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
 Admin::removeCookie();
 User::removeCookie();
 session_destroy();
