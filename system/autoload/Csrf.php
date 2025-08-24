@@ -57,6 +57,8 @@ class Csrf
             $_SESSION['csrf_tokens'] = [];
         }
         $_SESSION['csrf_tokens'][] = ['token' => $token, 'time' => time()];
+        // Keep only the most recent 20 tokens to prevent session growth
+        $_SESSION['csrf_tokens'] = array_slice($_SESSION['csrf_tokens'], -20);
         return $token;
     }
 
