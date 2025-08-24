@@ -8,6 +8,7 @@
             <div class="panel-body">
 
                 <form class="form-horizontal" method="post" role="form" action="{Text::url('')}radius/nas-add-post">
+                    <input type="hidden" name="csrf_token" value="{$csrf_token}">
                     <div class="form-group">
                         <label class="col-md-2 control-label">{Lang::T('Router Name')}</label>
                         <div class="col-md-6">
