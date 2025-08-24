@@ -25,7 +25,7 @@ switch ($action) {
         if (!in_array($admin['user_type'], ['SuperAdmin', 'Admin'])) {
             _alert(Lang::T('You do not have permission to access this page'), 'danger', "dashboard");
         }
-        $csrf_token = _req('token');
+        $csrf_token = _post('csrf_token');
         if (!Csrf::check($csrf_token)) {
             r2(getUrl('customers'), 'e', Lang::T('Invalid or Expired CSRF Token') . ".");
         }
@@ -166,7 +166,7 @@ switch ($action) {
         }
         $id_customer = $routes['2'];
         $plan_id = $routes['3'];
-        $csrf_token = _req('token');
+        $csrf_token = _post('csrf_token');
         if (!Csrf::check($csrf_token)) {
             r2(getUrl('customers/view/') . $id_customer, 'e', Lang::T('Invalid or Expired CSRF Token') . ".");
         }
@@ -241,7 +241,7 @@ switch ($action) {
         }
         $id_customer = $routes['2'];
         $plan_id = $routes['3'];
-        $csrf_token = _req('token');
+        $csrf_token = _post('csrf_token');
         if (!Csrf::check($csrf_token)) {
             r2(getUrl('customers/view/') . $id_customer, 'e', Lang::T('Invalid or Expired CSRF Token') . ".");
         }
@@ -273,7 +273,7 @@ switch ($action) {
         break;
     case 'sync':
         $id_customer = $routes['2'];
-        $csrf_token = _req('token');
+        $csrf_token = _post('csrf_token');
         if (!Csrf::check($csrf_token)) {
             r2(getUrl('customers/view/') . $id_customer, 'e', Lang::T('Invalid or Expired CSRF Token') . ".");
         }
@@ -309,7 +309,7 @@ switch ($action) {
             _alert(Lang::T('You do not have permission to access this page'), 'danger', "dashboard");
         }
         $id = $routes['2'];
-        $csrf_token = _req('token');
+        $csrf_token = _post('csrf_token');
         if (!Csrf::check($csrf_token)) {
             r2(getUrl('customers/view/') . $id, 'e', Lang::T('Invalid or Expired CSRF Token') . ".");
         }
@@ -419,7 +419,7 @@ switch ($action) {
             _alert(Lang::T('You do not have permission to access this page'), 'danger', "dashboard");
         }
         $id = $routes['2'];
-        $csrf_token = _req('token');
+        $csrf_token = _post('csrf_token');
         if (!Csrf::check($csrf_token)) {
             r2(getUrl('customers/view/') . $id, 'e', Lang::T('Invalid or Expired CSRF Token') . ".");
         }
