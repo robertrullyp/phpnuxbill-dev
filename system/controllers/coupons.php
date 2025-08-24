@@ -249,7 +249,7 @@ switch ($action) {
 
         if ($_SERVER['REQUEST_METHOD'] === 'GET') {
             $couponId = $_GET['coupon_id'] ?? '';
-            $csrf_token =  $_GET['csrf_token'] ?? '';
+            $csrf_token = _req('csrf_token');
             $status = $_GET['status'] ?? '';
             if (empty($couponId) || empty($csrf_token) || !Csrf::check($csrf_token) || empty($status)) {
                 r2($_SERVER['HTTP_REFERER'], 'e', Lang::T("Invalid request"));
