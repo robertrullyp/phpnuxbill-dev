@@ -331,6 +331,9 @@ function sendWhatsapp($phone, $txt)
 function r2($to, $ntype = 'e', $msg = '')
 {
     global $isApi;
+    // Generate a fresh CSRF token for subsequent requests
+    // so that each POST action will require a new token.
+    Csrf::generateAndStoreToken();
     if ($isApi) {
         showResult(
             ($ntype == 's') ? true : false,
