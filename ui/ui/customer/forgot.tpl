@@ -2,6 +2,7 @@
 
 <div class="hidden-xs" style="height:100px"></div>
 <form action="{Text::url('forgot&step=')}{$step+1}" method="post">
+    <input type="hidden" name="csrf_token" value="{$csrf_token}">
     <div class="row">
         <div class="col-sm-4 col-sm-offset-4">
             {if $step == 1}
