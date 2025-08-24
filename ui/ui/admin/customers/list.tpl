@@ -17,10 +17,12 @@
             <div class="panel-heading">
                 {if in_array($_admin['user_type'],['SuperAdmin','Admin'])}
                 <div class="btn-group pull-right">
-                    <a class="btn btn-primary btn-xs" title="save"
-                        href="{Text::url('customers/csv&token=', $csrf_token)}"
-                        onclick="return ask(this, '{Lang::T("This will export to CSV")}?')"><span
-                            class="glyphicon glyphicon-download" aria-hidden="true"></span> CSV</a>
+                    <form method="post" action="{Text::url('customers/csv')}" style="display:inline;">
+                        <input type="hidden" name="csrf_token" value="{$csrf_token}">
+                        <button class="btn btn-primary btn-xs" title="save"
+                            onclick="return ask(this, '{Lang::T("This will export to CSV")}?')"><span
+                                class="glyphicon glyphicon-download" aria-hidden="true"></span> CSV</button>
+                    </form>
                 </div>
                 {/if}
                 {Lang::T('Manage Contact')}
@@ -157,14 +159,16 @@
                                     <a href="{Text::url('customers/view/')}{$ds['id']}" id="{$ds['id']}"
                                         style="margin: 0px; color:black"
                                         class="btn btn-success btn-xs">&nbsp;&nbsp;{Lang::T('View')}&nbsp;&nbsp;</a>
-                                    <a href="{Text::url('customers/edit/', $ds['id'], '&token=', $csrf_token)}"
+                                    <a href="{Text::url('customers/edit/', $ds['id'])}"
                                         id="{$ds['id']}" style="margin: 0px; color:black"
                                         class="btn btn-info btn-xs">&nbsp;&nbsp;{Lang::T('Edit')}&nbsp;&nbsp;</a>
-                                    <a href="{Text::url('customers/sync/', $ds['id'], '&token=', $csrf_token)}"
-                                        id="{$ds['id']}" style="margin: 5px; color:black"
-                                        class="btn btn-success btn-xs">&nbsp;&nbsp;{Lang::T('Sync')}&nbsp;&nbsp;</a>
-                                    <a href="{Text::url('plan/recharge/', $ds['id'], '&token=', $csrf_token)}"
-                                        id="{$ds['id']}" style="margin: 0px;"
+                                    <form method="post" action="{Text::url('customers/sync/', $ds['id'])}"
+                                        style="display:inline;">
+                                        <input type="hidden" name="csrf_token" value="{$csrf_token}">
+                                        <button type="submit" id="{$ds['id']}" style="margin: 5px; color:black"
+                                            class="btn btn-success btn-xs">&nbsp;&nbsp;{Lang::T('Sync')}&nbsp;&nbsp;</button>
+                                    </form>
+                                    <a href="{Text::url('plan/recharge/', $ds['id'])}" id="{$ds['id']}" style="margin: 0px;"
                                         class="btn btn-primary btn-xs">{Lang::T('Recharge')}</a>
                                 </td>
                             </tr>
