@@ -1,4 +1,13 @@
 (function ($) {
+    $.ajaxSetup({
+        beforeSend: function(xhr, settings){
+            const token = $('input[name="csrf_token"]').first().val();
+            if (token && settings.type !== 'GET'){
+                settings.data = (settings.data ? settings.data + '&' : '') + 'csrf_token=' + encodeURIComponent(token);
+            }
+        }
+    });
+
     function refreshCsrfToken() {
         $.getJSON(appUrl + '/?_route=csrf-refresh')
             .done(function (data) {
