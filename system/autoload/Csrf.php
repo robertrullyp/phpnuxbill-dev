@@ -31,7 +31,8 @@ class Csrf
                             self::clearToken($token);
                             return false;
                         }
-                        // Token is valid and within the allowed time window; keep it
+                        // Token is valid and within the allowed time window; clear and return
+                        self::clearToken($token);
                         return true;
                     }
                     if (time() - $data['time'] > self::$tokenExpiration) {
