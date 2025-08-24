@@ -12,9 +12,14 @@
             });
     }
 
-    $(document).ajaxComplete(function () {
-        refreshCsrfToken();
+    $(document).ajaxComplete(function (_e, _xhr, settings) {
+        if (!settings.url.includes('csrf-refresh')) {
+            refreshCsrfToken();
+        }
     });
+
+    // Refresh tokens periodically (every 10 minutes)
+    setInterval(refreshCsrfToken, 10 * 60 * 1000);
 
     // Initial refresh in case the page was loaded via AJAX
     refreshCsrfToken();
