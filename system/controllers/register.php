@@ -18,6 +18,10 @@ $otpPath = $CACHE_PATH . File::pathFixer('/sms/');
 
 switch ($do) {
     case 'post':
+        $csrf_token = _post('csrf_token');
+        if (!Csrf::check($csrf_token)) {
+            r2(getUrl('register'), 'e', Lang::T('Invalid or Expired CSRF Token') . ".");
+        }
         $otp_code = _post('otp_code');
         $username = alphanumeric(_post('username'), "+_.@-");
         $email = _post('email');
@@ -69,6 +73,7 @@ switch ($do) {
                     $ui->assign('notify', 'Wrong Verification code');
                     $ui->assign('notify_t', 'd');
                     $ui->assign('_title', Lang::T('Register'));
+                    $ui->assign('csrf_token', Csrf::generateAndStoreToken());
                     $ui->display('customer/register-otp.tpl');
                     exit();
                 } else {
@@ -146,6 +151,7 @@ switch ($do) {
             // Check if OTP is enabled
             if (!empty($config['sms_url']) && $_c['sms_otp_registration'] == 'yes') {
                 // Display register-otp.tpl if OTP is enabled
+                $ui->assign('csrf_token', Csrf::generateAndStoreToken());
                 $ui->display('customer/register-otp.tpl');
             } else {
                 $UPLOAD_URL_PATH = str_replace($root_path, '', $UPLOAD_PATH);
@@ -176,7 +182,7 @@ switch ($do) {
                 $ui->assign('login_logo', $login_logo);
                 $ui->assign('wallpaper', $wallpaper);
                 $ui->assign('favicon', $favicon);
-                $ui->assign('csrf_token', $csrf_token);
+                $ui->assign('csrf_token', Csrf::generateAndStoreToken());
                 $ui->assign('_title', Lang::T('Login'));
                 $ui->assign('customFields', User::getFormCustomField($ui, true));
                 switch ($config['login_page_type']) {
@@ -192,6 +198,7 @@ switch ($do) {
         break;
 
     default:
+        $csrf_token = Csrf::generateAndStoreToken();
         if ($_c['sms_otp_registration'] == 'yes') {
             $phone_number = _post('phone_number');
             if (!empty($phone_number)) {
@@ -209,6 +216,7 @@ switch ($do) {
                     $ui->assign('notify', 'Please wait ' . (600 - (time() - filemtime($otpPath))) . ' seconds before sending another SMS');
                     $ui->assign('notify_t', 'd');
                     $ui->assign('_title', Lang::T('Register'));
+                    $ui->assign('csrf_token', $csrf_token);
                     $ui->display('customer/register-otp.tpl');
                 } else {
                     $otp = rand(100000, 999999);
@@ -226,11 +234,13 @@ switch ($do) {
                     $ui->assign('notify_t', 's');
                     $ui->assign('_title', Lang::T('Register'));
                     $ui->assign('customFields', User::getFormCustomField($ui, true));
+                    $ui->assign('csrf_token', $csrf_token);
                     $ui->display('customer/register-otp.tpl');
                 }
             } else {
                 $ui->assign('_title', Lang::T('Register'));
                 run_hook('view_otp_register'); #HOOK
+                $ui->assign('csrf_token', $csrf_token);
                 $ui->display('customer/register-rotp.tpl');
             }
         } else {
