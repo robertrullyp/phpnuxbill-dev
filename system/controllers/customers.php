@@ -167,7 +167,10 @@ switch ($action) {
         }
         $id_customer = $routes['2'];
         $plan_id = $routes['3'];
-        $csrf_token = _req('csrf_token');
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+            r2(getUrl('customers/view/') . $id_customer, 'e', Lang::T('Invalid request method'));
+        }
+        $csrf_token = _post('csrf_token');
         if (!Csrf::check($csrf_token)) {
             r2(getUrl('customers/view/') . $id_customer, 'e', Lang::T('Invalid or Expired CSRF Token') . ".");
         }
@@ -243,7 +246,10 @@ switch ($action) {
         }
         $id_customer = $routes['2'];
         $plan_id = $routes['3'];
-        $csrf_token = _req('csrf_token');
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+            r2(getUrl('customers/view/') . $id_customer, 'e', Lang::T('Invalid request method'));
+        }
+        $csrf_token = _post('csrf_token');
         if (!Csrf::check($csrf_token)) {
             r2(getUrl('customers/view/') . $id_customer, 'e', Lang::T('Invalid or Expired CSRF Token') . ".");
         }
@@ -276,7 +282,10 @@ switch ($action) {
         break;
     case 'sync':
         $id_customer = $routes['2'];
-        $csrf_token = _req('csrf_token');
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+            r2(getUrl('customers/view/') . $id_customer, 'e', Lang::T('Invalid request method'));
+        }
+        $csrf_token = _post('csrf_token');
         if (!Csrf::check($csrf_token)) {
             r2(getUrl('customers/view/') . $id_customer, 'e', Lang::T('Invalid or Expired CSRF Token') . ".");
         }
@@ -313,7 +322,10 @@ switch ($action) {
             _alert(Lang::T('You do not have permission to access this page'), 'danger', "dashboard");
         }
         $id = $routes['2'];
-        $csrf_token = _req('csrf_token');
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+            r2(getUrl('customers/view/') . $id, 'e', Lang::T('Invalid request method'));
+        }
+        $csrf_token = _post('csrf_token');
         if (!Csrf::check($csrf_token)) {
             r2(getUrl('customers/view/') . $id, 'e', Lang::T('Invalid or Expired CSRF Token') . ".");
         }
@@ -384,6 +396,14 @@ switch ($action) {
             _alert(Lang::T('You do not have permission to access this page'), 'danger', "dashboard");
         }
         $id = $routes['2'];
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+            r2(getUrl('customers/view/') . $id, 'e', Lang::T('Invalid request method'));
+        }
+        $csrf_token = _post('csrf_token');
+        if (!Csrf::check($csrf_token)) {
+            r2(getUrl('customers/view/') . $id, 'e', Lang::T('Invalid or Expired CSRF Token') . ".");
+        }
+        Csrf::generateAndStoreToken();
         run_hook('edit_customer'); #HOOK
         $d = ORM::for_table('tbl_customers')->find_one($id);
         // Fetch the Customers Attributes values from the tbl_customers_fields table
@@ -412,7 +432,7 @@ switch ($action) {
             $ui->assign('statuses', ORM::for_table('tbl_customers')->getEnum("status"));
             $ui->assign('customFields', $customFields);
             $ui->assign('xheader', $leafletpickerHeader);
-            $ui->assign('csrf_token',  Csrf::generateAndStoreToken());
+            $ui->assign('csrf_token', Csrf::generateAndStoreToken());
             $ui->display('admin/customers/edit.tpl');
         } else {
             r2(getUrl('customers/list'), 'e', Lang::T('Account Not Found'));
@@ -424,10 +444,14 @@ switch ($action) {
             _alert(Lang::T('You do not have permission to access this page'), 'danger', "dashboard");
         }
         $id = $routes['2'];
-        $csrf_token = _req('csrf_token');
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+            r2(getUrl('customers/view/') . $id, 'e', Lang::T('Invalid request method'));
+        }
+        $csrf_token = _post('csrf_token');
         if (!Csrf::check($csrf_token)) {
             r2(getUrl('customers/view/') . $id, 'e', Lang::T('Invalid or Expired CSRF Token') . ".");
         }
+        Csrf::generateAndStoreToken();
         run_hook('delete_customer'); #HOOK
         $c = ORM::for_table('tbl_customers')->find_one($id);
         if ($c) {

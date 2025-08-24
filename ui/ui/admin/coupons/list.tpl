@@ -188,20 +188,26 @@
                     </td> -->
                             <td colspan="10" style="text-align: center;">
                                 <div style="display: flex; justify-content: center; gap: 10px; flex-wrap: wrap;">
-                                    <a href="{Text::url('coupons/edit/', $coupon['id'], '&csrf_token=', $csrf_token)}"
-                                        id="{$coupon['id']}" class="btn btn-success btn-xs">{Lang::T('Edit')}</a>
+                                    <form method="post" action="{Text::url('coupons/edit/', $coupon['id'])}">
+                                        <input type="hidden" name="csrf_token" value="{$csrf_token}">
+                                        <button type="submit" id="{$coupon['id']}" class="btn btn-success btn-xs">{Lang::T('Edit')}</button>
+                                    </form>
                                     {if $coupon['status'] neq 'inactive'}
-                                        <a href="javascript:void(0);"
-                                            onclick="confirmAction('{Text::url('coupons/status/&coupon_id=',$coupon['id'], '&status=inactive&csrf_token=', $csrf_token)}', '{Lang::T('Block')}')"
-                                            id="{$coupon['id']}" class="btn btn-danger btn-xs">
-                                            {Lang::T('Block')}
-                                        </a>
+                                        <form method="post" action="{Text::url('coupons/status')}">
+                                            <input type="hidden" name="coupon_id" value="{$coupon['id']}">
+                                            <input type="hidden" name="status" value="inactive">
+                                            <input type="hidden" name="csrf_token" value="{$csrf_token}">
+                                            <button type="button" id="{$coupon['id']}" class="btn btn-danger btn-xs"
+                                                onclick="confirmAction(this.form, '{Lang::T('Block')}')">{Lang::T('Block')}</button>
+                                        </form>
                                     {else}
-                                        <a href="javascript:void(0);"
-                                            onclick="confirmAction('{Text::url('coupons/status/&coupon_id=', $coupon['id'], '&status=active&csrf_token=', $csrf_token)}', '{Lang::T('Unblock')}')"
-                                            id="{$coupon['id']}" class="btn btn-warning btn-xs">
-                                            {Lang::T('Unblock')}
-                                        </a>
+                                        <form method="post" action="{Text::url('coupons/status')}">
+                                            <input type="hidden" name="coupon_id" value="{$coupon['id']}">
+                                            <input type="hidden" name="status" value="active">
+                                            <input type="hidden" name="csrf_token" value="{$csrf_token}">
+                                            <button type="button" id="{$coupon['id']}" class="btn btn-warning btn-xs"
+                                                onclick="confirmAction(this.form, '{Lang::T('Unblock')}')">{Lang::T('Unblock')}</button>
+                                        </form>
                                     {/if}
                                 </div>
                             </td>
@@ -330,7 +336,7 @@
 </script>
 {literal}
     <script>
-        function confirmAction(url, action) {
+        function confirmAction(form, action) {
             Swal.fire({
                 title: 'Are you sure?',
                 text: `Do you really want to ${action.toLowerCase()} this coupon?`,
@@ -342,7 +348,7 @@
                 cancelButtonText: 'No, cancel!'
             }).then((result) => {
                 if (result.isConfirmed) {
-                    window.location.href = url;
+                    form.submit();
                 }
             });
         }
