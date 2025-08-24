@@ -40,6 +40,7 @@ switch ($action) {
         $ui->assign('_system_menu', 'balance');
         $plans_balance = ORM::for_table('tbl_plans')->where('enabled', '1')->where('type', 'Balance')->where('prepaid', 'yes')->find_many();
         $ui->assign('plans_balance', $plans_balance);
+        $ui->assign('csrf_token', Csrf::generateAndStoreToken());
         $ui->display('customer/orderBalance.tpl');
         break;
     case 'package':
@@ -303,6 +304,10 @@ switch ($action) {
         $plan['price'] += $tax;
 
         if (isset($_POST['send']) && $_POST['send'] == 'plan') {
+            $csrf_token = _post('csrf_token');
+            if (!Csrf::check($csrf_token)) {
+                r2($_SERVER['HTTP_REFERER'], 'e', Lang::T('Invalid or Expired CSRF Token') . '.');
+            }
             $target = ORM::for_table('tbl_customers')->where('username', _post('username'))->find_one();
             list($bills, $add_cost) = User::getBills($target['id']);
             if (!empty($add_cost)) {
@@ -389,6 +394,7 @@ switch ($action) {
         $ui->assign('router', $router_name);
         $ui->assign('plan', $plan);
         $ui->assign('tax', $tax);
+        $ui->assign('csrf_token', Csrf::generateAndStoreToken());
         $ui->display('customer/sendPlan.tpl');
         break;
     case 'gateway':
@@ -396,6 +402,12 @@ switch ($action) {
         $ui->assign('_system_menu', 'package');
         if (strpos($user['email'], '@') === false) {
             r2(getUrl('accounts/profile'), 'e', Lang::T("Please enter your email address"));
+        }
+        if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+            $csrf_token = _post('csrf_token');
+            if (!Csrf::check($csrf_token)) {
+                r2($_SERVER['HTTP_REFERER'], 'e', Lang::T('Invalid or Expired CSRF Token') . '.');
+            }
         }
         $tax_enable = isset($config['enable_tax']) ? $config['enable_tax'] : 'no';
         $tax_rate_setting = isset($config['tax_rate']) ? $config['tax_rate'] : null;
@@ -529,6 +541,7 @@ switch ($action) {
             $ui->assign('add_cost', $add_cost);
             $ui->assign('bills', $bills);
             $ui->assign('plan', $plan);
+            $ui->assign('csrf_token', Csrf::generateAndStoreToken());
             $ui->display('customer/selectGateway.tpl');
             break;
         } else {
@@ -537,6 +550,11 @@ switch ($action) {
             r2(getUrl('home'), 'e', Lang::T("Failed to create Transaction.."));
         }
     case 'buy':
+        $csrf_token = _post('csrf_token');
+        if (!Csrf::check($csrf_token)) {
+            r2($_SERVER['HTTP_REFERER'], 'e', Lang::T('Invalid or Expired CSRF Token') . '.');
+        }
+        Csrf::generateAndStoreToken();
         $gateway = _post('gateway');
         $discount = _post('discount') ?: 0;
         if ($gateway == 'balance') {

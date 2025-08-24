@@ -39,6 +39,7 @@
                         <div class="col col-md-4">
                             <form action="{Text::url('order/gateway/0/0')}" method="post">
                                 <input type="hidden" name="custom" value="1">
+                                <input type="hidden" name="csrf_token" value="{$csrf_token}">
                                 <div class="box box-solid box-default">
                                     <div class="box-header text-bold">{Lang::T('Custom Balance')}</div>
                                     <div class="table-responsive">
