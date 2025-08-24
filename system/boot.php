@@ -52,6 +52,10 @@ $ui->assign('CACHE_PATH', str_replace($root_path, '',  $CACHE_PATH));
 $ui->assign('PAGES_PATH', str_replace($root_path, '',  $PAGES_PATH));
 $ui->assign('_system_menu', 'dashboard');
 
+// CSRF token for logout form
+$csrf_token_logout = Csrf::generateAndStoreToken();
+$ui->assign('csrf_token_logout', $csrf_token_logout);
+
 function _msglog($type, $msg)
 {
     $_SESSION['ntype'] = $type;
