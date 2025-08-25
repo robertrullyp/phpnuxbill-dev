@@ -4,10 +4,19 @@
     }
 
     $.ajaxSetup({
-        beforeSend: function(xhr, settings){
+        beforeSend: function (xhr, settings) {
             const token = $('input[name="csrf_token"]').first().val();
-            if (token && settings.type !== 'GET'){
-                settings.data = (settings.data ? settings.data + '&' : '') + 'csrf_token=' + encodeURIComponent(token);
+            if (token && settings.type !== 'GET') {
+                if (settings.data instanceof FormData) {
+                    settings.data.append('csrf_token', token);
+                } else if (typeof settings.data === 'string' || !settings.data) {
+                    settings.data = (settings.data ? settings.data + '&' : '') +
+                                    'csrf_token=' + encodeURIComponent(token);
+                }
+
+                if (settings.contentType && settings.contentType.indexOf('application/json') === 0) {
+                    xhr.setRequestHeader('X-CSRF-Token', token);
+                }
             }
         }
     });
