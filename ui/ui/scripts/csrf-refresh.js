@@ -1,4 +1,8 @@
 (function ($) {
+    if (typeof window.csrfEnabled !== 'undefined' && !window.csrfEnabled) {
+        return;
+    }
+
     $.ajaxSetup({
         beforeSend: function(xhr, settings){
             const token = $('input[name="csrf_token"]').first().val();

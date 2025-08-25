@@ -48,7 +48,9 @@
 
 <script src="{$app_url}/ui/ui/scripts/plugins/select2.min.js"></script>
 <script src="{$app_url}/ui/ui/scripts/custom.js?2025.2.5"></script>
-<script src="{$app_url}/ui/ui/scripts/csrf-refresh.js"></script>
+{if $_c['csrf_enabled']=='yes'}
+    <script src="{$app_url}/ui/ui/scripts/csrf-refresh.js"></script>
+{/if}
 
 {if isset($xfooter)}
     {$xfooter}
