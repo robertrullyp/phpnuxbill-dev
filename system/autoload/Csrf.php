@@ -8,8 +8,8 @@
 
 class Csrf
 {
-    private static $tokenExpiration = 1800; // 30 minutes
-    private static $maxTokens = 20; // limit stored CSRF tokens
+    private static $tokenExpiration = 3600; // 1 hour
+    private static $maxTokens = 50; // limit stored CSRF tokens
 
     public static function generateToken($length = 16)
     {
@@ -62,11 +62,31 @@ class Csrf
                 $_SESSION['csrf_tokens'] = [];
             }
             $_SESSION['csrf_tokens'][] = ['token' => $token, 'time' => time()];
-            // Keep only the most recent tokens to prevent session growth
-            $_SESSION['csrf_tokens'] = array_slice($_SESSION['csrf_tokens'], -self::$maxTokens);
+            self::pruneTokens();
             return $token;
         }
         return '';
+    }
+
+    private static function pruneTokens()
+    {
+        if (!isset($_SESSION['csrf_tokens']) || !is_array($_SESSION['csrf_tokens'])) {
+            return;
+        }
+
+        $now = time();
+        // Remove expired tokens first
+        $_SESSION['csrf_tokens'] = array_values(array_filter(
+            $_SESSION['csrf_tokens'],
+            function ($data) use ($now) {
+                return ($now - $data['time']) <= self::$tokenExpiration;
+            }
+        ));
+
+        // Trim the array to the most recent tokens if exceeding the limit
+        if (count($_SESSION['csrf_tokens']) > self::$maxTokens) {
+            $_SESSION['csrf_tokens'] = array_slice($_SESSION['csrf_tokens'], -self::$maxTokens);
+        }
     }
 
     public static function clearToken($token = null)

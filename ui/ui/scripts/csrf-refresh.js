@@ -40,8 +40,8 @@
         }
     });
 
-    // Refresh tokens periodically (every 10 minutes)
-    setInterval(refreshCsrfToken, 10 * 60 * 1000);
+    // Refresh tokens periodically (every 20 minutes)
+    setInterval(refreshCsrfToken, 20 * 60 * 1000);
 
     // Initial refresh in case the page was loaded via AJAX
     refreshCsrfToken();
