@@ -24,7 +24,8 @@ class Csrf
     public static function check($token)
     {
         global $config, $isApi;
-        if ($config['csrf_enabled'] == 'yes' && !$isApi) {
+        $enabled = $config['csrf_enabled'] ?? 'yes';
+        if ($enabled === 'yes' && !$isApi) {
             if (!empty($_SESSION['csrf_tokens']) && !empty($token)) {
                 foreach ($_SESSION['csrf_tokens'] as $index => $data) {
                     if (self::validateToken($token, $data['token'])) {
@@ -53,14 +54,19 @@ class Csrf
 
     public static function generateAndStoreToken()
     {
-        $token = self::generateToken();
-        if (!isset($_SESSION['csrf_tokens']) || !is_array($_SESSION['csrf_tokens'])) {
-            $_SESSION['csrf_tokens'] = [];
+        global $config;
+        $enabled = $config['csrf_enabled'] ?? 'yes';
+        if ($enabled === 'yes') {
+            $token = self::generateToken();
+            if (!isset($_SESSION['csrf_tokens']) || !is_array($_SESSION['csrf_tokens'])) {
+                $_SESSION['csrf_tokens'] = [];
+            }
+            $_SESSION['csrf_tokens'][] = ['token' => $token, 'time' => time()];
+            // Keep only the most recent tokens to prevent session growth
+            $_SESSION['csrf_tokens'] = array_slice($_SESSION['csrf_tokens'], -self::$maxTokens);
+            return $token;
         }
-        $_SESSION['csrf_tokens'][] = ['token' => $token, 'time' => time()];
-        // Keep only the most recent tokens to prevent session growth
-        $_SESSION['csrf_tokens'] = array_slice($_SESSION['csrf_tokens'], -self::$maxTokens);
-        return $token;
+        return '';
     }
 
     public static function clearToken($token = null)
