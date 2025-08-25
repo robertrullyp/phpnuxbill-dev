@@ -85,6 +85,12 @@ switch ($do) {
             $msg .= Lang::T('Account already exists') . '<br>';
         }
 
+        // Check if phone number already exists
+        $d = ORM::for_table('tbl_customers')->where('phonenumber', $phone_number)->find_one();
+        if ($d) {
+            $msg .= Lang::T('Phone number already exists') . '<br>';
+        }
+
         if ($msg == '') {
             $d = ORM::for_table('tbl_customers')->create();
             $d->username = alphanumeric($username, "+_.@-");
@@ -198,6 +204,10 @@ switch ($do) {
                 $d = ORM::for_table('tbl_customers')->where('username', $phone_number)->find_one();
                 if ($d) {
                     r2(getUrl('register'), 's', Lang::T('Account already exists'));
+                }
+                $d = ORM::for_table('tbl_customers')->where('phonenumber', $phone_number)->find_one();
+                if ($d) {
+                    r2(getUrl('register'), 's', Lang::T('Phone number already exists'));
                 }
                 if (!file_exists($otpPath)) {
                     mkdir($otpPath);
