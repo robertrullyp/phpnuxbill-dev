@@ -500,6 +500,9 @@ switch ($action) {
         if ($d) {
             $msg .= Lang::T('Account already axist') . '<br>';
         }
+        if (ORM::for_table('tbl_customers')->where('phonenumber', Lang::phoneFormat($phonenumber))->find_one()) {
+            $msg .= Lang::T('Phone number already exists') . '<br>';
+        }
         if ($msg == '') {
             $d = ORM::for_table('tbl_customers')->create();
             $d->username = $username;
@@ -628,6 +631,12 @@ switch ($action) {
 
         if (!$c) {
             $msg .= Lang::T('Data Not Found') . '<br>';
+        }
+
+        if ($c && $c['phonenumber'] != $phonenumber) {
+            if (ORM::for_table('tbl_customers')->where('phonenumber', $phonenumber)->find_one()) {
+                $msg .= Lang::T('Phone number already registered by another customer') . '<br>';
+            }
         }
 
         //lets find user Customers Attributes using id
