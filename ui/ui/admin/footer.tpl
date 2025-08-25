@@ -14,7 +14,9 @@
 <script src="{$app_url}/ui/ui/scripts/pace.min.js"></script>
 <script src="{$app_url}/ui/ui/summernote/summernote.min.js"></script>
 <script src="{$app_url}/ui/ui/scripts/custom.js?2025.2.5"></script>
-<script src="{$app_url}/ui/ui/scripts/csrf-refresh.js"></script>
+{if $_c['csrf_enabled']=='yes'}
+    <script src="{$app_url}/ui/ui/scripts/csrf-refresh.js"></script>
+{/if}
 
 <script>
     document.getElementById('openSearch').addEventListener('click', function () {
