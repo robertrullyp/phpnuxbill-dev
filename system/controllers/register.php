@@ -227,7 +227,8 @@ switch ($do) {
                     $ui->assign('notify', 'Please wait ' . ((int)$_c['otp_wait'] - (time() - filemtime($otpPath))) . ' seconds before sending another SMS');
                     $ui->assign('notify_t', 'd');
                     $ui->assign('_title', Lang::T('Register'));
-                    $ui->display('customer/register-otp.tpl');
+                    $ui->display('customer/register-rotp.tpl');
+                    return;
                 } else {
                     $otp = rand(100000, 999999);
                     file_put_contents($otpPath, $otp);
@@ -266,6 +267,7 @@ switch ($do) {
                 $ui->assign('_title', Lang::T('Register'));
                 run_hook('view_otp_register'); #HOOK
                 $ui->display('customer/register-rotp.tpl');
+                return;
             }
         } else {
             $UPLOAD_URL_PATH = str_replace($root_path, '', $UPLOAD_PATH);
