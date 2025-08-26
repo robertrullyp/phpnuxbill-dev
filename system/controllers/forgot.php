@@ -29,7 +29,7 @@ if ($step == 1) {
         $user = ORM::for_table('tbl_customers')->selects(['phonenumber', 'email'])->where('username', $username)->find_one();
         if ($user) {
             $otpPath .= sha1($username . $db_pass) . ".txt";
-            if (file_exists($otpPath) && time() - filemtime($otpPath) < 600) {
+            if (file_exists($otpPath) && time() - filemtime($otpPath) < (int)$_c['otp_wait']) {
                 $sec = time() - filemtime($otpPath);
                 $ui->assign('notify_t', 's');
                 $ui->assign('notify', Lang::T("Verification Code already Sent to Your Phone/Email/Whatsapp, please wait")." $sec seconds.");
@@ -66,7 +66,7 @@ if ($step == 1) {
     $otp_code = _post('otp_code');
     if (!empty($username) && !empty($otp_code)) {
         $otpPath .= sha1($username . $db_pass) . ".txt";
-        if (file_exists($otpPath) && time() - filemtime($otpPath) <= 600) {
+        if (file_exists($otpPath) && time() - filemtime($otpPath) <= (int)$_c['otp_expiry']) {
             $otp = file_get_contents($otpPath);
             if ($otp == $otp_code) {
                 $pass = mt_rand(10000, 99999);
@@ -108,7 +108,7 @@ if ($step == 1) {
         $users = ORM::for_table('tbl_customers')->selects(['username', 'phonenumber', 'email'])->where('phonenumber', $find)->find_array();
         if ($users) {
             // prevent flooding only can request every 10 minutes
-            if (!file_exists($otpPath) || (file_exists($otpPath) && time() - filemtime($otpPath) >= 600)) {
+            if (!file_exists($otpPath) || (file_exists($otpPath) && time() - filemtime($otpPath) >= (int)$_c['otp_wait'])) {
                 $usernames = implode(", ", array_column($users, 'username'));
                 if ($via == 'sms') {
                     Message::sendSMS($find, Lang::T("Your username for") . ' ' . $config['CompanyName'] . "\n" . $usernames);
@@ -124,7 +124,7 @@ if ($step == 1) {
             $users = ORM::for_table('tbl_customers')->selects(['username', 'phonenumber', 'email'])->where('email', $find)->find_array();
             if ($users) {
                 // prevent flooding only can request every 10 minutes
-                if (!file_exists($otpPath) || (file_exists($otpPath) && time() - filemtime($otpPath) >= 600)) {
+                if (!file_exists($otpPath) || (file_exists($otpPath) && time() - filemtime($otpPath) >= (int)$_c['otp_wait'])) {
                     $usernames = implode(", ", array_column($users, 'username'));
                     $phones = [];
                     foreach ($users as $user) {

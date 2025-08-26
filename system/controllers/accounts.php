@@ -204,8 +204,8 @@ switch ($action) {
         $phoneFile = $otpPath . sha1($username . $db_pass) . "_phone.txt";
 
         // expired 10 minutes
-        if (file_exists($otpFile) && time() - filemtime($otpFile) < 600) {
-            r2(getUrl('accounts/phone-update'), 'e', Lang::T('Please wait ') . (600 - (time() - filemtime($otpFile))) . Lang::T(' seconds before sending another SMS'));
+        if (file_exists($otpFile) && time() - filemtime($otpFile) < (int)$_c['otp_wait']) {
+            r2(getUrl('accounts/phone-update'), 'e', Lang::T('Please wait ') . ((int)$_c['otp_wait'] - (time() - filemtime($otpFile))) . Lang::T(' seconds before sending another SMS'));
         } else {
             $otp = rand(100000, 999999);
             file_put_contents($otpFile, $otp);
@@ -254,7 +254,7 @@ switch ($action) {
         }
 
         // expired 10 minutes
-        if (time() - filemtime($otpFile) > 1200) {
+        if (time() - filemtime($otpFile) > (int)$_c['otp_expiry']) {
             unlink($otpFile);
             unlink($phoneFile);
             r2(getUrl('accounts/phone-update'), 'e', Lang::T('Verification code expired'));
@@ -323,8 +323,8 @@ switch ($action) {
         $emailFile = $otpPath . sha1($username . $db_pass) . "_email.txt";
 
         // expired 10 minutes
-        if (file_exists($otpFile) && time() - filemtime($otpFile) < 600) {
-            r2(getUrl('accounts/email-update'), 'e', Lang::T('Please wait ') . (600 - (time() - filemtime($otpFile))) . Lang::T(' seconds before sending another Email'));
+        if (file_exists($otpFile) && time() - filemtime($otpFile) < (int)$_c['otp_wait']) {
+            r2(getUrl('accounts/email-update'), 'e', Lang::T('Please wait ') . ((int)$_c['otp_wait'] - (time() - filemtime($otpFile))) . Lang::T(' seconds before sending another Email'));
         } else {
             $otp = rand(100000, 999999);
             file_put_contents($otpFile, $otp);
@@ -367,7 +367,7 @@ switch ($action) {
         }
 
         // expired 10 minutes
-        if (time() - filemtime($otpFile) > 1200) {
+        if (time() - filemtime($otpFile) > (int)$_c['otp_expiry']) {
             unlink($otpFile);
             unlink($emailFile);
             r2(getUrl('accounts/email-update'), 'e', Lang::T('Verification code expired'));
