@@ -301,6 +301,21 @@ class Validator
         return (bool)in_array($format, $formats);
     }
 
+    /**
+     * Phone number with country code (62) or leading zero
+     *
+     * @access public
+     * @param string $number
+     * @return bool
+     */
+    public static function PhoneWithCountry($number)
+    {
+        global $config;
+        $code = isset($config['country_code_phone']) ? preg_replace('/\D/', '', $config['country_code_phone']) : '';
+        $pattern = $code === '' ? '/^0[0-9]+$/' : '/^(' . $code . '|0)[0-9]+$/';
+        return (bool)preg_match($pattern, $number);
+    }
+
     public static function countRouterPlan($plans, $router)
     {
         $n = 0;

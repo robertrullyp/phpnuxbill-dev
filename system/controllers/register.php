@@ -79,6 +79,11 @@ switch ($do) {
             }
         }
 
+        // Validate phone number format
+        if (!Validator::PhoneWithCountry($phone_number)) {
+            $msg .= Lang::T('Invalid phone number; start with 62 or 0') . '<br>';
+        }
+
         // Check if username already exists
         $d = ORM::for_table('tbl_customers')->where('username', $username)->find_one();
         if ($d) {
@@ -201,6 +206,9 @@ switch ($do) {
         if ($_c['sms_otp_registration'] == 'yes') {
             $phone_number = _post('phone_number');
             if (!empty($phone_number)) {
+                if (!Validator::PhoneWithCountry($phone_number)) {
+                    r2(getUrl('register'), 'e', Lang::T('Invalid phone number; start with 62 or 0'));
+                }
                 $d = ORM::for_table('tbl_customers')->where('username', $phone_number)->find_one();
                 if ($d) {
                     r2(getUrl('register'), 'e', Lang::T('Account already exists'));

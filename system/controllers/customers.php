@@ -495,6 +495,9 @@ switch ($action) {
         if (!Validator::Length($password, 36, 2)) {
             $msg .= 'Password should be between 3 to 35 characters' . '<br>';
         }
+        if (!Validator::PhoneWithCountry($phonenumber)) {
+            $msg .= Lang::T('Invalid phone number; start with 62 or 0') . '<br>';
+        }
 
         $d = ORM::for_table('tbl_customers')->where('username', $username)->find_one();
         if ($d) {
@@ -609,7 +612,8 @@ switch ($action) {
         $pppoe_ip = trim(_post('pppoe_ip'));
         $email = _post('email');
         $address = _post('address');
-        $phonenumber = Lang::phoneFormat(_post('phonenumber'));
+        $phonenumber_raw = _post('phonenumber');
+        $phonenumber = Lang::phoneFormat($phonenumber_raw);
         $service_type = _post('service_type');
         $coordinates = _post('coordinates');
         $status = _post('status');
@@ -625,6 +629,10 @@ switch ($action) {
         }
         if (Validator::Length($fullname, 36, 1) == false) {
             $msg .= 'Full Name should be between 2 to 25 characters' . '<br>';
+        }
+
+        if (!Validator::PhoneWithCountry($phonenumber_raw)) {
+            $msg .= Lang::T('Invalid phone number; start with 62 or 0') . '<br>';
         }
 
         $c = ORM::for_table('tbl_customers')->find_one($id);
