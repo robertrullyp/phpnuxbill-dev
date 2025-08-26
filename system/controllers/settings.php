@@ -400,6 +400,10 @@ switch ($action) {
         $tzone = _post('tzone');
         $date_format = _post('date_format');
         $country_code_phone = _post('country_code_phone');
+        if (!ctype_digit($country_code_phone)) {
+            r2(getUrl('settings/localisation'), 'e', Lang::T('Country code must contain digits only'));
+        }
+        $country_code_phone = preg_replace('/\D/', '', $country_code_phone);
         $lan = _post('lan');
         run_hook('save_localisation'); #HOOK
         if ($tzone == '' or $date_format == '' or $lan == '') {
