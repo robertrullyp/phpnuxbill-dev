@@ -224,9 +224,25 @@ switch ($do) {
                     $otp = rand(100000, 999999);
                     file_put_contents($otpPath, $otp);
                     if ($config['phone_otp_type'] == 'whatsapp') {
-                        Message::sendWhatsapp($phone_number, $config['CompanyName'] . "\n\n" . Lang::T("Registration code") . "\n$otp");
+                        $waSent = Message::sendWhatsapp($phone_number, $config['CompanyName'] . "\n\n" . Lang::T("Registration code") . "\n$otp");
+                        if ($waSent === false) {
+                            $ui->assign('phone_number', $phone_number);
+                            $ui->assign('notify', Lang::T('OTP not sent: phone number isn\'t registered on WhatsApp'));
+                            $ui->assign('notify_t', 'd');
+                            $ui->assign('_title', Lang::T('Register'));
+                            $ui->display('customer/register-otp.tpl');
+                            return;
+                        }
                     } else if ($config['phone_otp_type'] == 'both') {
-                        Message::sendWhatsapp($phone_number, $config['CompanyName'] . "\n\n" . Lang::T("Registration code") . "\n$otp");
+                        $waSent = Message::sendWhatsapp($phone_number, $config['CompanyName'] . "\n\n" . Lang::T("Registration code") . "\n$otp");
+                        if ($waSent === false) {
+                            $ui->assign('phone_number', $phone_number);
+                            $ui->assign('notify', Lang::T('OTP not sent: phone number isn\'t registered on WhatsApp'));
+                            $ui->assign('notify_t', 'd');
+                            $ui->assign('_title', Lang::T('Register'));
+                            $ui->display('customer/register-otp.tpl');
+                            return;
+                        }
                         Message::sendSMS($phone_number, $config['CompanyName'] . "\n\n" . Lang::T("Registration code") . "\n$otp");
                     } else {
                         Message::sendSMS($phone_number, $config['CompanyName'] . "\n\n" . Lang::T("Registration code") . "\n$otp");
