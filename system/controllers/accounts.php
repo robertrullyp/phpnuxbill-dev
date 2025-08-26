@@ -191,8 +191,12 @@ switch ($action) {
             return;
         }
 
-        if (empty($config['sms_url'])) {
+        if (in_array($_c['phone_otp_type'], ['sms', 'both']) && empty($config['sms_url'])) {
             r2(getUrl('accounts/phone-update'), 'e', Lang::T('SMS server not Available, Please try again later'));
+            return;
+        }
+        if (in_array($_c['phone_otp_type'], ['whatsapp', 'both']) && empty($config['wa_url'])) {
+            r2(getUrl('accounts/phone-update'), 'e', Lang::T('WhatsApp gateway not Available, Please try again later'));
             return;
         }
 
@@ -255,8 +259,11 @@ switch ($action) {
             r2(getUrl('accounts/phone-update'), 'e', Lang::T('Invalid phone number; start with 62 or 0'));
         }
 
-        if (empty($config['sms_url'])) {
+        if (in_array($_c['phone_otp_type'], ['sms', 'both']) && empty($config['sms_url'])) {
             r2(getUrl('accounts/phone-update'), 'e', Lang::T('SMS server not Available, Please try again later'));
+        }
+        if (in_array($_c['phone_otp_type'], ['whatsapp', 'both']) && empty($config['wa_url'])) {
+            r2(getUrl('accounts/phone-update'), 'e', Lang::T('WhatsApp gateway not Available, Please try again later'));
         }
 
         $otpFile = $otpPath . sha1($username . $db_pass) . ".txt";
