@@ -115,6 +115,7 @@ if ($step == 1) {
     $find = _post('find');
     $step = 6;
     if (!empty($find)) {
+        $formatted = Lang::phoneFormat($find);
         $via = $config['user_notification_reminder'];
         if ($via == 'email') {
             $via = 'sms';
@@ -122,16 +123,16 @@ if ($step == 1) {
         if (!file_exists($otpPath)) {
             mkdir($otpPath);
         }
-        $otpPath .= sha1($find . $db_pass) . ".txt";
-        $users = ORM::for_table('tbl_customers')->selects(['username', 'phonenumber', 'email'])->where('phonenumber', $find)->find_array();
+        $otpPath .= sha1($formatted . $db_pass) . ".txt";
+        $users = ORM::for_table('tbl_customers')->selects(['username', 'phonenumber', 'email'])->where('phonenumber', $formatted)->find_array();
         if ($users) {
             // prevent flooding only can request every 10 minutes
             if (!file_exists($otpPath) || (file_exists($otpPath) && time() - filemtime($otpPath) >= (int)$_c['otp_wait'])) {
                 $usernames = implode(", ", array_column($users, 'username'));
                 if ($via == 'sms') {
-                    Message::sendSMS($find, Lang::T("Your username for") . ' ' . $config['CompanyName'] . "\n" . $usernames);
+                    Message::sendSMS($formatted, Lang::T("Your username for") . ' ' . $config['CompanyName'] . "\n" . $usernames);
                 } else {
-                    Message::sendWhatsapp($find, Lang::T("Your username for") . ' ' . $config['CompanyName'] . "\n" . $usernames);
+                    Message::sendWhatsapp($formatted, Lang::T("Your username for") . ' ' . $config['CompanyName'] . "\n" . $usernames);
                 }
                 file_put_contents($otpPath, time());
             }

@@ -84,6 +84,9 @@ switch ($do) {
             $msg .= Lang::T('Invalid phone number; start with 62 or 0') . '<br>';
         }
 
+        // Normalize phone number for storage and comparison
+        $formatted = Lang::phoneFormat($phone_number);
+
         // Check if username already exists
         $d = ORM::for_table('tbl_customers')->where('username', $username)->find_one();
         if ($d) {
@@ -91,7 +94,7 @@ switch ($do) {
         }
 
         // Check if phone number already exists
-        $d = ORM::for_table('tbl_customers')->where('phonenumber', $phone_number)->find_one();
+        $d = ORM::for_table('tbl_customers')->where('phonenumber', $formatted)->find_one();
         if ($d) {
             $msg .= Lang::T('Phone number already exists') . '<br>';
         }
@@ -103,7 +106,7 @@ switch ($do) {
             $d->fullname = $fullname;
             $d->address = $address;
             $d->email = $email;
-            $d->phonenumber = $phone_number;
+            $d->phonenumber = $formatted;
             if ($d->save()) {
                 $user = $d->id();
                 if ($config['photo_register'] == 'yes' && !empty($_FILES['photo']['name']) && file_exists($_FILES['photo']['tmp_name'])) {
@@ -209,6 +212,7 @@ switch ($do) {
                 if (!Validator::PhoneWithCountry($phone_number)) {
                     r2(getUrl('register'), 'e', Lang::T('Invalid phone number; start with 62 or 0'));
                 }
+                $phone_number = Lang::phoneFormat($phone_number);
                 $d = ORM::for_table('tbl_customers')->where('username', $phone_number)->find_one();
                 if ($d) {
                     r2(getUrl('register'), 'e', Lang::T('Account already exists'));
