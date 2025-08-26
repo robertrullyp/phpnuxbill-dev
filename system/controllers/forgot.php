@@ -59,6 +59,9 @@ if ($step == 1) {
                     if ($waSent === false) {
                         $ui->assign('notify_t', 'e');
                         $ui->assign('notify', Lang::T('OTP not sent: phone number isn\'t registered on WhatsApp'));
+                        $_COOKIE['forgot_username'] = '';
+                        setcookie('forgot_username', '', time() - 3600, '/');
+                        $step = 0;
                     } else {
                         $ui->assign('notify_t', 's');
                         $ui->assign('notify', Lang::T("If your Username is found, Verification Code has been Sent to Your Phone/Email/Whatsapp"));

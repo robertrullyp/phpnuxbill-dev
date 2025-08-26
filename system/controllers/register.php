@@ -234,21 +234,21 @@ switch ($do) {
                     if ($config['phone_otp_type'] == 'whatsapp') {
                         $waSent = Message::sendWhatsapp($phone_number, $config['CompanyName'] . "\n\n" . Lang::T("Registration code") . "\n$otp");
                         if ($waSent === false) {
-                            $ui->assign('phone_number', $phone_number);
                             $ui->assign('notify', Lang::T('OTP not sent: phone number isn\'t registered on WhatsApp'));
                             $ui->assign('notify_t', 'd');
                             $ui->assign('_title', Lang::T('Register'));
-                            $ui->display('customer/register-otp.tpl');
+                            run_hook('view_otp_register'); #HOOK
+                            $ui->display('customer/register-rotp.tpl');
                             return;
                         }
                     } else if ($config['phone_otp_type'] == 'both') {
                         $waSent = Message::sendWhatsapp($phone_number, $config['CompanyName'] . "\n\n" . Lang::T("Registration code") . "\n$otp");
                         if ($waSent === false) {
-                            $ui->assign('phone_number', $phone_number);
                             $ui->assign('notify', Lang::T('OTP not sent: phone number isn\'t registered on WhatsApp'));
                             $ui->assign('notify_t', 'd');
                             $ui->assign('_title', Lang::T('Register'));
-                            $ui->display('customer/register-otp.tpl');
+                            run_hook('view_otp_register'); #HOOK
+                            $ui->display('customer/register-rotp.tpl');
                             return;
                         }
                         Message::sendSMS($phone_number, $config['CompanyName'] . "\n\n" . Lang::T("Registration code") . "\n$otp");
