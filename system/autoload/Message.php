@@ -112,6 +112,13 @@ class Message
 
             try {
                 $response = Http::getData($waurl);
+                if (
+                    stripos($response, 'not registered') !== false ||
+                    stripos($response, 'failed') !== false
+                ) {
+                    self::logMessage('WhatsApp HTTP Response', $phone, $txt, 'Error', $response);
+                    return false;
+                }
                 self::logMessage('WhatsApp HTTP Response', $phone, $txt, 'Success', $response);
                 return $response;
             } catch (Throwable $e) {
