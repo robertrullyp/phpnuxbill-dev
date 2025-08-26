@@ -56,6 +56,13 @@ The problem with windows is hard to set cronjob, better Linux
 
 [Installation instructions](https://github.com/hotspotbilling/phpnuxbill/wiki)
 
+## Configuration
+
+OTP timing can be tuned through two settings available in Admin → Settings → Miscellaneous:
+
+- `otp_wait` – seconds before a new OTP can be requested.
+- `otp_expiry` – seconds before an OTP becomes invalid.
+
 ## Freeradius
 
 Support [Freeradius with Database](https://github.com/hotspotbilling/phpnuxbill/wiki/FreeRadius)

@@ -54,8 +54,8 @@ switch ($do) {
         if ($_c['sms_otp_registration'] == 'yes') {
             $otpPath .= sha1("$phone_number$db_pass") . ".txt";
             run_hook('validate_otp'); #HOOK
-            // Expire after 10 minutes
-            if (file_exists($otpPath) && time() - filemtime($otpPath) > 1200) {
+            // Expire after configured time
+            if (file_exists($otpPath) && time() - filemtime($otpPath) > (int)$_c['otp_expiry']) {
                 unlink($otpPath);
                 r2(getUrl('register'), 's', 'Verification code expired');
             } else if (file_exists($otpPath)) {
@@ -214,9 +214,9 @@ switch ($do) {
                     touch($otpPath . 'index.html');
                 }
                 $otpPath .= sha1($phone_number . $db_pass) . ".txt";
-                if (file_exists($otpPath) && time() - filemtime($otpPath) < 600) {
+                if (file_exists($otpPath) && time() - filemtime($otpPath) < (int)$_c['otp_wait']) {
                     $ui->assign('phone_number', $phone_number);
-                    $ui->assign('notify', 'Please wait ' . (600 - (time() - filemtime($otpPath))) . ' seconds before sending another SMS');
+                    $ui->assign('notify', 'Please wait ' . ((int)$_c['otp_wait'] - (time() - filemtime($otpPath))) . ' seconds before sending another SMS');
                     $ui->assign('notify_t', 'd');
                     $ui->assign('_title', Lang::T('Register'));
                     $ui->display('customer/register-otp.tpl');
