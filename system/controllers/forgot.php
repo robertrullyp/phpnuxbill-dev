@@ -98,15 +98,18 @@ if ($step == 1) {
                 setcookie('forgot_username', '', time() - 3600, '/');
             } else {
                 r2(getUrl('forgot&step=1'), 'e', Lang::T('Invalid Username or Verification Code'));
+                return;
             }
         } else {
             if (file_exists($otpPath)) {
                 unlink($otpPath);
             }
             r2(getUrl('forgot&step=1'), 'e', Lang::T('Invalid Username or Verification Code'));
+            return;
         }
     } else {
         r2(getUrl('forgot&step=1'), 'e', Lang::T('Invalid Username or Verification Code'));
+        return;
     }
 } else if ($step == 7) {
     $find = _post('find');

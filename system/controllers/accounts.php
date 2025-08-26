@@ -178,6 +178,7 @@ switch ($action) {
         $csrf_token = _post('csrf_token');
         if (!Csrf::check($csrf_token)) {
             r2(getUrl('accounts/phone-update'), 'e', Lang::T('Invalid or Expired CSRF Token') . ".");
+            return;
         }
         $phone = Lang::phoneFormat(_post('phone'));
         $username = $user['username'];
@@ -186,15 +187,18 @@ switch ($action) {
         // Validate the phone number format
         if (!Validator::PhoneWithCountry($phone)) {
             r2(getUrl('accounts/phone-update'), 'e', Lang::T('Invalid phone number; start with 62 or 0'));
+            return;
         }
 
         if (empty($config['sms_url'])) {
             r2(getUrl('accounts/phone-update'), 'e', Lang::T('SMS server not Available, Please try again later'));
+            return;
         }
 
         $d = ORM::for_table('tbl_customers')->whereNotEqual('username', $username)->where('phonenumber', $phone)->find_one();
         if ($d) {
             r2(getUrl('accounts/phone-update'), 'e', Lang::T('Phone number already registered by another customer'));
+            return;
         }
         if (!file_exists($otpPath)) {
             mkdir($otpPath);
@@ -206,6 +210,7 @@ switch ($action) {
         // expired 10 minutes
         if (file_exists($otpFile) && time() - filemtime($otpFile) < (int)$_c['otp_wait']) {
             r2(getUrl('accounts/phone-update'), 'e', Lang::T('Please wait ') . ((int)$_c['otp_wait'] - (time() - filemtime($otpFile))) . Lang::T(' seconds before sending another SMS'));
+            return;
         } else {
             $otp = rand(100000, 999999);
             file_put_contents($otpFile, $otp);
@@ -217,16 +222,19 @@ switch ($action) {
                 $waSent = Message::sendWhatsapp($phone, $config['CompanyName'] . "\n\n" . Lang::T("Verification code") . "\n$otp");
                 if ($waSent === false) {
                     r2(getUrl('accounts/phone-update'), 'e', Lang::T('OTP not sent: phone number isn\'t registered on WhatsApp'));
+                    return;
                 }
             } elseif ($config['phone_otp_type'] === 'both') {
                 Message::sendSMS($phone, $config['CompanyName'] . "\n\n" . Lang::T("Verification code") . "\n$otp");
                 $waSent = Message::sendWhatsapp($phone, $config['CompanyName'] . "\n\n" . Lang::T("Verification code") . "\n$otp");
                 if ($waSent === false) {
                     r2(getUrl('accounts/phone-update'), 'e', Lang::T('OTP not sent: phone number isn\'t registered on WhatsApp'));
+                    return;
                 }
             }
             //redirect after sending OTP
             r2(getUrl('accounts/phone-update'), 'e', Lang::T('Verification code has been sent to your phone'));
+            return;
         }
 
         break;
@@ -303,6 +311,7 @@ switch ($action) {
         $csrf_token = _post('csrf_token');
         if (!Csrf::check($csrf_token)) {
             r2(getUrl('accounts/email-update'), 'e', Lang::T('Invalid or Expired CSRF Token') . ".");
+            return;
         }
         $email = trim(_post('email'));
         $username = $user['username'];
@@ -311,15 +320,18 @@ switch ($action) {
         // Validate the phone number format
         if (!Validator::Email($email)) {
             r2(getUrl('accounts/email-update'), 'e', Lang::T('Invalid Email address format'));
+            return;
         }
 
         if (empty($config['smtp_host'])) {
             r2(getUrl('accounts/email-update'), 'e', Lang::T('Email server not Available, Please ask admin to configure it'));
+            return;
         }
 
         $d = ORM::for_table('tbl_customers')->whereNotEqual('username', $username)->where('email', $email)->find_one();
         if ($d) {
             r2(getUrl('accounts/email-update'), 'e', Lang::T('Email already used by another Customer'));
+            return;
         }
         if (!file_exists($otpPath)) {
             mkdir($otpPath);
@@ -331,6 +343,7 @@ switch ($action) {
         // expired 10 minutes
         if (file_exists($otpFile) && time() - filemtime($otpFile) < (int)$_c['otp_wait']) {
             r2(getUrl('accounts/email-update'), 'e', Lang::T('Please wait ') . ((int)$_c['otp_wait'] - (time() - filemtime($otpFile))) . Lang::T(' seconds before sending another Email'));
+            return;
         } else {
             $otp = rand(100000, 999999);
             file_put_contents($otpFile, $otp);
@@ -340,6 +353,7 @@ switch ($action) {
             Message::sendEmail($email, Lang::T('Change Email Verification Code'), $body);
             //redirect after sending OTP
             r2(getUrl('accounts/email-update'), 'e', Lang::T('Verification code has been sent to your email. Check Spam folder if not found.'));
+            return;
         }
 
         break;
