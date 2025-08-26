@@ -214,10 +214,16 @@ switch ($action) {
             if ($config['phone_otp_type'] === 'sms') {
                 Message::sendSMS($phone, $config['CompanyName'] . "\n\n" . Lang::T("Verification code") . "\n$otp");
             } elseif ($config['phone_otp_type'] === 'whatsapp') {
-                Message::sendWhatsapp($phone, $config['CompanyName'] . "\n\n" . Lang::T("Verification code") . "\n$otp");
+                $waSent = Message::sendWhatsapp($phone, $config['CompanyName'] . "\n\n" . Lang::T("Verification code") . "\n$otp");
+                if ($waSent === false) {
+                    r2(getUrl('accounts/phone-update'), 'e', Lang::T('OTP not sent: phone number isn\'t registered on WhatsApp'));
+                }
             } elseif ($config['phone_otp_type'] === 'both') {
                 Message::sendSMS($phone, $config['CompanyName'] . "\n\n" . Lang::T("Verification code") . "\n$otp");
-                Message::sendWhatsapp($phone, $config['CompanyName'] . "\n\n" . Lang::T("Verification code") . "\n$otp");
+                $waSent = Message::sendWhatsapp($phone, $config['CompanyName'] . "\n\n" . Lang::T("Verification code") . "\n$otp");
+                if ($waSent === false) {
+                    r2(getUrl('accounts/phone-update'), 'e', Lang::T('OTP not sent: phone number isn\'t registered on WhatsApp'));
+                }
             }
             //redirect after sending OTP
             r2(getUrl('accounts/phone-update'), 'e', Lang::T('Verification code has been sent to your phone'));
