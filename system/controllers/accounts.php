@@ -92,8 +92,8 @@ switch ($action) {
         if (Validator::Length($fullname, 31, 1) == false) {
             $msg .= 'Full Name should be between 1 to 30 characters' . '<br>';
         }
-        if (Validator::UnsignedNumber($phonenumber) == false) {
-            $msg .= 'Phone Number must be a number' . '<br>';
+        if (!Validator::PhoneWithCountry($phonenumber)) {
+            $msg .= Lang::T('Invalid phone number; start with 62 or 0') . '<br>';
         }
 
         if (empty($msg)) {
@@ -184,8 +184,8 @@ switch ($action) {
         $otpPath = $CACHE_PATH . '/sms/';
         $_SESSION['new_phone'] = $phone;
         // Validate the phone number format
-        if (!preg_match('/^[0-9]{10,}$/', $phone) || empty($phone)) {
-            r2(getUrl('accounts/phone-update'), 'e', Lang::T('Invalid phone number format'));
+        if (!Validator::PhoneWithCountry($phone)) {
+            r2(getUrl('accounts/phone-update'), 'e', Lang::T('Invalid phone number; start with 62 or 0'));
         }
 
         if (empty($config['sms_url'])) {
@@ -242,8 +242,8 @@ switch ($action) {
         $otpPath = $CACHE_PATH . '/sms/';
 
         // Validate the phone number format
-        if (!preg_match('/^[0-9]{10,}$/', $phone)) {
-            r2(getUrl('accounts/phone-update'), 'e', Lang::T('Invalid phone number format'));
+        if (!Validator::PhoneWithCountry($phone)) {
+            r2(getUrl('accounts/phone-update'), 'e', Lang::T('Invalid phone number; start with 62 or 0'));
         }
 
         if (empty($config['sms_url'])) {
