@@ -57,7 +57,7 @@ switch ($do) {
             // Expire after configured time
             if (file_exists($otpPath) && time() - filemtime($otpPath) > (int)$_c['otp_expiry']) {
                 unlink($otpPath);
-                r2(getUrl('register'), 's', 'Verification code expired');
+                r2(getUrl('register'), 'e', 'Verification code expired');
             } else if (file_exists($otpPath)) {
                 $code = file_get_contents($otpPath);
                 if ($code != $otp_code) {
@@ -75,7 +75,7 @@ switch ($do) {
                     unlink($otpPath);
                 }
             } else {
-                r2(getUrl('register'), 's', 'No Verification code');
+                r2(getUrl('register'), 'e', 'No Verification code');
             }
         }
 
@@ -203,11 +203,11 @@ switch ($do) {
             if (!empty($phone_number)) {
                 $d = ORM::for_table('tbl_customers')->where('username', $phone_number)->find_one();
                 if ($d) {
-                    r2(getUrl('register'), 's', Lang::T('Account already exists'));
+                    r2(getUrl('register'), 'e', Lang::T('Account already exists'));
                 }
                 $d = ORM::for_table('tbl_customers')->where('phonenumber', $phone_number)->find_one();
                 if ($d) {
-                    r2(getUrl('register'), 's', Lang::T('Phone number already exists'));
+                    r2(getUrl('register'), 'e', Lang::T('Phone number already exists'));
                 }
                 if (!file_exists($otpPath)) {
                     mkdir($otpPath);
