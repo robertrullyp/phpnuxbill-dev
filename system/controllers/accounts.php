@@ -86,13 +86,13 @@ switch ($action) {
         $fullname = _post('fullname');
         $address = _post('address');
         $email = _post('email');
-        $phonenumber = _post('phonenumber');
+        $raw = _post('phonenumber');
         run_hook('customer_edit_profile'); #HOOK
         $msg = '';
         if (Validator::Length($fullname, 31, 1) == false) {
             $msg .= 'Full Name should be between 1 to 30 characters' . '<br>';
         }
-        if (!Validator::PhoneWithCountry($phonenumber)) {
+        if (!Validator::PhoneWithCountry($raw)) {
             $msg .= Lang::T('Invalid phone number; start with 62 or 0') . '<br>';
         }
 
@@ -149,6 +149,7 @@ switch ($action) {
             $user->fullname = $fullname;
             $user->address = $address;
             if ($_c['allow_phone_otp'] != 'yes') {
+                $phonenumber = Lang::phoneFormat($raw);
                 $user->phonenumber = $phonenumber;
             }
             if ($_c['allow_email_otp'] != 'yes') {

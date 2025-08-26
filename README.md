@@ -63,6 +63,10 @@ OTP timing can be tuned through two settings available in Admin → Settings →
 - `otp_wait` – seconds before a new OTP can be requested.
 - `otp_expiry` – seconds before an OTP becomes invalid.
 
+### Phone Number Formatting
+
+Ensure the **country_code_phone** setting is configured in Admin → Settings → Localisation. All modules should normalize phone numbers using `Lang::phoneFormat` before storing or comparing values to maintain consistency across the system.
+
 ## Freeradius
 
 Support [Freeradius with Database](https://github.com/hotspotbilling/phpnuxbill/wiki/FreeRadius)
