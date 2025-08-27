@@ -63,7 +63,7 @@
                                 id="email" placeholder="xxxxxxx@xxxx.xx" value="{$email}" name="email">
                         </div>
                         {else}
-                        <input type="hidden" id="email" name="email">
+                        <input type="hidden" id="email" name="email" value="{$username}">
                         <script>
                         document.addEventListener('DOMContentLoaded', function() {
                             var u = document.getElementById('username');
