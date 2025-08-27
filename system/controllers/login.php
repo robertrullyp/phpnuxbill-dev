@@ -33,6 +33,10 @@ switch ($do) {
         $tsEnabled = (!empty($_c['turnstile_client_enabled']) && $_c['turnstile_client_enabled'] == '1');
         $secret = $_c['turnstile_secret_key'] ?? '';
         if ($secret === '' && defined('TURNSTILE_SECRET_KEY')) { $secret = TURNSTILE_SECRET_KEY; }
+        if ($tsEnabled && $secret !== '' && !extension_loaded('curl')) {
+            _msglog('e', Lang::T('cURL extension is missing'));
+            r2(getUrl('login'));
+        }
         if ($tsEnabled && $secret !== '') {
             $token = _post('cf-turnstile-response');
             if (empty($token)) {
