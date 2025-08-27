@@ -66,9 +66,14 @@ switch ($do) {
         if ($username != '' and $password != '') {
             if ($_c['registration_username'] === 'phone') {
                 $username = Lang::phoneFormat($username);
-                $d = ORM::for_table('tbl_customers')->where('phonenumber', $username)->find_one();
+                $d = ORM::for_table('tbl_customers')
+                    ->where('phonenumber', $username)->find_one();
+            } elseif ($_c['registration_username'] === 'email') {
+                $d = ORM::for_table('tbl_customers')
+                    ->where('email', $username)->find_one();
             } else {
-                $d = ORM::for_table('tbl_customers')->where('username', $username)->find_one();
+                $d = ORM::for_table('tbl_customers')
+                    ->where('username', $username)->find_one();
             }
             if ($d) {
                 $d_pass = $d['password'];
