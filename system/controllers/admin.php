@@ -73,9 +73,9 @@ switch ($do) {
             }
         }   
         if ($username != '' and $password != '') {
+            $username = strtolower($username);
             $d = ORM::for_table('tbl_users')
-                ->where_raw('LOWER(username) = ?', $username)
-                ->or_where_raw('LOWER(email) = ?', $username)
+                ->where_raw('LOWER(username) = ? OR LOWER(email) = ?', [$username, $username])
                 ->find_one();
             if ($d) {
                 $d_pass = $d['password'];
