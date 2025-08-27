@@ -397,7 +397,7 @@
                         <select name="welcome_package_plan" class="form-control">
                             <option value="">{Lang::T('None')}</option>
                             {foreach $plans as $pl}
-                                <option value="{$pl['id']}" {if $_c['welcome_package_plan']==$pl['id']}selected="selected"{/if}>{$pl['name_plan']}</option>
+                                <option value="{$pl['id']}" {if $_c['welcome_package_plan']==$pl['id']}selected="selected"{/if}>{$pl['name_plan']}{if $pl['enabled'] == 0} ({Lang::T('Inactive')}){/if}</option>
                             {/foreach}
                         </select>
                     </div>

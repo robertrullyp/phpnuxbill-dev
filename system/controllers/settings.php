@@ -145,7 +145,7 @@ switch ($action) {
 
         $r = ORM::for_table('tbl_routers')->find_many();
         $ui->assign('r', $r);
-        $plans = ORM::for_table('tbl_plans')->where('enabled', 1)->find_many();
+        $plans = ORM::for_table('tbl_plans')->find_many();
         $ui->assign('plans', $plans);
         if (function_exists("shell_exec")) {
             $which = stripos(php_uname('s'), "Win") === 0 ? 'where' : 'which';
