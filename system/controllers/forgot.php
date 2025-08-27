@@ -123,7 +123,6 @@ if ($step == 1) {
     $find = _post('find');
     $step = 6;
     if (!empty($find)) {
-        $formatted = Lang::phoneFormat($find);
         $via = $config['user_notification_reminder'];
         if ($via == 'email') {
             $via = 'sms';
@@ -131,52 +130,96 @@ if ($step == 1) {
         if (!file_exists($otpPath)) {
             mkdir($otpPath);
         }
-        $otpPath .= sha1($formatted . $db_pass) . ".txt";
-        $users = ORM::for_table('tbl_customers')->selects(['username', 'phonenumber', 'email'])->where('phonenumber', $formatted)->find_array();
-        if ($users) {
-            // prevent flooding only can request every 10 minutes
-            if (!file_exists($otpPath) || (file_exists($otpPath) && time() - filemtime($otpPath) >= (int)$_c['otp_wait'])) {
-                $usernames = implode(", ", array_column($users, 'username'));
-                if ($via == 'sms') {
-                    Message::sendSMS($formatted, Lang::T("Your username for") . ' ' . $config['CompanyName'] . "\n" . $usernames);
-                } else {
-                    Message::sendWhatsapp($formatted, Lang::T("Your username for") . ' ' . $config['CompanyName'] . "\n" . $usernames);
-                }
-                file_put_contents($otpPath, time());
-            }
-            $ui->assign('notify_t', 's');
-            $ui->assign('notify', Lang::T("Usernames have been sent to your phone/Whatsapp") . " $find");
-            $step = 0;
-        } else {
-            $users = ORM::for_table('tbl_customers')->selects(['username', 'phonenumber', 'email'])->where('email', $find)->find_array();
+        if ($_c['registration_username'] == 'email') {
+            $formatted = Lang::phoneFormat($find);
+            $otpFile = $otpPath . sha1($formatted . $db_pass) . ".txt";
+            $users = ORM::for_table('tbl_customers')->selects(['username'])->where('phonenumber', $formatted)->find_array();
             if ($users) {
-                // prevent flooding only can request every 10 minutes
-                if (!file_exists($otpPath) || (file_exists($otpPath) && time() - filemtime($otpPath) >= (int)$_c['otp_wait'])) {
+                if (!file_exists($otpFile) || (file_exists($otpFile) && time() - filemtime($otpFile) >= (int)$_c['otp_wait'])) {
                     $usernames = implode(", ", array_column($users, 'username'));
-                    $phones = [];
-                    foreach ($users as $user) {
-                        if (!in_array($user['phonenumber'], $phones)) {
-                            if ($via == 'sms') {
-                                Message::sendSMS($user['phonenumber'], Lang::T("Your username for") . ' ' . $config['CompanyName'] . "\n" . $usernames);
-                            } else {
-                                Message::sendWhatsapp($user['phonenumber'], Lang::T("Your username for") . ' ' . $config['CompanyName'] . "\n" . $usernames);
-                            }
-                            $phones[] = $user['phonenumber'];
-                        }
+                    if ($via == 'sms') {
+                        Message::sendSMS($formatted, Lang::T("Your username for") . ' ' . $config['CompanyName'] . "\n" . $usernames);
+                    } else {
+                        Message::sendWhatsapp($formatted, Lang::T("Your username for") . ' ' . $config['CompanyName'] . "\n" . $usernames);
                     }
-                    Message::sendEmail(
-                        $user['email'],
-                        Lang::T("Your username for") . ' ' . $config['CompanyName'],
-                        Lang::T("Your username for") . ' ' . $config['CompanyName'] . "\n" . $usernames
-                    );
-                    file_put_contents($otpPath, time());
+                    file_put_contents($otpFile, time());
                 }
                 $ui->assign('notify_t', 's');
-                $ui->assign('notify', Lang::T("Usernames have been sent to your phone/Whatsapp/Email"));
+                $ui->assign('notify', Lang::T("Usernames have been sent to your phone/Whatsapp") . " $find");
                 $step = 0;
             } else {
                 $ui->assign('notify_t', 'e');
                 $ui->assign('notify', Lang::T("No data found"));
+            }
+        } elseif ($_c['registration_username'] == 'phone') {
+            $otpFile = $otpPath . sha1($find . $db_pass) . ".txt";
+            $users = ORM::for_table('tbl_customers')->selects(['phonenumber'])->where('email', $find)->find_array();
+            if ($users) {
+                if (!file_exists($otpFile) || (file_exists($otpFile) && time() - filemtime($otpFile) >= (int)$_c['otp_wait'])) {
+                    $phones = implode(", ", array_column($users, 'phonenumber'));
+                    Message::sendEmail(
+                        $find,
+                        Lang::T("Your phone number for") . ' ' . $config['CompanyName'],
+                        Lang::T("Your phone number for") . ' ' . $config['CompanyName'] . "\n" . $phones
+                    );
+                    file_put_contents($otpFile, time());
+                }
+                $ui->assign('notify_t', 's');
+                $ui->assign('notify', Lang::T("Phone numbers have been sent to your Email"));
+                $step = 0;
+            } else {
+                $ui->assign('notify_t', 'e');
+                $ui->assign('notify', Lang::T("No data found"));
+            }
+        } else {
+            $formatted = Lang::phoneFormat($find);
+            $otpFile = $otpPath . sha1($formatted . $db_pass) . ".txt";
+            $users = ORM::for_table('tbl_customers')->selects(['username', 'phonenumber', 'email'])->where('phonenumber', $formatted)->find_array();
+            if ($users) {
+                // prevent flooding only can request every 10 minutes
+                if (!file_exists($otpFile) || (file_exists($otpFile) && time() - filemtime($otpFile) >= (int)$_c['otp_wait'])) {
+                    $usernames = implode(", ", array_column($users, 'username'));
+                    if ($via == 'sms') {
+                        Message::sendSMS($formatted, Lang::T("Your username for") . ' ' . $config['CompanyName'] . "\n" . $usernames);
+                    } else {
+                        Message::sendWhatsapp($formatted, Lang::T("Your username for") . ' ' . $config['CompanyName'] . "\n" . $usernames);
+                    }
+                    file_put_contents($otpFile, time());
+                }
+                $ui->assign('notify_t', 's');
+                $ui->assign('notify', Lang::T("Usernames have been sent to your phone/Whatsapp") . " $find");
+                $step = 0;
+            } else {
+                $users = ORM::for_table('tbl_customers')->selects(['username', 'phonenumber', 'email'])->where('email', $find)->find_array();
+                if ($users) {
+                    // prevent flooding only can request every 10 minutes
+                    if (!file_exists($otpFile) || (file_exists($otpFile) && time() - filemtime($otpFile) >= (int)$_c['otp_wait'])) {
+                        $usernames = implode(", ", array_column($users, 'username'));
+                        $phones = [];
+                        foreach ($users as $user) {
+                            if (!in_array($user['phonenumber'], $phones)) {
+                                if ($via == 'sms') {
+                                    Message::sendSMS($user['phonenumber'], Lang::T("Your username for") . ' ' . $config['CompanyName'] . "\n" . $usernames);
+                                } else {
+                                    Message::sendWhatsapp($user['phonenumber'], Lang::T("Your username for") . ' ' . $config['CompanyName'] . "\n" . $usernames);
+                                }
+                                $phones[] = $user['phonenumber'];
+                            }
+                        }
+                        Message::sendEmail(
+                            $user['email'],
+                            Lang::T("Your username for") . ' ' . $config['CompanyName'],
+                            Lang::T("Your username for") . ' ' . $config['CompanyName'] . "\n" . $usernames
+                        );
+                        file_put_contents($otpFile, time());
+                    }
+                    $ui->assign('notify_t', 's');
+                    $ui->assign('notify', Lang::T("Usernames have been sent to your phone/Whatsapp/Email"));
+                    $step = 0;
+                } else {
+                    $ui->assign('notify_t', 'e');
+                    $ui->assign('notify', Lang::T("No data found"));
+                }
             }
         }
     }

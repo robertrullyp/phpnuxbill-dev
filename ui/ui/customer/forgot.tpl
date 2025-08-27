@@ -73,8 +73,19 @@
                 <div class="panel panel-primary">
                     <div class="panel-heading">{Lang::T('Forgot Username')}</div>
                     <div class="panel-body">
-                        <label>{Lang::T('Please input your Email or Phone number')}</label>
-                        <input type="text" name="find" class="form-control" required value="">
+                        {if $_c['registration_username'] == 'email'}
+                            <label>{Lang::T('Please input your Phone Number')}</label>
+                            <input type="text" name="find" class="form-control" required value=""
+                                placeholder="{if $_c['country_code_phone'] != ''}{$_c['country_code_phone']} {/if}{Lang::T('Phone Number')}">
+                        {elseif $_c['registration_username'] == 'phone'}
+                            <label>{Lang::T('Please input your Email')}</label>
+                            <input type="text" name="find" class="form-control" required value=""
+                                placeholder="{Lang::T('Email')}">
+                        {else}
+                            <label>{Lang::T('Please input your Email or Phone number')}</label>
+                            <input type="text" name="find" class="form-control" required value=""
+                                placeholder="{Lang::T('Email or Phone number')}">
+                        {/if}
                     </div>
                     <div class="panel-footer">
                         <button type="submit" class="btn btn-block btn-primary">{Lang::T('Validate')}</button>
