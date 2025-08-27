@@ -84,19 +84,23 @@ switch ($do) {
             $msg .= Lang::T('Invalid phone number; start with 62 or 0') . '<br>';
         }
 
-        // Normalize phone number for storage and comparison
-        $formatted = Lang::phoneFormat($phone_number);
-
-        // Check if username already exists
-        $d = ORM::for_table('tbl_customers')->where('username', $username)->find_one();
-        if ($d) {
-            $msg .= Lang::T('Account already exists') . '<br>';
-        }
-
-        // Check if phone number already exists
-        $d = ORM::for_table('tbl_customers')->where('phonenumber', $formatted)->find_one();
-        if ($d) {
-            $msg .= Lang::T('Phone number already exists') . '<br>';
+        if ($_c['registration_username'] === 'phone') {
+            $username = Lang::phoneFormat($username);
+            $formatted = $username;
+            $d = ORM::for_table('tbl_customers')->where('phonenumber', $username)->find_one();
+            if ($d) {
+                $msg .= Lang::T('Account already exists') . '<br>';
+            }
+        } else {
+            $formatted = Lang::phoneFormat($phone_number);
+            $d = ORM::for_table('tbl_customers')->where('username', $username)->find_one();
+            if ($d) {
+                $msg .= Lang::T('Account already exists') . '<br>';
+            }
+            $d = ORM::for_table('tbl_customers')->where('phonenumber', $formatted)->find_one();
+            if ($d) {
+                $msg .= Lang::T('Phone number already exists') . '<br>';
+            }
         }
 
         if ($msg == '') {
@@ -209,17 +213,28 @@ switch ($do) {
         if ($_c['sms_otp_registration'] == 'yes') {
             $phone_number = _post('phone_number');
             if (!empty($phone_number)) {
-                if (!Validator::PhoneWithCountry($phone_number)) {
-                    r2(getUrl('register'), 'e', Lang::T('Invalid phone number; start with 62 or 0'));
-                }
-                $phone_number = Lang::phoneFormat($phone_number);
-                $d = ORM::for_table('tbl_customers')->where('username', $phone_number)->find_one();
-                if ($d) {
-                    r2(getUrl('register'), 'e', Lang::T('Account already exists'));
-                }
-                $d = ORM::for_table('tbl_customers')->where('phonenumber', $phone_number)->find_one();
-                if ($d) {
-                    r2(getUrl('register'), 'e', Lang::T('Phone number already exists'));
+                if ($_c['registration_username'] === 'phone') {
+                    if (!Validator::PhoneWithCountry($phone_number)) {
+                        r2(getUrl('register'), 'e', Lang::T('Invalid phone number; start with 62 or 0'));
+                    }
+                    $phone_number = Lang::phoneFormat($phone_number);
+                    $d = ORM::for_table('tbl_customers')->where('phonenumber', $phone_number)->find_one();
+                    if ($d) {
+                        r2(getUrl('register'), 'e', Lang::T('Account already exists'));
+                    }
+                } else {
+                    $d = ORM::for_table('tbl_customers')->where('username', $phone_number)->find_one();
+                    if ($d) {
+                        r2(getUrl('register'), 'e', Lang::T('Account already exists'));
+                    }
+                    if (!Validator::PhoneWithCountry($phone_number)) {
+                        r2(getUrl('register'), 'e', Lang::T('Invalid phone number; start with 62 or 0'));
+                    }
+                    $phone_number = Lang::phoneFormat($phone_number);
+                    $d = ORM::for_table('tbl_customers')->where('phonenumber', $phone_number)->find_one();
+                    if ($d) {
+                        r2(getUrl('register'), 'e', Lang::T('Phone number already exists'));
+                    }
                 }
                 if (!file_exists($otpPath)) {
                     mkdir($otpPath);

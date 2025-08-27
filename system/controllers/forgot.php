@@ -21,11 +21,16 @@ if (!empty($_COOKIE['forgot_username']) && in_array($step, [0, 1])) {
 if ($step == 1) {
     $username = _post('username');
     if (!empty($username)) {
+        if ($_c['registration_username'] === 'phone') {
+            $username = Lang::phoneFormat($username);
+            $user = ORM::for_table('tbl_customers')->selects(['phonenumber', 'email'])->where('phonenumber', $username)->find_one();
+        } else {
+            $user = ORM::for_table('tbl_customers')->selects(['phonenumber', 'email'])->where('username', $username)->find_one();
+        }
         $ui->assign('username', $username);
         if (!file_exists($otpPath)) {
             mkdir($otpPath);
         }
-        $user = ORM::for_table('tbl_customers')->selects(['phonenumber', 'email'])->where('username', $username)->find_one();
         if (!$user) {
             $ui->assign('notify_t', 'e');
             $ui->assign('notify', Lang::T('Username not found'));
@@ -80,12 +85,15 @@ if ($step == 1) {
     $username = _post('username');
     $otp_code = _post('otp_code');
     if (!empty($username) && !empty($otp_code)) {
+        if ($_c['registration_username'] === 'phone') {
+            $username = Lang::phoneFormat($username);
+        }
         $otpPath .= sha1($username . $db_pass) . ".txt";
         if (file_exists($otpPath) && time() - filemtime($otpPath) <= (int)$_c['otp_expiry']) {
             $otp = file_get_contents($otpPath);
             if ($otp == $otp_code) {
                 $pass = mt_rand(10000, 99999);
-                $user = ORM::for_table('tbl_customers')->where('username', $username)->find_one();
+                $user = ORM::for_table('tbl_customers')->where($_c['registration_username'] === 'phone' ? 'phonenumber' : 'username', $username)->find_one();
                 $user->password = $pass;
                 $user->save();
                 $ui->assign('username', $username);

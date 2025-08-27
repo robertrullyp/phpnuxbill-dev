@@ -303,7 +303,13 @@ switch ($action) {
         $plan['price'] += $tax;
 
         if (isset($_POST['send']) && $_POST['send'] == 'plan') {
-            $target = ORM::for_table('tbl_customers')->where('username', _post('username'))->find_one();
+            $username = _post('username');
+            if ($_c['registration_username'] === 'phone') {
+                $username = Lang::phoneFormat($username);
+                $target = ORM::for_table('tbl_customers')->where('phonenumber', $username)->find_one();
+            } else {
+                $target = ORM::for_table('tbl_customers')->where('username', $username)->find_one();
+            }
             list($bills, $add_cost) = User::getBills($target['id']);
             if (!empty($add_cost)) {
                 $ui->assign('bills', $bills);
@@ -321,7 +327,7 @@ switch ($action) {
                 r2(getUrl('order/pay/$routes[2]/$routes[3]'), 's', '^_^ v');
             }
             $active = ORM::for_table('tbl_user_recharges')
-                ->where('username', _post('username'))
+                ->where('username', $username)
                 ->where('status', 'on')
                 ->find_one();
 
