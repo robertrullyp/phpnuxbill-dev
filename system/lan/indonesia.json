@@ -1097,5 +1097,8 @@
     "Email_or_Phone_number": "Email atau nomor telepon",
     "Please_input_your_Phone_Number": "Harap masukkan nomor telepon Anda",
     "Forgot_Email": "Lupa email",
-    "Username_or_Email": "Username or Email"
+    "Username_or_Email": "Username or Email",
+    "No_email_found_": "Tidak ada email yang ditemukan.",
+    "Registration_successful": "Pendaftaran berhasil",
+    "New_User_Registration": "Pendaftaran Pengguna Baru"
 }
