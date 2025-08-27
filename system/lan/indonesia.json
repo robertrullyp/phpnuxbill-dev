@@ -1100,5 +1100,6 @@
     "Username_or_Email": "Username or Email",
     "No_email_found_": "Tidak ada email yang ditemukan.",
     "Registration_successful": "Pendaftaran berhasil",
-    "New_User_Registration": "Pendaftaran Pengguna Baru"
+    "New_User_Registration": "Pendaftaran Pengguna Baru",
+    "Warning": "Peringatan"
 }
