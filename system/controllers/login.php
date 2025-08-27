@@ -22,7 +22,7 @@ if (isset($routes['1'])) {
 
 switch ($do) {
     case 'post':
-        $username = strtolower(trim(_post('username')));
+        $raw_username = trim(_post('username'));
         $password = _post('password');
         $csrf_token = _post('csrf_token');
         if (!Csrf::check($csrf_token)) {
@@ -67,15 +67,27 @@ switch ($do) {
                 r2(getUrl('login'));
             }
         }
-        if ($username != '' and $password != '') {
-            if ($_c['registration_username'] === 'phone') {
-                $username = Lang::phoneFormat($username);
-                $d = ORM::for_table('tbl_customers')
-                    ->where('phonenumber', $username)->find_one();
-            } else {
-                $d = ORM::for_table('tbl_customers')
-                    ->where('username', $username)
-                    ->or_where('email', $username)->find_one();
+        if ($raw_username != '' and $password != '') {
+            $loginType = $_c['registration_username'] ?? 'username';
+            switch ($loginType) {
+                case 'phone':
+                    $username = Lang::phoneFormat($raw_username);
+                    $d = ORM::for_table('tbl_customers')
+                        ->where('phonenumber', $username)
+                        ->find_one();
+                    break;
+                case 'email':
+                    $username = strtolower($raw_username);
+                    $d = ORM::for_table('tbl_customers')
+                        ->where_raw('LOWER(email) = ?', $username)
+                        ->find_one();
+                    break;
+                default:
+                    $username = strtolower($raw_username);
+                    $d = ORM::for_table('tbl_customers')
+                        ->where_raw('LOWER(username) = ? OR LOWER(email) = ?', [$username, $username])
+                        ->find_one();
+                    break;
             }
             if ($d) {
                 $d_pass = $d['password'];
