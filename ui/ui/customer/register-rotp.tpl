@@ -19,25 +19,11 @@
                 <div class="panel-heading">1. {Lang::T('Register as Member')}</div>
                 <div class="panel-body">
                     <div class="form-group">
-                        <label>
-                            {if $_c['registration_username'] == 'phone'}
-                                {Lang::T('Phone Number')}
-                            {elseif $_c['registration_username'] == 'email'}
-                                {Lang::T('Email')}
-                            {else}
-                                {Lang::T('Usernames')}
-                            {/if}
-                        </label>
+                        <label>{Lang::T('Phone Number')}</label>
                         <div class="input-group">
-                            {if $_c['registration_username'] == 'phone'}
-                                <span class="input-group-addon" id="basic-addon1"><i class="glyphicon glyphicon-phone-alt"></i></span>
-                            {elseif $_c['registration_username'] == 'email'}
-                                <span class="input-group-addon" id="basic-addon1"><i class="glyphicon glyphicon-envelope"></i></span>
-                            {else}
-                                <span class="input-group-addon" id="basic-addon1"><i class="glyphicon glyphicon-user"></i></span>
-                            {/if}
+                            <span class="input-group-addon" id="basic-addon1"><i class="glyphicon glyphicon-phone-alt"></i></span>
                             <input type="text" class="form-control" name="phone_number"
-                                placeholder="{if $_c['registration_username'] == 'phone'}{if $_c['country_code_phone'] != ''}{$_c['country_code_phone']} {/if}{Lang::T('Phone Number')}{elseif $_c['registration_username'] == 'email'}{Lang::T('Email')}{else}{Lang::T('Usernames')}{/if}"
+                                placeholder="{if $_c['country_code_phone'] != ''}{$_c['country_code_phone']} {/if}{Lang::T('Phone Number')}"
                                 inputmode="numeric" pattern="[0-9]*">
                         </div>
                     </div>
