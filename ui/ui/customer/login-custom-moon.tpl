@@ -587,7 +587,7 @@
                                 <input type="hidden" name="csrf_token" value="{$csrf_token}">
                                 <div>
                                     <input type="text" name="username"
-                                        placeholder="{if $_c['registration_username'] == 'phone'}{Lang::T('Phone Number')}{elseif $_c['registration_username'] == 'email'}{Lang::T('Email')}{else}{Lang::T('Usernames')}{/if}"
+                                        placeholder="{if $_c['registration_username'] == 'phone'}{if $_c['country_code_phone'] != ''}{$_c['country_code_phone']} {/if}{Lang::T('Phone Number')}{elseif $_c['registration_username'] == 'email'}{Lang::T('Email')}{else}{Lang::T('Usernames')}{/if}"
                                         required>
                                 </div>
                                 <div>

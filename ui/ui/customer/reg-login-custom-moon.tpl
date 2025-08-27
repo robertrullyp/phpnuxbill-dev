@@ -359,7 +359,7 @@
                                 <div id="basicFields">
                                     <div class="form-group">
                                         <input type="text" name="username"
-                                            placeholder="{if $_c['country_code_phone']!= '' || $_c['registration_username'] == 'phone'}{$_c['country_code_phone']} {Lang::T('Phone Number')}{elseif $_c['registration_username'] == 'email'}{Lang::T('Email')}{else}{Lang::T('Usernames')}{/if}">
+                                            placeholder="{if $_c['registration_username'] == 'phone'}{if $_c['country_code_phone'] != ''}{$_c['country_code_phone']} {/if}{Lang::T('Phone Number')}{elseif $_c['registration_username'] == 'email'}{Lang::T('Email')}{else}{Lang::T('Usernames')}{/if}">
                                     </div>
                                     {if $_c['photo_register'] == 'yes'}
                                     <div class="form-group">
