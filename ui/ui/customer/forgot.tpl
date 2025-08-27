@@ -10,13 +10,15 @@
                     <div class="panel-body">
                         <div class="form-group">
                             <div class="input-group">
-                                {if $_c['country_code_phone']!= ''}
+                                {if $_c['registration_username'] == 'phone'}
                                     <span class="input-group-addon"><i class="glyphicon glyphicon-phone-alt"></i></span>
+                                {elseif $_c['registration_username'] == 'email'}
+                                    <span class="input-group-addon"><i class="glyphicon glyphicon-envelope"></i></span>
                                 {else}
                                     <span class="input-group-addon"><i class="glyphicon glyphicon-user"></i></span>
                                 {/if}
                                 <input type="text" readonly class="form-control" name="username" value="{$username}"
-                                    placeholder="{if $_c['country_code_phone']!= ''}{$_c['country_code_phone']} {Lang::T('Phone Number')}{else}{Lang::T('Usernames')}{/if}">
+                                    placeholder="{if $_c['registration_username'] == 'phone'}{if $_c['country_code_phone'] != ''}{$_c['country_code_phone']} {/if}{Lang::T('Phone Number')}{elseif $_c['registration_username'] == 'email'}{Lang::T('Email')}{else}{Lang::T('Usernames')}{/if}">
                             </div>
                         </div>
                         <div class="form-group">
@@ -37,15 +39,25 @@
                     <div class="panel-heading">{Lang::T('Success')}</div>
                     <div class="panel-body">
                         <div class="form-group">
-                            <label>{if $_c['country_code_phone']!= ''}{Lang::T('Phone Number')}{else}{Lang::T('Usernames')}{/if}</label>
+                            <label>
+                                {if $_c['registration_username'] == 'phone'}
+                                    {Lang::T('Phone Number')}
+                                {elseif $_c['registration_username'] == 'email'}
+                                    {Lang::T('Email')}
+                                {else}
+                                    {Lang::T('Usernames')}
+                                {/if}
+                            </label>
                             <div class="input-group">
-                                {if $_c['country_code_phone']!= ''}
+                                {if $_c['registration_username'] == 'phone'}
                                     <span class="input-group-addon"><i class="glyphicon glyphicon-phone-alt"></i></span>
+                                {elseif $_c['registration_username'] == 'email'}
+                                    <span class="input-group-addon"><i class="glyphicon glyphicon-envelope"></i></span>
                                 {else}
                                     <span class="input-group-addon"><i class="glyphicon glyphicon-user"></i></span>
                                 {/if}
                                 <input type="text" readonly class="form-control" name="username" value="{$username}"
-                                    placeholder="{if $_c['country_code_phone']!= ''}{$_c['country_code_phone']} {Lang::T('Phone Number')}{else}{Lang::T('Usernames')}{/if}">
+                                    placeholder="{if $_c['registration_username'] == 'phone'}{if $_c['country_code_phone'] != ''}{$_c['country_code_phone']} {/if}{Lang::T('Phone Number')}{elseif $_c['registration_username'] == 'email'}{Lang::T('Email')}{else}{Lang::T('Usernames')}{/if}">
                             </div>
                         </div>
                         <label>{Lang::T('Your Password has been change to')}</label>
@@ -74,15 +86,25 @@
                     <div class="panel-heading">{Lang::T('Forgot Password')}</div>
                     <div class="panel-body">
                         <div class="form-group">
-                            <label>{if $_c['country_code_phone']!= ''}{Lang::T('Phone Number')}{else}{Lang::T('Usernames')}{/if}</label>
+                            <label>
+                                {if $_c['registration_username'] == 'phone'}
+                                    {Lang::T('Phone Number')}
+                                {elseif $_c['registration_username'] == 'email'}
+                                    {Lang::T('Email')}
+                                {else}
+                                    {Lang::T('Usernames')}
+                                {/if}
+                            </label>
                             <div class="input-group">
-                                {if $_c['country_code_phone']!= ''}
+                                {if $_c['registration_username'] == 'phone'}
                                     <span class="input-group-addon"><i class="glyphicon glyphicon-phone-alt"></i></span>
+                                {elseif $_c['registration_username'] == 'email'}
+                                    <span class="input-group-addon"><i class="glyphicon glyphicon-envelope"></i></span>
                                 {else}
                                     <span class="input-group-addon"><i class="glyphicon glyphicon-user"></i></span>
                                 {/if}
                                 <input type="text" class="form-control" name="username" required
-                                    placeholder="{if $_c['country_code_phone']!= ''}{$_c['country_code_phone']} {Lang::T('Phone Number')}{else}{Lang::T('Usernames')}{/if}">
+                                    placeholder="{if $_c['registration_username'] == 'phone'}{if $_c['country_code_phone'] != ''}{$_c['country_code_phone']} {/if}{Lang::T('Phone Number')}{elseif $_c['registration_username'] == 'email'}{Lang::T('Email')}{else}{Lang::T('Usernames')}{/if}">
                             </div>
                         </div>
                     </div>
