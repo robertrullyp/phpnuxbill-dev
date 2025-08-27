@@ -21,7 +21,7 @@ if (isset($routes['1'])) {
 
 switch ($do) {
     case 'post':
-        $username = _post('username');
+        $username = strtolower(trim(_post('username')));
         $password = _post('password');
         //csrf token
         $csrf_token = _post('csrf_token');
@@ -73,7 +73,10 @@ switch ($do) {
             }
         }   
         if ($username != '' and $password != '') {
-            $d = ORM::for_table('tbl_users')->where('username', $username)->find_one();
+            $d = ORM::for_table('tbl_users')
+                ->where_raw('LOWER(username) = ?', $username)
+                ->or_where_raw('LOWER(email) = ?', $username)
+                ->find_one();
             if ($d) {
                 $d_pass = $d['password'];
                 if (Password::_verify($password, $d_pass) == true) {

@@ -48,7 +48,7 @@
             <form action="{Text::url('admin/post')}" method="post">
                 <input type="hidden" name="csrf_token" value="{$csrf_token}">
                 <div class="form-group has-feedback">
-                    <input type="text" required class="form-control" name="username" placeholder="{Lang::T('Username')}">
+                    <input type="text" required class="form-control" name="username" placeholder="{Lang::T('Username or Email')}">
                     <span class="glyphicon glyphicon-user form-control-feedback"></span>
                 </div>
                 <div class="form-group has-feedback">

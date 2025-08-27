@@ -22,7 +22,7 @@ if (isset($routes['1'])) {
 
 switch ($do) {
     case 'post':
-        $username = _post('username');
+        $username = strtolower(trim(_post('username')));
         $password = _post('password');
         $csrf_token = _post('csrf_token');
         if (!Csrf::check($csrf_token)) {
@@ -68,12 +68,10 @@ switch ($do) {
                 $username = Lang::phoneFormat($username);
                 $d = ORM::for_table('tbl_customers')
                     ->where('phonenumber', $username)->find_one();
-            } elseif ($_c['registration_username'] === 'email') {
-                $d = ORM::for_table('tbl_customers')
-                    ->where('email', $username)->find_one();
             } else {
                 $d = ORM::for_table('tbl_customers')
-                    ->where('username', $username)->find_one();
+                    ->where('username', $username)
+                    ->or_where('email', $username)->find_one();
             }
             if ($d) {
                 $d_pass = $d['password'];
