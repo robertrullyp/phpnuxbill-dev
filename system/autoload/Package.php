@@ -72,7 +72,7 @@ class Package
         }
 
 
-        if (!$p['enabled']) {
+        if (!$p['enabled'] && $gateway != 'Welcome') {
             if (!isset($admin) || !isset($admin['id']) || empty($admin['id'])) {
                 r2(getUrl('home'), 'e', Lang::T('Plan Not found'));
             }
