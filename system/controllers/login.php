@@ -64,7 +64,12 @@ switch ($do) {
             }
         }
         if ($username != '' and $password != '') {
-            $d = ORM::for_table('tbl_customers')->where('username', $username)->find_one();
+            if ($_c['registration_username'] === 'phone') {
+                $username = Lang::phoneFormat($username);
+                $d = ORM::for_table('tbl_customers')->where('phonenumber', $username)->find_one();
+            } else {
+                $d = ORM::for_table('tbl_customers')->where('username', $username)->find_one();
+            }
             if ($d) {
                 $d_pass = $d['password'];
                 if ($d['status'] == 'Banned') {
@@ -211,17 +216,27 @@ switch ($do) {
             $v1 = ORM::for_table('tbl_voucher')->whereRaw("BINARY code = '$voucher'")->find_one();
             if ($v1) {
                 // voucher exists, check customer exists or not
-                $user = ORM::for_table('tbl_customers')->where('username', $username)->find_one();
+                if ($_c['registration_username'] === 'phone') {
+                    $username = Lang::phoneFormat($username);
+                    $user = ORM::for_table('tbl_customers')->where('phonenumber', $username)->find_one();
+                } else {
+                    $user = ORM::for_table('tbl_customers')->where('username', $username)->find_one();
+                }
                 if (!$user) {
                     $d = ORM::for_table('tbl_customers')->create();
-                    $d->username = alphanumeric($username, "+_.@-");
+                    if ($_c['registration_username'] === 'phone') {
+                        $d->username = $username;
+                        $d->phonenumber = $username;
+                    } else {
+                        $d->username = alphanumeric($username, "+_.@-");
+                        $d->phonenumber = (strlen($username) < 21) ? $username : '';
+                    }
                     $d->password = $voucher;
                     $d->fullname = '';
                     $d->address = '';
                     $d->email = '';
-                    $d->phonenumber = (strlen($username) < 21) ? $username : '';
                     if ($d->save()) {
-                        $user = ORM::for_table('tbl_customers')->where('username', $username)->find_one($d->id());
+                        $user = ORM::for_table('tbl_customers')->where($_c['registration_username'] === 'phone' ? 'phonenumber' : 'username', $username)->find_one($d->id());
                         if (!$user) {
                             r2(getUrl('login'), 'e', Lang::T('Voucher activation failed'));
                         }
