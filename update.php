@@ -14,7 +14,7 @@ if($db_password != null && ($db_pass == null || empty($db_pass))){
 }
 
 if (empty($update_url)) {
-    $update_url = 'https://github.com/hotspotbilling/phpnuxbill/archive/refs/heads/master.zip';
+    $update_url = 'https://github.com/robertrullyp/phpnuxbill-dev/archive/refs/heads/main.zip';
 }
 
 if(isset($_REQUEST['update_url']) && !empty($_REQUEST['update_url'])){
