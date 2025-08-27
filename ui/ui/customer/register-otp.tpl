@@ -41,11 +41,15 @@
                             <input type="text" {if $_c['man_fields_fname'] neq 'no'}required{/if} class="form-control"
                                 id="fullname" value="{$fullname}" name="fullname">
                         </div>
+                        {if $_c['registration_username'] != 'email'}
                         <div class="form-group">
                             <label>{Lang::T('Email')}</label>
                             <input type="text" class="form-control" {if $_c['man_fields_email'] neq 'no'}required{/if}
                                 placeholder="xxxxxx@xxx.xx" id="email" value="{$email}" name="email">
                         </div>
+                        {else}
+                        <input type="hidden" id="email" name="email" value="{$email}">
+                        {/if}
                         <div class="form-group">
                             <label>{Lang::T('Home Address')}</label>
                             <input type="text" name="address" {if $_c['man_fields_address'] neq 'no'}required{/if}
@@ -66,25 +70,31 @@
                         <div class="form-group">
                             <label>{Lang::T('Usernames')}</label>
                             <input type="text" required class="form-control" id="username" name="username"
-                                placeholder="{Lang::T('Choose a Usernames')}">
+                                placeholder="{Lang::T('Choose a Usernames')}" value="{$username}">
                         </div>
-                        {else}
-                        <input type="hidden" id="username" name="username">
-                        {/if}
-                        {if $_c['registration_username'] != 'username'}
+                        {elseif $_c['registration_username'] == 'email'}
+                        <div class="form-group">
+                            <label>{Lang::T('Email')}</label>
+                            <input type="text" required class="form-control" id="username" name="username"
+                                placeholder="xxxxxx@xxx.xx" value="{$username}">
+                        </div>
                         <script>
                         document.addEventListener('DOMContentLoaded', function() {
                             var u = document.getElementById('username');
-                            {if $_c['registration_username'] == 'phone'}
-                            var p = document.getElementsByName('phone_number')[0];
-                            if (u && p) { u.value = p.value; }
-                            {elseif $_c['registration_username'] == 'email'}
                             var e = document.getElementById('email');
                             if (u && e) {
-                                u.value = e.value;
-                                e.addEventListener('input', function(){ u.value = e.value; });
+                                e.value = u.value;
+                                u.addEventListener('input', function(){ e.value = u.value; });
                             }
-                            {/if}
+                        });
+                        </script>
+                        {else}
+                        <input type="hidden" id="username" name="username">
+                        <script>
+                        document.addEventListener('DOMContentLoaded', function() {
+                            var u = document.getElementById('username');
+                            var p = document.getElementsByName('phone_number')[0];
+                            if (u && p) { u.value = p.value; }
                         });
                         </script>
                         {/if}

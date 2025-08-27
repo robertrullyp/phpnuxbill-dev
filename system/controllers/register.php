@@ -26,6 +26,9 @@ switch ($do) {
             $username = alphanumeric(_post('username'), "+_.@-");
         }
         $email = _post('email');
+        if ($_c['registration_username'] === 'email') {
+            $email = $username;
+        }
         $fullname = _post('fullname');
         $password = _post('password');
         $cpassword = _post('cpassword');
@@ -117,7 +120,11 @@ switch ($do) {
             $d->password = $password;
             $d->fullname = $fullname;
             $d->address = $address;
-            $d->email = $email;
+            if ($_c['registration_username'] === 'email') {
+                $d->email = $d->username;
+            } else {
+                $d->email = $email;
+            }
             $d->phonenumber = $formatted;
             if ($d->save()) {
                 $user = $d->id();
