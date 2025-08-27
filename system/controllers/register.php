@@ -135,6 +135,12 @@ switch ($do) {
                     unlink($_FILES['photo']['tmp_name']);
                 User::setFormCustomField($user);
                 run_hook('register_user'); #HOOK
+                if (isset($config['welcome_package_enable']) && $config['welcome_package_enable'] == 'yes' && !empty($config['welcome_package_plan'])) {
+                    $plan = ORM::for_table('tbl_plans')->find_one($config['welcome_package_plan']);
+                    if ($plan) {
+                        Package::rechargeUser($user, $plan['routers'], $plan['id'], 'Welcome', 'Auto');
+                    }
+                }
                 $msg .= Lang::T('Registration successful') . '<br>';
                 if ($config['reg_nofify_admin'] == 'yes') {
                     sendTelegram($config['CompanyName'] . ' - ' . Lang::T('New User Registration') . "\n\nFull Name: " . $fullname . "\nUsername: " . $username . "\nEmail: " . $email . "\nPhone Number: " . $phone_number . "\nAddress: " . $address);
