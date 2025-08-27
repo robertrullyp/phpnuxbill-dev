@@ -125,6 +125,17 @@
                 <a href="https://t.me/ibnux" target="_blank" class="btn btn-primary btn-sm btn-block">{Lang::T('Telegram')}</a>
             </div>
         </div>
+        <div class="box box-hovered mb20 box-primary">
+            <div class="box-header">
+                <h3 class="box-title">{Lang::T('Or Chat with Me and bring some cup of coffee')}</h3>
+            </div>
+            <div class="box-body">
+                {Lang::T('Confirm your donation to continue this paid support. Or, ask about alternative donations available to suit your needs.')}
+            </div>
+            <div class="box-footer">
+                <a href="https://t.me/robertrullyp" target="_blank" class="btn btn-primary btn-sm btn-block">{Lang::T('Telegram')}</a>
+            </div>
+        </div>
         <div class="box box-primary box-hovered mb20 activities">
             <div class="box-header">
                 <h3 class="box-title">{Lang::T('WhatsApp Gateway and Free Telegram Bot')}</h3>
@@ -154,7 +165,7 @@
                 <div class="btn-group btn-group-justified" role="group" aria-label="...">
                     <a href="./update.php"
                         class="btn btn-success btn-sm btn-block">{Lang::T('Install Latest Version')}</a>
-                    <a href="https://github.com/hotspotbilling/phpnuxbill/archive/refs/heads/master.zip" target="_blank"
+                    <a href="https://github.com/robertrullyp/phpnuxbill-dev/archive/refs/heads/main.zip" target="_blank"
                         class="btn btn-warning btn-sm btn-block text-black">{Lang::T('Download Latest Version')}</a>
                 </div>
                 <center><a href="{Text::url('community/rollback')}"
@@ -165,7 +176,7 @@
                 <div class="btn-group btn-group-justified" role="group" aria-label="...">
                     <a href="./CHANGELOG.md" target="_blank"
                         class="btn btn-default btn-sm btn-block">{Lang::T('Current Changelog')}</a>
-                    <a href="https://github.com/hotspotbilling/phpnuxbill/blob/master/CHANGELOG.md" target="_blank"
+                    <a href="https://github.com/robertrullyp/phpnuxbill-dev/blob/main/CHANGELOG.md" target="_blank"
                         class="btn btn-default btn-sm btn-block">{Lang::T('Repo Changelog')}</a>
                 </div>
             </div>
@@ -272,8 +283,7 @@
         $.getJSON("./version.json?" + Math.random(), function(data) {
             $('#currentVersion').html('Current Version: ' + data.version);
         });
-        $.getJSON("https://raw.githubusercontent.com/hotspotbilling/phpnuxbill/master/version.json?" + Math
-            .random(),
+        $.getJSON("https://raw.githubusercontent.com/robertrullyp/phpnuxbill-dev/main/version.json?" + Math.random(),
             function(data) {
                 $('#latestVersion').html('Latest Version: ' + data.version);
             });
