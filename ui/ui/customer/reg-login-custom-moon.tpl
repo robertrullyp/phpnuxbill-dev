@@ -356,30 +356,48 @@
                                 <input type="hidden" name="csrf_token" value="{$csrf_token}">
 
                                 <!-- Basic Information (Initially Visible) -->
-                                <div id="basicFields">
-                                    <div class="form-group">
-                                        <input type="text" name="username"
-                                            placeholder="{if $_c['registration_username'] == 'phone'}{if $_c['country_code_phone'] != ''}{$_c['country_code_phone']} {/if}{Lang::T('Phone Number')}{elseif $_c['registration_username'] == 'email'}{Lang::T('Email')}{else}{Lang::T('Usernames')}{/if}">
-                                    </div>
-                                    {if $_c['photo_register'] == 'yes'}
-                                    <div class="form-group">
-                                        <input type="file" required id="photo" name="photo"
-                                            accept="image/*">
-                                    </div>
-                                    {/if}
+                                  <div id="basicFields">
+                                      {if $_c['registration_username'] != 'phone'}
+                                      <div class="form-group">
+                                          <input type="text" id="username" name="username"
+                                              placeholder="{if $_c['registration_username'] == 'email'}{Lang::T('Email')}{elseif $_c['registration_username'] == 'username'}{Lang::T('Usernames')}{else}{if $_c['country_code_phone'] != ''}{$_c['country_code_phone']} {/if}{Lang::T('Phone Number')}{/if}">
+                                      </div>
+                                      {else}
+                                      <input type="hidden" id="username" name="username">
+                                      {/if}
+                                      {if $_c['photo_register'] == 'yes'}
+                                      <div class="form-group">
+                                          <input type="file" required id="photo" name="photo"
+                                              accept="image/*">
+                                      </div>
+                                      {/if}
                                     <div class="form-group">
                                         <input type="text" name="fullname" placeholder="{Lang::T('Full Name')}"
                                         {if $_c['man_fields_fname'] neq 'no'}required{/if} >
                                     </div>
-                                    <div class="form-group">
-                                        <input type="email" name="email" placeholder="{Lang::T('Email Address')}"
-                                        {if $_c['man_fields_email'] neq 'no'}required{/if}>
-                                    </div>
-                                    <div class="form-group">
-                                        <button type="button" onclick="toggleFields()" class="submit-btn">
-                                            {Lang::T('Next Step')}
-                                        </button>
-                                    </div>
+                                      {if $_c['registration_username'] != 'email'}
+                                      <div class="form-group">
+                                          <input type="email" id="email" name="email" placeholder="{Lang::T('Email Address')}"
+                                          {if $_c['man_fields_email'] neq 'no'}required{/if}>
+                                      </div>
+                                      {else}
+                                      <input type="hidden" id="email" name="email">
+                                      <script>
+                                      document.addEventListener('DOMContentLoaded', function() {
+                                          var u = document.getElementById('username');
+                                          var e = document.getElementById('email');
+                                          if (u && e) {
+                                              e.value = u.value;
+                                              u.addEventListener('input', function() { e.value = u.value; });
+                                          }
+                                      });
+                                      </script>
+                                      {/if}
+                                      <div class="form-group">
+                                          <button type="button" onclick="toggleFields()" class="submit-btn">
+                                              {Lang::T('Next Step')}
+                                          </button>
+                                      </div>
                                 </div>
 
                                 <!-- Password Fields (Initially Hidden) -->
