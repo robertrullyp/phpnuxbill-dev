@@ -19,19 +19,24 @@ $otpPath = $CACHE_PATH . File::pathFixer('/sms/');
 switch ($do) {
     case 'post':
         $otp_code = _post('otp_code');
-        $username = alphanumeric(_post('username'), "+_.@-");
+        $phone_number = alphanumeric(_post('phone_number'), "+_.@-");
+        if ($_c['registration_username'] === 'phone') {
+            $username = Lang::phoneFormat($phone_number);
+        } else {
+            $username = alphanumeric(_post('username'), "+_.@-");
+        }
         $email = _post('email');
         $fullname = _post('fullname');
         $password = _post('password');
         $cpassword = _post('cpassword');
         $address = _post('address');
 
-        // Separate phone number input if OTP is required
-        $phone_number = ($config['sms_otp_registration'] == 'yes') ? alphanumeric(_post('phone_number'), "+_.@-") : $username;
-
         $msg = '';
-        if (Validator::Length($username, 35, 2) == false) {
+        if ($_c['registration_username'] !== 'phone' && Validator::Length($username, 35, 2) == false) {
             $msg .= "Username should be between 3 to 55 characters<br>";
+        }
+        if ($_c['registration_username'] === 'email' && !Validator::Email($username)) {
+            $msg .= 'Email is not Valid<br>';
         }
         if ($config['man_fields_fname'] == 'yes') {
             if (Validator::Length($fullname, 36, 2) == false) {
@@ -80,12 +85,13 @@ switch ($do) {
         }
 
         // Validate phone number format
-        if (!Validator::PhoneWithCountry($phone_number)) {
-            $msg .= Lang::T('Invalid phone number; start with 62 or 0') . '<br>';
+        if ($_c['sms_otp_registration'] == 'yes' || $_c['registration_username'] === 'phone') {
+            if (!Validator::PhoneWithCountry($phone_number)) {
+                $msg .= Lang::T('Invalid phone number; start with 62 or 0') . '<br>';
+            }
         }
 
         if ($_c['registration_username'] === 'phone') {
-            $username = Lang::phoneFormat($username);
             $formatted = $username;
             $d = ORM::for_table('tbl_customers')->where('phonenumber', $username)->find_one();
             if ($d) {
@@ -97,9 +103,11 @@ switch ($do) {
             if ($d) {
                 $msg .= Lang::T('Account already exists') . '<br>';
             }
-            $d = ORM::for_table('tbl_customers')->where('phonenumber', $formatted)->find_one();
-            if ($d) {
-                $msg .= Lang::T('Phone number already exists') . '<br>';
+            if ($_c['sms_otp_registration'] == 'yes') {
+                $d = ORM::for_table('tbl_customers')->where('phonenumber', $formatted)->find_one();
+                if ($d) {
+                    $msg .= Lang::T('Phone number already exists') . '<br>';
+                }
             }
         }
 
