@@ -191,21 +191,6 @@ GNU General Public License version 2 or later
 
 see [LICENSE](LICENSE) file
 
-## Donate to ibnux
-
-[![Donate](https://img.shields.io/badge/Donate-PayPal-green.svg)](https://paypal.me/ibnux)
-
-BCA: 5410454825
-
-Mandiri: 163-000-1855-793
-
-a.n Ibnu Maksum
-
-## SPONSORS
-
-- [mixradius.com](https://mixradius.com/) Paid Services Billing Radius
-- [mlink.id](https://mlink.id)
-- [https://github.com/sonyinside](https://github.com/sonyinside)
 
 ## Thanks
 We appreciate all people who are participating in this project.
