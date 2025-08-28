@@ -129,6 +129,7 @@
                                 <th><a href="{Text::url('routers/list')}">{Lang::T('Location')}</a></th>
                                 <th>{Lang::T('Device')}</th>
                                 <th style="background-color: rgb(243, 241, 172);">{Lang::T('Internet Package')}</th>
+                                <th>{Lang::T('Visibility')}</th>
                                 <th style="background-color: rgb(243, 241, 172);">{Lang::T('Date')}</th>
                                 <th>{Lang::T('ID')}</th>
                                 <th>{Lang::T('Manage')}</th>
@@ -164,6 +165,17 @@
                                     <td>{if $ds['plan_expired']}<a
                                             href="{Text::url('services/edit/')}{$ds['plan_expired']}">{Lang::T('Yes')}</a>{else}{Lang::T('No')}
                                         {/if}</td>
+                                    <td>
+                                        {assign var=vis value=$visibility_map[$ds['id']]|default:$ds['visibility']}
+                                        {assign var=cnt value=$visibility_counts[$ds['id']]}
+                                        {if $vis == 'custom'}
+                                            <span class="label label-info">{Lang::T('Include')} ({if $cnt}{$cnt}{else}0{/if})</span>
+                                        {elseif $vis == 'exclude'}
+                                            <span class="label label-warning">{Lang::T('Exclude')} ({if $cnt}{$cnt}{else}0{/if})</span>
+                                        {else}
+                                            <span class="label label-success">{Lang::T('All')}</span>
+                                        {/if}
+                                    </td>
                                     <td>{if $ds['prepaid'] == no}{$ds['expired_date']}{/if}</td>
                                     <td>{$ds['id']}</td>
                                     <td>

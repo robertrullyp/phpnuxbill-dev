@@ -31,6 +31,7 @@
 							<tr>
 								<th>{Lang::T('Package Name')}</th>
 								<th>{Lang::T('Package Price')}</th>
+								<th>{Lang::T('Visibility')}</th>
 								<th>{Lang::T('Manage')}</th>
 							</tr>
 						</thead>
@@ -41,6 +42,17 @@
 									<td>{Lang::moneyFormat($ds['price'])}{if !empty($ds['price_old'])}
 											<sup
 												style="text-decoration: line-through; color: red">{Lang::moneyFormat($ds['price_old'])}</sup>
+										{/if}
+									</td>
+									<td>
+										{assign var=vis value=$ds['visibility']}
+										{assign var=cnt value=$visibility_counts[$ds['id']]}
+										{if $vis == 'custom'}
+											<span class="label label-info">{Lang::T('Only Selected')} ({if $cnt}{$cnt}{else}0{/if})</span>
+										{elseif $vis == 'exclude'}
+											<span class="label label-warning">exclude ({if $cnt}{$cnt}{else}0{/if})</span>
+										{else}
+											<span class="label label-success">{Lang::T('All')}</span>
 										{/if}
 									</td>
 									<td>

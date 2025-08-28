@@ -125,6 +125,7 @@
                             <th style="background-color: rgb(243, 241, 172);">{Lang::T('Date')}</th>
                             <th><a href="{Text::url('routers/list')}">{Lang::T('Location')}</a></th>
                             <th>{Lang::T('Device')}</th>
+                            <th>{Lang::T('Visibility')}</th>
                             <th>{Lang::T('Manage')}</th>
                             <th>ID</th>
                         </tr>
@@ -158,6 +159,17 @@
                                     {/if}
                                 </td>
                                 <td>{$ds['device']}</td>
+                                <td>
+                                    {assign var=vis value=$visibility_map[$ds['id']]|default:$ds['visibility']}
+                                    {assign var=cnt value=$visibility_counts[$ds['id']]}
+                                    {if $vis == 'custom'}
+                                        <span class="label label-info">{Lang::T('Include')} ({if $cnt}{$cnt}{else}0{/if})</span>
+                                    {elseif $vis == 'exclude'}
+                                        <span class="label label-warning">{Lang::T('Exclude')} ({if $cnt}{$cnt}{else}0{/if})</span>
+                                    {else}
+                                        <span class="label label-success">{Lang::T('All')}</span>
+                                    {/if}
+                                </td>
                                 <td>
                                     <a href="{Text::url('services/vpn-edit/')}{$ds['id']}"
                                         class="btn btn-info btn-xs">{Lang::T('Edit')}</a>

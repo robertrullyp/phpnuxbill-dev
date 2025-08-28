@@ -175,7 +175,7 @@ switch ($action) {
         foreach ($c as $cust) {
             $json[] = [
                 'id' => $cust['id'],
-                'text' => $cust['username'] . ' - ' . $cust['fullname'] . ' - ' . $cust['email']
+                'text' => $cust['fullname'] . ' - ' . $cust['username'] . ' - ' . $cust['email']
             ];
         }
         echo json_encode(['results' => $json]);

@@ -43,6 +43,27 @@
                             {/if}
                         {/if}
                     </div>
+                    <div class="form-group">
+                        <label class="col-md-2 control-label">{Lang::T('Visibility')}</label>
+                        <div class="col-md-10">
+                            <label class="radio-inline"><input type="radio" name="visibility" value="all" {if $d['visibility'] == 'all' || !$d['visibility']}checked{/if}> {Lang::T('semua pelanggan')}</label>
+                            <label class="radio-inline"><input type="radio" name="visibility" value="exclude" {if $d['visibility'] == 'exclude'}checked{/if}> {Lang::T('semua kecuali yang ada di custom list')}</label>
+                            <label class="radio-inline"><input type="radio" name="visibility" value="custom" {if $d['visibility'] == 'custom'}checked{/if}> {Lang::T('hanya yang ada di custom list')}</label>
+                        </div>
+                    </div>
+                    <div class="form-group" id="visibility_customers" style="display:none;">
+                        <label class="col-md-2 control-label">{Lang::T('Allowed Customers')}</label>
+                        <div class="col-md-6">
+                            <select id="visible_customers" name="visible_customers[]" class="form-control select2" multiple>
+                                {if isset($visible_customer_options)}
+                                    {foreach $visible_customer_options as $vc}
+                                        <option value="{$vc['id']}" selected>{$vc['fullname']} - {$vc['username']} - {$vc['email']}</option>
+                                    {/foreach}
+                                {/if}
+                            </select>
+                            <p class="help-block">{Lang::T('Search by Full Name, Username, Phone or Email')}</p>
+                        </div>
+                    </div>
                     <div class="form-group has-warning">
                         <label class="col-md-2 control-label">{Lang::T('Price Before Discount')}</label>
                         <div class="col-md-6">
@@ -66,3 +87,26 @@
 </div>
 
 {include file="sections/footer.tpl"}
+<script>
+    function toggleVisibilitySelector() {
+        var val = document.querySelector('input[name="visibility"]:checked').value;
+        document.getElementById('visibility_customers').style.display = (val === 'custom' || val === 'exclude') ? 'block' : 'none';
+    }
+    document.addEventListener('DOMContentLoaded', function(){
+        toggleVisibilitySelector();
+        document.querySelectorAll('input[name="visibility"]').forEach(function(el){ el.addEventListener('change', toggleVisibilitySelector); });
+        $('#visible_customers').select2({
+            theme: 'bootstrap',
+            ajax: {
+                url: function (params) {
+                    if (params.term != undefined) {
+                        return '{Text::url('autoload/customer_select2')}&s=' + params.term;
+                    } else {
+                        return '{Text::url('autoload/customer_select2')}';
+                    }
+                },
+                dataType: 'json', delay: 250, processResults: function (data) { return data; }, cache: true
+            }
+        });
+    });
+</script>
