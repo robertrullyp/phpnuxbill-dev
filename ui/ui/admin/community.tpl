@@ -37,78 +37,15 @@
     <div class="col-sm-6">
         <div class="box box-hovered mb20 box-primary">
             <div class="box-header">
-                <h3 class="box-title">{Lang::T('Donations')} 🇮🇩</h3>
-            </div>
-            <div class="box-body">{Lang::T('To support further development, please donate to iBNuX. Your donation will help ensure the continued development of this application.')}</div>
-            <div class="table-responsive">
-                <table class="table table-bordered table-striped">
-                    <tbody>
-                        <tr>
-                            <td>BCA</td>
-                            <td>5410-454-825</td>
-                        </tr>
-                        <tr>
-                            <td>Mandiri</td>
-                            <td>163-000-1855-793</td>
-                        </tr>
-                        <tr>
-                            <td>Atas nama</td>
-                            <td>Ibnu Maksum</td>
-                        </tr>
-                    </tbody>
-                </table>
-            </div>
-            <div class="box-footer">
-                <div class="btn-group btn-group-justified" role="group" aria-label="...">
-                    <a href="https://trakteer.id/ibnux" target="_blank"
-                        class="btn btn-success text-black btn-sm btn-block">Trakteer</a>
-                    <a href="https://karyakarsa.com/ibnux/support" target="_blank"
-                        class="btn btn-info text-black btn-sm btn-block">karyakarsa</a>
-                </div>
-            </div>
-        </div>
-    </div>
-    <div class="col-sm-6">
-        <div class="box box-hovered mb20 box-primary">
-            <div class="box-header">
-                <h3 class="box-title">{Lang::T('Donations other than')} 🇮🇩</h3>
+                <h3 class="box-title">{Lang::T('Chat with Me — Bring Some Cup of Coffee')}</h3>
             </div>
             <div class="box-body">
-                {Lang::T('Your donation will help support and continue the development of PHPNuxBill.')}
-            </div>
-            <div class="table-responsive">
-                <table class="table table-bordered table-striped">
-                    <tbody>
-                        <tr>
-                            <td>Bank Central Asia</td>
-                            <td>5410-454-825</td>
-                        </tr>
-                        <tr>
-                            <td>SWIFT/BIC</td>
-                            <td>CENAIDJA</td>
-                        </tr>
-                        <tr>
-                            <td>Jakarta</td>
-                            <td>Indonesia</td>
-                        </tr>
-                        <tr>
-                            <td>Account Name</td>
-                            <td>Ibnu Maksum</td>
-                        </tr>
-                    </tbody>
-                </table>
+                {Lang::T('Let\'s talk and ask your needs')}
             </div>
             <div class="box-footer">
-                <div class="btn-group btn-group-justified" role="group" aria-label="...">
-                    <a href="https://paypal.me/ibnux" target="_blank"
-                        class="btn btn-primary btn-sm btn-block">Paypal</a>
-                </div>
+                <a href="https://t.me/robertrullyp" target="_blank" class="btn btn-primary btn-sm btn-block">{Lang::T('Telegram')}</a>
             </div>
         </div>
-    </div>
-</div>
-<div class="row">
-    <div class="col-sm-6">
         <div class="box box-hovered mb20 box-primary">
             <div class="box-header">
                 <h3 class="box-title">{Lang::T('Chat with Me — Paid Support $50')}</h3>
@@ -118,17 +55,6 @@
             </div>
             <div class="box-footer">
                 <a href="https://t.me/ibnux" target="_blank" class="btn btn-primary btn-sm btn-block">{Lang::T('Telegram')}</a>
-            </div>
-        </div>
-        <div class="box box-hovered mb20 box-primary">
-            <div class="box-header">
-                <h3 class="box-title">{Lang::T('Or Chat with Me and bring some cup of coffee')}</h3>
-            </div>
-            <div class="box-body">
-                {Lang::T('Confirm your donation to continue this paid support. Or, ask about alternative donations available to suit your needs.')}
-            </div>
-            <div class="box-footer">
-                <a href="https://t.me/robertrullyp" target="_blank" class="btn btn-primary btn-sm btn-block">{Lang::T('Telegram')}</a>
             </div>
         </div>
         <div class="box box-primary box-hovered mb20 activities">
@@ -152,7 +78,7 @@
             <div class="box-body">
                 <b>PHPNuxBill</b>
                 {Lang::T('is a Hotspot and PPPoE billing platform for Mikrotik developed using PHP. The application uses Mikrotik API to communicate with the router, ensuring efficient and easy integration. If you feel you get more benefits from this application, we would greatly appreciate your contribution through donation.')}<br>{Lang::T('Watch project –')} <a
-                    href="https://github.com/hotspotbilling/phpnuxbill" target="_blank">{Lang::T('IN HERE')}</a>
+                    href="https://github.com/robertrullyp/phpnuxbill-dev" target="_blank">{Lang::T('IN HERE')}</a>
             </div>
             <div class="box-footer" id="currentVersion">ver</div>
             <div class="box-footer" id="latestVersion">ver</div>
