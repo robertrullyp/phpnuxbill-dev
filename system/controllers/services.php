@@ -11,6 +11,37 @@ $ui->assign('_system_menu', 'services');
 $action = $routes['1'];
 $ui->assign('_admin', $admin);
 
+// Ensure DB enum supports 'exclude' to keep visibility in sync when saving
+if (!function_exists('ensureVisibilityEnumSupportsExclude')) {
+    function ensureVisibilityEnumSupportsExclude()
+    {
+        static $done = false;
+        if ($done) {
+            return;
+        }
+        try {
+            $db = ORM::get_db();
+            if ($db) {
+                $stmt = $db->query("SHOW COLUMNS FROM `tbl_plans` LIKE 'visibility'");
+                if ($stmt) {
+                    $col = $stmt->fetch(PDO::FETCH_ASSOC);
+                    if (!$col) {
+                        // Add the column if missing
+                        $db->exec("ALTER TABLE `tbl_plans` ADD `visibility` ENUM('all','custom','exclude') NOT NULL DEFAULT 'all' COMMENT 'plan visibility for customers' AFTER `prepaid`");
+                    } elseif (isset($col['Type']) && strpos($col['Type'], "'exclude'") === false) {
+                        // Add 'exclude' into enum if missing
+                        $db->exec("ALTER TABLE `tbl_plans` MODIFY `visibility` ENUM('all','custom','exclude') NOT NULL DEFAULT 'all' COMMENT 'plan visibility for customers'");
+                    }
+                }
+            }
+        } catch (Exception $e) {
+            // silently ignore; do not block UI if DB user has no alter privilege
+        }
+        $done = true;
+    }
+}
+ensureVisibilityEnumSupportsExclude();
+
 if (!in_array($admin['user_type'], ['SuperAdmin', 'Admin'])) {
     _alert(Lang::T('You do not have permission to access this page'), 'danger', "dashboard");
 }
@@ -137,6 +168,27 @@ switch ($action) {
         }
         $d = Paginator::findMany($query, ['name' => $name], 20, $append_url);
         $ui->assign('d', $d);
+        // Build visibility counts for labels in list view
+        $visibility_counts = [];
+        $ids = [];
+        foreach ($d as $row) { $ids[] = $row['id']; }
+        if (count($ids)) {
+            $rows = ORM::for_table('tbl_plan_customers')
+                ->select('plan_id')
+                ->select_expr('COUNT(*)', 'cnt')
+                ->where_in('plan_id', $ids)
+                ->group_by('plan_id')
+                ->find_array();
+            foreach ($rows as $r) { $visibility_counts[$r['plan_id']] = (int)$r['cnt']; }
+        }
+        $ui->assign('visibility_counts', $visibility_counts);
+        // Map plan id -> visibility
+        $visibility_map = [];
+        if (count($ids)) {
+            $vrows = ORM::for_table('tbl_plans')->select('id')->select('visibility')->where_in('id', $ids)->find_array();
+            foreach ($vrows as $vr) { $visibility_map[$vr['id']] = $vr['visibility']; }
+        }
+        $ui->assign('visibility_map', $visibility_map);
         run_hook('view_list_plans'); #HOOK
         $ui->display('admin/hotspot/list.tpl');
         break;
@@ -145,6 +197,7 @@ switch ($action) {
         $ui->assign('d', $d);
         $r = ORM::for_table('tbl_routers')->find_many();
         $ui->assign('r', $r);
+        $ui->assign('last_visibility', isset($_SESSION['last_visibility']) ? $_SESSION['last_visibility'] : 'all');
         $devices = [];
         $files = scandir($DEVICE_PATH);
         foreach ($files as $file) {
@@ -171,6 +224,14 @@ switch ($action) {
                 $d->save();
             }
             $ui->assign('d', $d);
+            // Preload selected customers for visibility
+            $assigned = ORM::for_table('tbl_plan_customers')->select('customer_id')->where('plan_id', $id)->find_array();
+            $selectedIds = array_column($assigned, 'customer_id');
+            $selectedCustomers = [];
+            if (!empty($selectedIds)) {
+                $selectedCustomers = ORM::for_table('tbl_customers')->where_in('id', $selectedIds)->find_array();
+            }
+            $ui->assign('visible_customer_options', $selectedCustomers);
             $b = ORM::for_table('tbl_bandwidth')->find_many();
             $ui->assign('b', $b);
             $devices = [];
@@ -237,6 +298,8 @@ switch ($action) {
         $enabled = _post('enabled');
         $prepaid = _post('prepaid');
         $expired_date = _post('expired_date');
+        $visibility = _post('visibility') ?: 'all';
+        $_SESSION['last_visibility'] = $visibility;
 
         $msg = '';
         if (Validator::UnsignedNumber($validity) == false) {
@@ -286,6 +349,8 @@ switch ($action) {
             }
             $d->enabled = $enabled;
             $d->prepaid = $prepaid;
+            // set visibility for new plan
+            $d->visibility = in_array($visibility, ['all','custom','exclude']) ? $visibility : 'all';
             $d->device = $device;
             if ($prepaid == 'no') {
                 if ($expired_date > 28 && $expired_date < 1) {
@@ -296,6 +361,20 @@ switch ($action) {
                 $d->expired_date = 20;
             }
             $d->save();
+
+            // Save visibility mapping for custom/exclude selections
+            if (in_array($d['visibility'], ['custom','exclude'])) {
+                $selected = isset($_POST['visible_customers']) ? (array)$_POST['visible_customers'] : [];
+                $selected = array_filter(array_unique(array_map('intval', $selected)));
+                if (!empty($selected)) {
+                    foreach ($selected as $cid) {
+                        $m = ORM::for_table('tbl_plan_customers')->create();
+                        $m->plan_id = (int)$d->id();
+                        $m->customer_id = $cid;
+                        $m->save();
+                    }
+                }
+            }
 
             $dvc = Package::getDevice($d);
             if ($_app_stage != 'demo') {
@@ -337,6 +416,7 @@ switch ($action) {
         $on_login = _post('on_login');
         $on_logout = _post('on_logout');
         $expired_date = _post('expired_date');
+        $visibility = _post('visibility') ?: 'all';
         $msg = '';
         if (Validator::UnsignedNumber($validity) == false) {
             $msg .= 'The validity must be a number' . '<br>';
@@ -397,6 +477,7 @@ switch ($action) {
             $d->plan_expired = $plan_expired;
             $d->enabled = $enabled;
             $d->prepaid = $prepaid;
+            $d->visibility = in_array($visibility, ['all','custom','exclude']) ? $visibility : 'all';
             $d->on_login = $on_login;
             $d->on_logout = $on_logout;
             $d->device = $device;
@@ -409,6 +490,19 @@ switch ($action) {
                 $d->expired_date = 20;
             }
             $d->save();
+
+            // Update visibility mapping
+            ORM::for_table('tbl_plan_customers')->where('plan_id', $id)->delete_many();
+            if (in_array($d['visibility'], ['custom','exclude'])) {
+                $selected = isset($_POST['visible_customers']) ? (array)$_POST['visible_customers'] : [];
+                $selected = array_filter(array_unique(array_map('intval', $selected)));
+                foreach ($selected as $cid) {
+                    $m = ORM::for_table('tbl_plan_customers')->create();
+                    $m->plan_id = $id;
+                    $m->customer_id = $cid;
+                    $m->save();
+                }
+            }
 
             $dvc = Package::getDevice($d);
             if ($_app_stage != 'demo') {
@@ -513,6 +607,26 @@ switch ($action) {
         $d = Paginator::findMany($query, ['name' => $name], 20, $append_url);
 
         $ui->assign('d', $d);
+        // Visibility counts for PPPoE list
+        $visibility_counts = [];
+        $ids = [];
+        foreach ($d as $row) { $ids[] = $row['id']; }
+        if (count($ids)) {
+            $rows = ORM::for_table('tbl_plan_customers')
+                ->select('plan_id')
+                ->select_expr('COUNT(*)', 'cnt')
+                ->where_in('plan_id', $ids)
+                ->group_by('plan_id')
+                ->find_array();
+            foreach ($rows as $r) { $visibility_counts[$r['plan_id']] = (int)$r['cnt']; }
+        }
+        $ui->assign('visibility_counts', $visibility_counts);
+        $visibility_map = [];
+        if (count($ids)) {
+            $vrows = ORM::for_table('tbl_plans')->select('id')->select('visibility')->where_in('id', $ids)->find_array();
+            foreach ($vrows as $vr) { $visibility_map[$vr['id']] = $vr['visibility']; }
+        }
+        $ui->assign('visibility_map', $visibility_map);
         run_hook('view_list_ppoe'); #HOOK
         $ui->display('admin/pppoe/list.tpl');
         break;
@@ -523,6 +637,7 @@ switch ($action) {
         $ui->assign('d', $d);
         $r = ORM::for_table('tbl_routers')->find_many();
         $ui->assign('r', $r);
+        $ui->assign('last_visibility', isset($_SESSION['last_visibility']) ? $_SESSION['last_visibility'] : 'all');
         $devices = [];
         $files = scandir($DEVICE_PATH);
         foreach ($files as $file) {
@@ -575,6 +690,14 @@ switch ($action) {
                 $exps = ORM::for_table('tbl_plans')->selects('id', 'name_plan')->where('type', 'PPPOE')->where("routers", $d['routers'])->findArray();
             }
             $ui->assign('exps', $exps);
+            // Preload selected customers for visibility
+            $assigned = ORM::for_table('tbl_plan_customers')->select('customer_id')->where('plan_id', $id)->find_array();
+            $selectedIds = array_column($assigned, 'customer_id');
+            $selectedCustomers = [];
+            if (!empty($selectedIds)) {
+                $selectedCustomers = ORM::for_table('tbl_customers')->where_in('id', $selectedIds)->find_array();
+            }
+            $ui->assign('visible_customer_options', $selectedCustomers);
             run_hook('view_edit_ppoe'); #HOOK
             $ui->display('admin/pppoe/edit.tpl');
         } else {
@@ -618,6 +741,8 @@ switch ($action) {
         $enabled = _post('enabled');
         $prepaid = _post('prepaid');
         $expired_date = _post('expired_date');
+        $visibility = _post('visibility') ?: 'all';
+        $_SESSION['last_visibility'] = $visibility;
 
 
         $msg = '';
@@ -686,8 +811,21 @@ switch ($action) {
             }
             $d->enabled = $enabled;
             $d->prepaid = $prepaid;
+            $d->visibility = in_array($visibility, ['all','custom','exclude']) ? $visibility : 'all';
             $d->device = $device;
             $d->save();
+
+            // Handle custom visibility mapping for PPPoE plan
+            if (in_array($d['visibility'], ['custom','exclude'])) {
+                $selected = isset($_POST['visible_customers']) ? (array)$_POST['visible_customers'] : [];
+                $selected = array_filter(array_unique(array_map('intval', $selected)));
+                foreach ($selected as $cid) {
+                    $m = ORM::for_table('tbl_plan_customers')->create();
+                    $m->plan_id = $d->id();
+                    $m->customer_id = $cid;
+                    $m->save();
+                }
+            }
 
             $dvc = Package::getDevice($d);
             if ($_app_stage != 'demo') {
@@ -720,8 +858,11 @@ switch ($action) {
         $enabled = _post('enabled');
         $prepaid = _post('prepaid');
         $expired_date = _post('expired_date');
+        $visibility = _post('visibility') ?: 'all';
+        $_SESSION['last_visibility'] = $visibility;
         $on_login = _post('on_login');
         $on_logout = _post('on_logout');
+        $visibility = _post('visibility') ?: 'all';
 
         $msg = '';
         if (Validator::UnsignedNumber($validity) == false) {
@@ -780,6 +921,7 @@ switch ($action) {
             $d->device = $device;
             $d->on_login = $on_login;
             $d->on_logout = $on_logout;
+            $d->visibility = in_array($visibility, ['all','custom','exclude']) ? $visibility : 'all';
             if ($prepaid == 'no') {
                 if ($expired_date > 28 && $expired_date < 1) {
                     $expired_date = 20;
@@ -789,6 +931,19 @@ switch ($action) {
                 $d->expired_date = 0;
             }
             $d->save();
+
+            // Update visibility mapping
+            ORM::for_table('tbl_plan_customers')->where('plan_id', $id)->delete_many();
+            if (in_array($d['visibility'], ['custom','exclude'])) {
+                $selected = isset($_POST['visible_customers']) ? (array)$_POST['visible_customers'] : [];
+                $selected = array_filter(array_unique(array_map('intval', $selected)));
+                foreach ($selected as $cid) {
+                    $m = ORM::for_table('tbl_plan_customers')->create();
+                    $m->plan_id = $id;
+                    $m->customer_id = $cid;
+                    $m->save();
+                }
+            }
 
             $dvc = Package::getDevice($d);
             if ($_app_stage != 'demo') {
@@ -816,11 +971,32 @@ switch ($action) {
         }
 
         $ui->assign('d', $d);
+        // Visibility counts for Balance list
+        $visibility_counts = [];
+        $ids = [];
+        foreach ($d as $row) { $ids[] = $row['id']; }
+        if (count($ids)) {
+            $rows = ORM::for_table('tbl_plan_customers')
+                ->select('plan_id')
+                ->select_expr('COUNT(*)', 'cnt')
+                ->where_in('plan_id', $ids)
+                ->group_by('plan_id')
+                ->find_array();
+            foreach ($rows as $r) { $visibility_counts[$r['plan_id']] = (int)$r['cnt']; }
+        }
+        $ui->assign('visibility_counts', $visibility_counts);
+        $visibility_map = [];
+        if (count($ids)) {
+            $vrows = ORM::for_table('tbl_plans')->select('id')->select('visibility')->where_in('id', $ids)->find_array();
+            foreach ($vrows as $vr) { $visibility_map[$vr['id']] = $vr['visibility']; }
+        }
+        $ui->assign('visibility_map', $visibility_map);
         run_hook('view_list_balance'); #HOOK
         $ui->display('admin/balance/list.tpl');
         break;
     case 'balance-add':
         $ui->assign('_title', Lang::T('Balance Plans'));
+        $ui->assign('last_visibility', isset($_SESSION['last_visibility']) ? $_SESSION['last_visibility'] : 'all');
         run_hook('view_add_balance'); #HOOK
         $ui->display('admin/balance/add.tpl');
         break;
@@ -829,6 +1005,14 @@ switch ($action) {
         $id = $routes['2'];
         $d = ORM::for_table('tbl_plans')->find_one($id);
         $ui->assign('d', $d);
+        // Preload selected customers for visibility
+        $assigned = ORM::for_table('tbl_plan_customers')->select('customer_id')->where('plan_id', $id)->find_array();
+        $selectedIds = array_column($assigned, 'customer_id');
+        $selectedCustomers = [];
+        if (!empty($selectedIds)) {
+            $selectedCustomers = ORM::for_table('tbl_customers')->where_in('id', $selectedIds)->find_array();
+        }
+        $ui->assign('visible_customer_options', $selectedCustomers);
         run_hook('view_edit_balance'); #HOOK
         $ui->display('admin/balance/edit.tpl');
         break;
@@ -849,6 +1033,8 @@ switch ($action) {
         $price_old = _post('price_old');
         $enabled = _post('enabled');
         $prepaid = _post('prepaid');
+        $visibility = _post('visibility') ?: 'all';
+        $_SESSION['last_visibility'] = $visibility;
 
         $msg = '';
         if (Validator::UnsignedNumber($price) == false) {
@@ -873,7 +1059,21 @@ switch ($action) {
             $d->enabled = $enabled;
             $d->price_old = $price_old;
             $d->prepaid = 'yes';
+            $d->visibility = in_array($visibility, ['all','custom','exclude']) ? $visibility : 'all';
             $d->save();
+
+            // Update visibility mapping
+            ORM::for_table('tbl_plan_customers')->where('plan_id', $id)->delete_many();
+            if (in_array($d['visibility'], ['custom','exclude'])) {
+                $selected = isset($_POST['visible_customers']) ? (array)$_POST['visible_customers'] : [];
+                $selected = array_filter(array_unique(array_map('intval', $selected)));
+                foreach ($selected as $cid) {
+                    $m = ORM::for_table('tbl_plan_customers')->create();
+                    $m->plan_id = $id;
+                    $m->customer_id = $cid;
+                    $m->save();
+                }
+            }
 
             r2(getUrl('services/balance'), 's', Lang::T('Data Updated Successfully'));
         } else {
@@ -884,6 +1084,8 @@ switch ($action) {
         $name = _post('name');
         $price = _post('price');
         $enabled = _post('enabled');
+        $visibility = _post('visibility') ?: 'all';
+        $_SESSION['last_visibility'] = $visibility;
 
         $msg = '';
         if (Validator::UnsignedNumber($price) == false) {
@@ -910,7 +1112,19 @@ switch ($action) {
             $d->pool = '';
             $d->enabled = $enabled;
             $d->prepaid = 'yes';
+            $d->visibility = in_array($visibility, ['all','custom','exclude']) ? $visibility : 'all';
             $d->save();
+
+            if (in_array($d['visibility'], ['custom','exclude'])) {
+                $selected = isset($_POST['visible_customers']) ? (array)$_POST['visible_customers'] : [];
+                $selected = array_filter(array_unique(array_map('intval', $selected)));
+                foreach ($selected as $cid) {
+                    $m = ORM::for_table('tbl_plan_customers')->create();
+                    $m->plan_id = $d->id();
+                    $m->customer_id = $cid;
+                    $m->save();
+                }
+            }
 
             r2(getUrl('services/balance'), 's', Lang::T('Data Created Successfully'));
         } else {
@@ -1005,6 +1219,27 @@ switch ($action) {
         $d = Paginator::findMany($query, ['name' => $name], 20, $append_url);
 
         $ui->assign('d', $d);
+        // Visibility counts for VPN list
+        $visibility_counts = [];
+        $ids = [];
+        foreach ($d as $row) { $ids[] = $row['id']; }
+        if (count($ids)) {
+            $rows = ORM::for_table('tbl_plan_customers')
+                ->select('plan_id')
+                ->select_expr('COUNT(*)', 'cnt')
+                ->where_in('plan_id', $ids)
+                ->group_by('plan_id')
+                ->find_array();
+            foreach ($rows as $r) { $visibility_counts[$r['plan_id']] = (int)$r['cnt']; }
+        }
+        $ui->assign('visibility_counts', $visibility_counts);
+        // Map plan id -> visibility for VPN list labels
+        $visibility_map = [];
+        if (count($ids)) {
+            $vrows = ORM::for_table('tbl_plans')->select('id')->select('visibility')->where_in('id', $ids)->find_array();
+            foreach ($vrows as $vr) { $visibility_map[$vr['id']] = $vr['visibility']; }
+        }
+        $ui->assign('visibility_map', $visibility_map);
         run_hook('view_list_vpn'); #HOOK
         $ui->display('admin/vpn/list.tpl');
         break;
@@ -1015,6 +1250,7 @@ switch ($action) {
         $ui->assign('d', $d);
         $r = ORM::for_table('tbl_routers')->find_many();
         $ui->assign('r', $r);
+        $ui->assign('last_visibility', isset($_SESSION['last_visibility']) ? $_SESSION['last_visibility'] : 'all');
         $devices = [];
         $files = scandir($DEVICE_PATH);
         foreach ($files as $file) {
@@ -1026,6 +1262,84 @@ switch ($action) {
         $ui->assign('devices', $devices);
         run_hook('view_add_vpn'); #HOOK
         $ui->display('admin/vpn/add.tpl');
+        break;
+
+    case 'vpn-add-post':
+        $plan_type = _post('plan_type');
+        $name = _post('name_plan');
+        $id_bw = _post('id_bw');
+        $price = _post('price');
+        $validity = _post('validity');
+        $validity_unit = _post('validity_unit');
+        $routers = _post('routers');
+        $device = _post('device');
+        $pool = _post('pool_name');
+        $plan_expired = _post('plan_expired');
+        $enabled = _post('enabled');
+        $prepaid = _post('prepaid');
+        $expired_date = _post('expired_date');
+        $visibility = _post('visibility') ?: 'all';
+
+        $msg = '';
+        if (Validator::UnsignedNumber($validity) == false) {
+            $msg .= 'The validity must be a number' . '<br>';
+        }
+        if (Validator::UnsignedNumber($price) == false) {
+            $msg .= 'The price must be a number' . '<br>';
+        }
+        if ($name == '' or $id_bw == '' or $price == '' or $validity == '' or $pool == '') {
+            $msg .= Lang::T('All field is required') . '<br>';
+        }
+        run_hook('add_vpn'); #HOOK
+        if ($msg == '') {
+            $d = ORM::for_table('tbl_plans')->create();
+            $d->type = 'VPN';
+            $d->name_plan = $name;
+            $d->id_bw = $id_bw;
+            $d->price = $price;
+            $d->plan_type = $plan_type;
+            $d->validity = $validity;
+            $d->validity_unit = $validity_unit;
+            $d->routers = $routers;
+            $d->pool = $pool;
+            $d->plan_expired = (int)$plan_expired;
+            $d->enabled = $enabled;
+            $d->prepaid = $prepaid;
+            if ($prepaid == 'no') {
+                if ($expired_date > 28 && $expired_date < 1) { $expired_date = 20; }
+                $d->expired_date = $expired_date;
+            } else {
+                $d->expired_date = 0;
+            }
+            $d->device = $device;
+            $d->visibility = in_array($visibility, ['all','custom','exclude']) ? $visibility : 'all';
+            $d->save();
+
+            // Save visibility mapping if needed
+            if (in_array($d['visibility'], ['custom','exclude'])) {
+                $selected = isset($_POST['visible_customers']) ? (array)$_POST['visible_customers'] : [];
+                $selected = array_filter(array_unique(array_map('intval', $selected)));
+                foreach ($selected as $cid) {
+                    $m = ORM::for_table('tbl_plan_customers')->create();
+                    $m->plan_id = (int)$d->id();
+                    $m->customer_id = $cid;
+                    $m->save();
+                }
+            }
+
+            $dvc = Package::getDevice($d);
+            if ($_app_stage != 'demo') {
+                if (file_exists($dvc)) {
+                    require_once $dvc;
+                    (new $d['device'])->add_plan($d);
+                } else {
+                    new Exception(Lang::T("Devices Not Found"));
+                }
+            }
+            r2(getUrl('services/vpn'), 's', Lang::T('Data Created Successfully'));
+        } else {
+            r2(getUrl('services/vpn-add'), 'e', $msg);
+        }
         break;
 
     case 'vpn-edit':
@@ -1067,6 +1381,14 @@ switch ($action) {
                 $exps = ORM::for_table('tbl_plans')->selects('id', 'name_plan')->where('type', 'VPN')->where("routers", $d['routers'])->findArray();
             }
             $ui->assign('exps', $exps);
+            // Preload selected customers for visibility
+            $assigned = ORM::for_table('tbl_plan_customers')->select('customer_id')->where('plan_id', $id)->find_array();
+            $selectedIds = array_column($assigned, 'customer_id');
+            $selectedCustomers = [];
+            if (!empty($selectedIds)) {
+                $selectedCustomers = ORM::for_table('tbl_customers')->where_in('id', $selectedIds)->find_array();
+            }
+            $ui->assign('visible_customer_options', $selectedCustomers);
             run_hook('view_edit_vpn'); #HOOK
             $ui->display('admin/vpn/edit.tpl');
         } else {
@@ -1179,6 +1501,7 @@ switch ($action) {
             $d->enabled = $enabled;
             $d->prepaid = $prepaid;
             $d->device = $device;
+            $d->visibility = in_array($visibility, ['all','custom','exclude']) ? $visibility : 'all';
             $d->save();
 
             $dvc = Package::getDevice($d);
@@ -1214,6 +1537,7 @@ switch ($action) {
         $expired_date = _post('expired_date');
         $on_login = _post('on_login');
         $on_logout = _post('on_logout');
+        $visibility = _post('visibility') ?: 'all';
 
         $msg = '';
         if (Validator::UnsignedNumber($validity) == false) {
@@ -1280,7 +1604,21 @@ switch ($action) {
             } else {
                 $d->expired_date = 0;
             }
+            $d->visibility = in_array($visibility, ['all','custom','exclude']) ? $visibility : 'all';
             $d->save();
+
+            // Update visibility mapping
+            ORM::for_table('tbl_plan_customers')->where('plan_id', $id)->delete_many();
+            if (in_array($d['visibility'], ['custom','exclude'])) {
+                $selected = isset($_POST['visible_customers']) ? (array)$_POST['visible_customers'] : [];
+                $selected = array_filter(array_unique(array_map('intval', $selected)));
+                foreach ($selected as $cid) {
+                    $m = ORM::for_table('tbl_plan_customers')->create();
+                    $m->plan_id = (int)$id;
+                    $m->customer_id = $cid;
+                    $m->save();
+                }
+            }
 
             $dvc = Package::getDevice($d);
             if ($_app_stage != 'demo') {

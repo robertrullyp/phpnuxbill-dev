@@ -210,5 +210,10 @@
   ],
   "2025.4.18": [
     "ALTER TABLE `tbl_voucher` ADD `batch_name` VARCHAR(40) AFTER `id_plan`;"
+  ],
+  "2025.8.28": [
+    "ALTER TABLE `tbl_plans` ADD `visibility` ENUM('all','custom') NOT NULL DEFAULT 'all' COMMENT 'plan visibility for customers' AFTER `prepaid`;",
+    "CREATE TABLE IF NOT EXISTS `tbl_plan_customers` ( `id` int NOT NULL AUTO_INCREMENT, `plan_id` int NOT NULL, `customer_id` int NOT NULL, PRIMARY KEY (`id`), UNIQUE KEY `plan_customer_unique` (`plan_id`,`customer_id`), KEY `idx_plan_id` (`plan_id`), KEY `idx_customer_id` (`customer_id`) ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;",
+    "ALTER TABLE `tbl_plans` MODIFY `visibility` ENUM('all','custom','exclude') NOT NULL DEFAULT 'all' COMMENT 'plan visibility for customers';"
   ]
 }
