@@ -177,7 +177,8 @@ you need to pay,
 
 ask anything for free in the [discussion](/hotspotbilling/phpnuxbill/discussions) page or [Telegram Group](https://t.me/phpnuxbill)
 
-Contact me at [Telegram](https://t.me/ibnux)
+Contact me at [Telegram](https://t.me/robertrullyp) about this fork or
+Contact me at [Telegram](https://t.me/ibnux) for the upstream repository
 
 ## Contributing & Donations (Fork)
 
