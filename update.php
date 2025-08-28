@@ -326,7 +326,11 @@ function deleteFolder($path)
             </div>
         </section>
         <footer class="footer text-center">
-            PHPNuxBill by <a href="https://github.com/hotspotbilling/phpnuxbill" rel="nofollow noreferrer noopener" target="_blank">iBNuX</a>
+            <a  href="https://github.com/robertrullyp/phpnuxbill-dev" rel="nofollow noreferrer noopener"
+                target="_blank">DRNet</a> Modified by <a href="https://github.com/robertrullyp" rel="nofollow noreferrer noopener"
+                target="_blank">Mr. Free</a> from PHPNuxBill by <a href="https://github.com/hotspotbilling/phpnuxbill" rel="nofollow noreferrer noopener"
+                target="_blank">iBNuX</a>, Theme by <a href="https://adminlte.io/" rel="nofollow noreferrer noopener"
+                target="_blank">AdminLTE</a>
         </footer>
     </div>
 </body>
