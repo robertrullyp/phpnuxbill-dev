@@ -200,14 +200,53 @@
 </div>
 </div>
 <script>
-    window.addEventListener('DOMContentLoaded', function() {
-        $.getJSON("./version.json?" + Math.random(), function(data) {
-            $('#currentVersion').html('Current Version: ' + data.version);
-        });
-        $.getJSON("https://raw.githubusercontent.com/robertrullyp/phpnuxbill-dev/main/version.json?" + Math.random(),
-            function(data) {
-                $('#latestVersion').html('Latest Version: ' + data.version);
-            });
+    window.addEventListener('DOMContentLoaded', function () {
+        function setText(sel, txt) {
+            var el = document.querySelector(sel);
+            if (el) el.textContent = txt;
+        }
+        // Current version (local)
+        fetch('./version.json?' + Math.random())
+            .then(function (r) { return r.json(); })
+            .then(function (data) { setText('#currentVersion', 'Current Version: ' + data.version); })
+            .catch(function () { setText('#currentVersion', 'Current Version: unknown'); });
+
+        // Helpers
+        function latestFromUpdatesJson(updates) {
+            try {
+                var keys = Object.keys(updates || {});
+                if (!keys.length) return null;
+                function weight(v) {
+                    var p = (v + '').split('.').map(function (x) { return parseInt(x, 10) || 0; });
+                    return (p[0] || 0) * 10000 + (p[1] || 0) * 100 + (p[2] || 0);
+                }
+                var best = keys[0];
+                var bestW = weight(best);
+                keys.forEach(function (k) { var w = weight(k); if (w > bestW) { best = k; bestW = w; } });
+                return best;
+            } catch (e) { return null; }
+        }
+
+        function setLatestFromRemote() {
+            var verUrl = 'https://raw.githubusercontent.com/robertrullyp/phpnuxbill-dev/main/version.json?' + Math.random();
+            var updUrl = 'https://raw.githubusercontent.com/robertrullyp/phpnuxbill-dev/main/system/updates.json?' + Math.random();
+            fetch(verUrl, { mode: 'cors' })
+                .then(function (r) { if (!r.ok) throw new Error('bad status'); return r.json(); })
+                .then(function (data) { if (data && data.version) { setText('#latestVersion', 'Latest Version: ' + data.version); } else { throw new Error('no version'); } })
+                .catch(function () {
+                    // Fallback: infer latest from updates.json
+                    fetch(updUrl, { mode: 'cors' })
+                        .then(function (r) { if (!r.ok) throw new Error('bad status'); return r.json(); })
+                        .then(function (data) {
+                            var v = latestFromUpdatesJson(data);
+                            if (v) setText('#latestVersion', 'Latest Version: ' + v); else setText('#latestVersion', 'Latest Version: unavailable');
+                        })
+                        .catch(function () { setText('#latestVersion', 'Latest Version: unavailable'); });
+                });
+        }
+
+        // Latest version (remote repo) with fallback
+        setLatestFromRemote();
     });
-</script>
+    </script>
 {include file="sections/footer.tpl"}
