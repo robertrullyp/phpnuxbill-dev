@@ -2,15 +2,15 @@
 
 <div class="row">
     <div class="col-sm-6">
-
         <div class="box box-hovered mb20 box-primary">
             <div class="box-header">
-                <h3 class="box-title">{Lang::T('Contribution')} PHPNuxBill</h3>
+                <h3 class="box-title">{Lang::T('Chat with Me — Bring Some Cup of Coffee')}</h3>
             </div>
             <div class="box-body">
-                <a href="https://github.com/hotspotbilling/phpnuxbill/graphs/contributors" target="_blank">
-                    <img src="https://contrib.rocks/image?repo=hotspotbilling/phpnuxbill&columns=10" width="100%" />
-                </a>
+                {Lang::T('Let\'s talk and ask your needs')}
+            </div>
+            <div class="box-footer">
+                <a href="https://t.me/robertrullyp" target="_blank" class="btn btn-primary btn-sm btn-block">{Lang::T('Telegram')}</a>
             </div>
         </div>
     </div>
@@ -37,17 +37,6 @@
     <div class="col-sm-6">
         <div class="box box-hovered mb20 box-primary">
             <div class="box-header">
-                <h3 class="box-title">{Lang::T('Chat with Me — Bring Some Cup of Coffee')}</h3>
-            </div>
-            <div class="box-body">
-                {Lang::T('Let\'s talk and ask your needs')}
-            </div>
-            <div class="box-footer">
-                <a href="https://t.me/robertrullyp" target="_blank" class="btn btn-primary btn-sm btn-block">{Lang::T('Telegram')}</a>
-            </div>
-        </div>
-        <div class="box box-hovered mb20 box-primary">
-            <div class="box-header">
                 <h3 class="box-title">{Lang::T('Chat with Me — Paid Support $50')}</h3>
             </div>
             <div class="box-body">
@@ -55,17 +44,6 @@
             </div>
             <div class="box-footer">
                 <a href="https://t.me/ibnux" target="_blank" class="btn btn-primary btn-sm btn-block">{Lang::T('Telegram')}</a>
-            </div>
-        </div>
-        <div class="box box-hovered mb20 box-primary">
-            <div class="box-header">
-                <h3 class="box-title">{Lang::T('Or Chat with Me and bring some cup of coffee')}</h3>
-            </div>
-            <div class="box-body">
-                {Lang::T('Confirm your donation to continue this paid support. Or, ask about alternative donations available to suit your needs.')}
-            </div>
-            <div class="box-footer">
-                <a href="https://t.me/robertrullyp" target="_blank" class="btn btn-primary btn-sm btn-block">{Lang::T('Telegram')}</a>
             </div>
         </div>
         <div class="box box-primary box-hovered mb20 activities">
@@ -80,6 +58,97 @@
                     class="btn btn-primary btn-sm btn-block">wa.nux.my.id</a>
             </div>
         </div>
+        <div class="box box-hovered mb20 box-primary">
+    <div class="box-header">
+        <h3 class="box-title">{Lang::T('Credits')}</h3>
+    </div>
+        <div class="box-body">
+            <div class="table-responsive">
+                <table class="table table-bordered table-striped table-hover">
+                    <thead>
+                        <tr>
+                            <th>{Lang::T('Souce')}</th>
+                            <th>{Lang::T('Details')}</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>Bootstrap V3</td>
+                            <td>
+                                <a href="https://getbootstrap.com/docs/3.4/" target="_blank">
+                                    <i class="glyphicon glyphicon-globe"></i> {Lang::T('Visit')}
+                                </a>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td>Admin LTE V3</td>
+                            <td>
+                                <a href="https://adminlte.io/themes/v3/" target="_blank">
+                                    <i class="glyphicon glyphicon-globe"></i> {Lang::T('Visit')}
+                                </a>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td>Smarty Template V4</td>
+                            <td>
+                                <a href="https://www.smarty.net/" target="_blank">
+                                    <i class="glyphicon glyphicon-globe"></i> {Lang::T('Visit')}
+                                </a>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td>PHP IdiORM</td>
+                            <td>
+                                <a href="https://idiorm.readthedocs.io/" target="_blank">
+                                    <i class="glyphicon glyphicon-globe"></i> {Lang::T('Visit')}
+                                </a>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td>PHP mPDF</td>
+                            <td>
+                                <a href="https://mpdf.github.io/" target="_blank">
+                                    <i class="glyphicon glyphicon-globe"></i> {Lang::T('Visit')}
+                                </a>
+                            </td>
+                        </tr>
+                    <tr>
+                            <td>PHP QRCode</td>
+                            <td>
+                                <a href="http://phpqrcode.sourceforge.net/" target="_blank">
+                                    <i class="glyphicon glyphicon-globe"></i> {Lang::T('Visit')}
+                                </a>
+                            </td>
+                        </tr>
+                    <tr>
+                            <td>PHP Net_RouterOS</td>
+                            <td>
+                                <a href="https://github.com/pear2/Net_RouterOS" target="_blank">
+                                    <i class="glyphicon glyphicon-globe"></i> {Lang::T('Visit')}
+                                </a>
+                            </td>
+                        </tr>
+                    <tr>
+                            <td>Summernote</td>
+                            <td>
+                                <a href="https://summernote.org/" target="_blank">
+                                    <i class="glyphicon glyphicon-globe"></i> {Lang::T('Visit')}
+                                </a>
+                            </td>
+                        </tr>
+                    <tr>
+                            <td>PHP Mailer</td>
+                            <td>
+                                <a href="https://github.com/PHPMailer/PHPMailer/" target="_blank">
+                                    <i class="glyphicon glyphicon-globe"></i> {Lang::T('Visit')}
+                                </a>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
     </div>
     <div class="col-sm-6" id="update">
         <div class="box box-primary box-hovered mb20 activities">
@@ -118,97 +187,7 @@
             </div>
         </div>
 
-        <div class="box box-hovered mb20 box-primary">
-    <div class="box-header">
-        <h3 class="box-title">{Lang::T('Credits')}</h3>
-    </div>
-    <div class="box-body">
-        <div class="table-responsive">
-            <table class="table table-bordered table-striped table-hover">
-                <thead>
-                    <tr>
-                        <th>{Lang::T('Souce')}</th>
-                        <th>{Lang::T('Details')}</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <tr>
-                        <td>Bootstrap V3</td>
-                        <td>
-                            <a href="https://getbootstrap.com/docs/3.4/" target="_blank">
-                                <i class="glyphicon glyphicon-globe"></i> {Lang::T('Visit')}
-                            </a>
-                        </td>
-                    </tr>
-                    <tr>
-                        <td>Admin LTE V3</td>
-                        <td>
-                            <a href="https://adminlte.io/themes/v3/" target="_blank">
-                                <i class="glyphicon glyphicon-globe"></i> {Lang::T('Visit')}
-                            </a>
-                        </td>
-                    </tr>
-                    <tr>
-                        <td>Smarty Template V4</td>
-                        <td>
-                            <a href="https://www.smarty.net/" target="_blank">
-                                <i class="glyphicon glyphicon-globe"></i> {Lang::T('Visit')}
-                            </a>
-                        </td>
-                    </tr>
-                    <tr>
-                        <td>PHP IdiORM</td>
-                        <td>
-                            <a href="https://idiorm.readthedocs.io/" target="_blank">
-                                <i class="glyphicon glyphicon-globe"></i> {Lang::T('Visit')}
-                            </a>
-                        </td>
-                    </tr>
-                    <tr>
-                        <td>PHP mPDF</td>
-                        <td>
-                            <a href="https://mpdf.github.io/" target="_blank">
-                                <i class="glyphicon glyphicon-globe"></i> {Lang::T('Visit')}
-                            </a>
-                        </td>
-                    </tr>
-                   <tr>
-                        <td>PHP QRCode</td>
-                        <td>
-                            <a href="http://phpqrcode.sourceforge.net/" target="_blank">
-                                <i class="glyphicon glyphicon-globe"></i> {Lang::T('Visit')}
-                            </a>
-                        </td>
-                    </tr>
-                   <tr>
-                        <td>PHP Net_RouterOS</td>
-                        <td>
-                            <a href="https://github.com/pear2/Net_RouterOS" target="_blank">
-                                <i class="glyphicon glyphicon-globe"></i> {Lang::T('Visit')}
-                            </a>
-                        </td>
-                    </tr>
-                   <tr>
-                        <td>Summernote</td>
-                        <td>
-                            <a href="https://summernote.org/" target="_blank">
-                                <i class="glyphicon glyphicon-globe"></i> {Lang::T('Visit')}
-                            </a>
-                        </td>
-                    </tr>
-                  <tr>
-                        <td>PHP Mailer</td>
-                        <td>
-                            <a href="https://github.com/PHPMailer/PHPMailer/" target="_blank">
-                                <i class="glyphicon glyphicon-globe"></i> {Lang::T('Visit')}
-                            </a>
-                        </td>
-                    </tr>
-                </tbody>
-            </table>
-        </div>
-    </div>
-</div>
+
 </div>
 <script>
     window.addEventListener('DOMContentLoaded', function () {

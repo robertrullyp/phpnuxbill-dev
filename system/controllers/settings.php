@@ -323,7 +323,6 @@ switch ($action) {
                 }
             }
 
-            // Cloudflare Turnstile (SETTINGS)
             $t_admin  = (_post('turnstile_admin_enabled') === '1') ? '1' : '0';
             $t_client = (_post('turnstile_client_enabled') === '1') ? '1' : '0';
             $_POST['turnstile_admin_enabled']  = $t_admin;
@@ -343,7 +342,7 @@ switch ($action) {
             } else {
                 unset($_POST['turnstile_secret_key']);
             }
-
+            
             foreach ($_POST as $key => $value) {
                 $d = ORM::for_table('tbl_appconfig')->where('setting', $key)->find_one();
                 if ($d) {
