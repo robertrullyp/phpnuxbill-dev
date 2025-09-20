@@ -22,17 +22,60 @@ if (!in_array($admin['user_type'], ['SuperAdmin', 'Admin'])) {
 }
 
 $cache = $CACHE_PATH . File::pathFixer('/plugin_repository.json');
+$repoError = null;
+$jsonData = null;
+$json = [
+    'plugins' => [],
+    'payment_gateway' => [],
+    'devices' => [],
+];
+$loadedFromCache = false;
+
 if (file_exists($cache) && time() - filemtime($cache) < (24 * 60 * 60)) {
-    $txt = file_get_contents($cache);
-    $json = json_decode($txt, true);
-    if (empty($json['plugins']) && empty($json['payment_gateway'])) {
-        unlink($cache);
-        r2(getUrl('pluginmanager'));
+    $cachedData = file_get_contents($cache);
+    if ($cachedData !== false) {
+        $sanitizedData = ltrim($cachedData, "\xEF\xBB\xBF");
+        if ($sanitizedData !== $cachedData) {
+            file_put_contents($cache, $sanitizedData);
+        }
+        $jsonData = $sanitizedData;
+        $loadedFromCache = true;
+    } else {
+        $repoError = Lang::T('Unable to load plugin repository data. Please try again later.');
     }
 } else {
     $data = Http::getData($plugin_repository);
-    file_put_contents($cache, $data);
-    $json = json_decode($data, true);
+    if ($data !== false && $data !== null) {
+        $sanitizedData = ltrim($data, "\xEF\xBB\xBF");
+        file_put_contents($cache, $sanitizedData);
+        $jsonData = $sanitizedData;
+    } else {
+        $repoError = Lang::T('Unable to load plugin repository data. Please try again later.');
+    }
+}
+
+if ($jsonData !== null) {
+    $decoded = json_decode($jsonData, true);
+    if (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) {
+        $json['plugins'] = isset($decoded['plugins']) && is_array($decoded['plugins']) ? $decoded['plugins'] : [];
+        $json['payment_gateway'] = isset($decoded['payment_gateway']) && is_array($decoded['payment_gateway']) ? $decoded['payment_gateway'] : [];
+        $json['devices'] = isset($decoded['devices']) && is_array($decoded['devices']) ? $decoded['devices'] : [];
+
+        if ($loadedFromCache && empty($json['plugins']) && empty($json['payment_gateway'])) {
+            if (file_exists($cache)) {
+                unlink($cache);
+            }
+            r2(getUrl('pluginmanager'));
+        }
+    } else {
+        $errorMessage = json_last_error_msg();
+        $repoError = Lang::T('Unable to parse plugin repository response. Please refresh later.');
+        if (!empty($errorMessage)) {
+            $repoError .= ' (' . $errorMessage . ')';
+        }
+    }
+} elseif ($repoError === null) {
+    $repoError = Lang::T('Unable to load plugin repository data. Please try again later.');
 }
 switch ($action) {
     case 'refresh':
@@ -353,6 +396,7 @@ switch ($action) {
             $zipExt = false;
         }
         $ui->assign('zipExt', $zipExt);
+        $ui->assign('repoError', $repoError);
         $ui->assign('plugins', $json['plugins']);
         $ui->assign('pgs', $json['payment_gateway']);
         $ui->assign('dvcs', $json['devices']);

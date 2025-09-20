@@ -206,15 +206,50 @@
             try {
                 var keys = Object.keys(updates || {});
                 if (!keys.length) return null;
-                function weight(v) {
-                    var p = (v + '').split('.').map(function (x) { return parseInt(x, 10) || 0; });
-                    return (p[0] || 0) * 10000 + (p[1] || 0) * 100 + (p[2] || 0);
+
+                function toSegments(version) {
+                    var normalized = (version == null) ? '' : String(version);
+                    if (!normalized) return null;
+                    var raw = normalized.split('.');
+                    if (!raw.length) return null;
+                    var segs = [];
+                    for (var i = 0; i < raw.length; i++) {
+                        var part = raw[i].trim();
+                        if (!/^\d+$/.test(part)) return null;
+                        segs.push(parseInt(part, 10));
+                    }
+                    return segs;
                 }
-                var best = keys[0];
-                var bestW = weight(best);
-                keys.forEach(function (k) { var w = weight(k); if (w > bestW) { best = k; bestW = w; } });
-                return best;
-            } catch (e) { return null; }
+
+                function compareSegments(a, b) {
+                    var len = Math.max(a.length, b.length);
+                    for (var i = 0; i < len; i++) {
+                        var ai = typeof a[i] === 'number' ? a[i] : 0;
+                        var bi = typeof b[i] === 'number' ? b[i] : 0;
+                        if (ai > bi) return 1;
+                        if (ai < bi) return -1;
+                    }
+                    return 0;
+                }
+
+                var bestKey = null;
+                var bestSegs = null;
+
+                keys.forEach(function (key) {
+                    var segs = toSegments(key);
+                    if (!segs) {
+                        return;
+                    }
+                    if (!bestSegs || compareSegments(segs, bestSegs) > 0) {
+                        bestSegs = segs;
+                        bestKey = key;
+                    }
+                });
+
+                return bestKey;
+            } catch (e) {
+                return null;
+            }
         }
 
         function setLatestFromRemote() {

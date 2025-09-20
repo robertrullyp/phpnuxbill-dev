@@ -2,6 +2,11 @@
 
 # CHANGELOG
 
+## 2025.9.20
+
+- Maintenance release: synchronize version metadata with the latest code snapshot.
+- Version bumped to `2025.9.20`.
+
 ## 2025.8.28
 
 - Plugin Manager: point repository source to custom JSON in fork; updated cache key and loading path.
