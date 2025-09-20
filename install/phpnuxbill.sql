@@ -116,6 +116,7 @@ CREATE TABLE `tbl_plans` (
   `expired_date` TINYINT(1) NOT NULL DEFAULT '20',
   `enabled` tinyint(1) NOT NULL DEFAULT '1' COMMENT '0 disabled\r\n',
   `prepaid` enum('yes','no') CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci DEFAULT 'yes' COMMENT 'is prepaid',
+  `visibility` enum('all','custom','exclude') CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL DEFAULT 'all' COMMENT 'plan visibility for customers',
   `plan_type` enum('Business','Personal') COLLATE utf8mb4_general_ci DEFAULT 'Personal' COMMENT 'For selecting account type',
   `device` varchar(32) COLLATE utf8mb4_general_ci NOT NULL DEFAULT '',
   `on_login` TEXT NULL DEFAULT NULL,
@@ -129,6 +130,17 @@ CREATE TABLE `tbl_pool` (
   `local_ip` varchar(40) COLLATE utf8mb4_general_ci NOT NULL DEFAULT '',
   `range_ip` varchar(40) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL,
   `routers` varchar(40) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- Plan-customer visibility mapping
+DROP TABLE IF EXISTS `tbl_plan_customers`;
+CREATE TABLE `tbl_plan_customers` (
+  `id` int NOT NULL,
+  `plan_id` int NOT NULL,
+  `customer_id` int NOT NULL,
+  UNIQUE KEY `plan_customer_unique` (`plan_id`,`customer_id`),
+  KEY `idx_plan_id` (`plan_id`),
+  KEY `idx_customer_id` (`customer_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 DROP TABLE IF EXISTS `tbl_routers`;
@@ -406,7 +418,7 @@ COMMIT;
 
 INSERT INTO
     `tbl_appconfig` (`id`, `setting`, `value`)
-VALUES (1, 'CompanyName', 'PHPNuxBill'), (2, 'currency_code', 'Rp.'), (3, 'language', 'english'), (4, 'show-logo', '1'), (5, 'nstyle', 'blue'), (6, 'timezone', 'Asia/Jakarta'), (7, 'dec_point', ','), (8, 'thousands_sep', '.'), (9, 'rtl', '0'), (10, 'address', ''), (11, 'phone', ''), (12, 'date_format', 'd M Y'), (13, 'note', 'Thank you...'), (14, 'csrf_enabled', 'yes');
+VALUES (1, 'CompanyName', 'PHPNuxBill'), (2, 'currency_code', 'Rp.'), (3, 'language', 'english'), (4, 'show-logo', '1'), (5, 'nstyle', 'blue'), (6, 'timezone', 'Asia/Jakarta'), (7, 'dec_point', ','), (8, 'thousands_sep', '.'), (9, 'rtl', '0'), (10, 'address', ''), (11, 'phone', ''), (12, 'date_format', 'd M Y'), (13, 'note', 'Thank you...'), (14, 'otp_wait', '600'), (15, 'otp_expiry', '1200');
 
 
 INSERT INTO

@@ -14,7 +14,7 @@ if($db_password != null && ($db_pass == null || empty($db_pass))){
 }
 
 if (empty($update_url)) {
-    $update_url = 'https://github.com/hotspotbilling/phpnuxbill/archive/refs/heads/master.zip';
+    $update_url = 'https://github.com/robertrullyp/phpnuxbill-dev/archive/refs/heads/main.zip';
 }
 
 if(isset($_REQUEST['update_url']) && !empty($_REQUEST['update_url'])){
@@ -49,7 +49,17 @@ if (!extension_loaded('zip')) {
 
 
 $file = pathFixer('system/cache/phpnuxbill.zip');
-$folder = pathFixer('system/cache/phpnuxbill-' . basename($update_url, ".zip") . '/');
+// Detect repo name from update_url (supports both upstream and fork)
+$repo = 'phpnuxbill';
+$urlPath = parse_url($update_url, PHP_URL_PATH);
+if (!empty($urlPath)) {
+    $parts = explode('/', trim($urlPath, '/'));
+    if (count($parts) >= 2 && !empty($parts[1])) {
+        $repo = $parts[1]; // e.g. phpnuxbill or phpnuxbill-dev
+    }
+}
+$zipBase = basename($update_url, ".zip"); // e.g. main, master, or commit SHA
+$folder = pathFixer('system/cache/' . $repo . '-' . $zipBase . '/');
 
 if (empty($step)) {
     $step++;
@@ -80,6 +90,33 @@ if (empty($step)) {
     $zip->open($file);
     $zip->extractTo(pathFixer('system/cache/'));
     $zip->close();
+    // Re-evaluate extracted folder with fallbacks (handles main/master/SHA variations)
+    if (!file_exists($folder)) {
+        $cacheBase = pathFixer('system/cache/');
+        $candidates = [
+            pathFixer($cacheBase . $repo . '-' . $zipBase . '/'),
+            pathFixer($cacheBase . $repo . '-main/'),
+            pathFixer($cacheBase . $repo . '-master/'),
+        ];
+        $found = '';
+        foreach ($candidates as $cand) {
+            if (file_exists($cand)) { $found = $cand; break; }
+        }
+        if (empty($found)) {
+            // As a last resort, pick the newest directory matching <repo>-
+            $dirs = scandir($cacheBase);
+            $latestTime = 0;
+            foreach ($dirs as $d) {
+                if ($d === '.' || $d === '..') continue;
+                $full = pathFixer($cacheBase . $d . '/');
+                if (is_dir($full) && strpos($d, $repo . '-') === 0) {
+                    $t = filemtime($full);
+                    if ($t > $latestTime) { $latestTime = $t; $found = $full; }
+                }
+            }
+        }
+        if (!empty($found)) { $folder = $found; }
+    }
     if (file_exists($folder)) {
         $step++;
     } else {
@@ -289,7 +326,11 @@ function deleteFolder($path)
             </div>
         </section>
         <footer class="footer text-center">
-            PHPNuxBill by <a href="https://github.com/hotspotbilling/phpnuxbill" rel="nofollow noreferrer noopener" target="_blank">iBNuX</a>
+            <a  href="https://github.com/robertrullyp/phpnuxbill-dev" rel="nofollow noreferrer noopener"
+                target="_blank">DRNet</a> Modified by <a href="https://github.com/robertrullyp" rel="nofollow noreferrer noopener"
+                target="_blank">Mr. Free</a> from PHPNuxBill by <a href="https://github.com/hotspotbilling/phpnuxbill" rel="nofollow noreferrer noopener"
+                target="_blank">iBNuX</a>, Theme by <a href="https://adminlte.io/" rel="nofollow noreferrer noopener"
+                target="_blank">AdminLTE</a>
         </footer>
     </div>
 </body>

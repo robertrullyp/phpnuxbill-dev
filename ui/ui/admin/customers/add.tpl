@@ -8,18 +8,26 @@
                 <div class="panel-heading">{Lang::T('Add New Contact')}</div>
                 <div class="panel-body">
                     <div class="form-group">
-                        <label class="col-md-3 control-label">{Lang::T('Username')}</label>
+                        <label class="col-md-3 control-label">
+                            {if $_c['registration_username'] == 'phone'}
+                                {Lang::T('Phone Number')}
+                            {elseif $_c['registration_username'] == 'email'}
+                                {Lang::T('Email')}
+                            {else}
+                                {Lang::T('Usernames')}
+                            {/if}
+                        </label>
                         <div class="col-md-9">
                             <div class="input-group">
-                                {if $_c['country_code_phone'] != ''}
-                                    <span class="input-group-addon" id="basic-addon1"><i
-                                            class="glyphicon glyphicon-phone-alt"></i></span>
+                                {if $_c['registration_username'] == 'phone'}
+                                    <span class="input-group-addon" id="basic-addon1"><i class="glyphicon glyphicon-phone-alt"></i></span>
+                                {elseif $_c['registration_username'] == 'email'}
+                                    <span class="input-group-addon" id="basic-addon1"><i class="glyphicon glyphicon-envelope"></i></span>
                                 {else}
-                                    <span class="input-group-addon" id="basic-addon1"><i
-                                            class="glyphicon glyphicon-user"></i></span>
+                                    <span class="input-group-addon" id="basic-addon1"><i class="glyphicon glyphicon-user"></i></span>
                                 {/if}
                                 <input type="text" class="form-control" name="username" required
-                                    placeholder="{if $_c['country_code_phone']!= ''}{$_c['country_code_phone']} {Lang::T('Phone Number')}{else}{Lang::T('Usernames')}{/if}">
+                                    placeholder="{if $_c['registration_username'] == 'phone'}{if $_c['country_code_phone'] != ''}{$_c['country_code_phone']} {/if}{Lang::T('Phone Number')}{elseif $_c['registration_username'] == 'email'}{Lang::T('Email')}{else}{Lang::T('Usernames')}{/if}">
                             </div>
                         </div>
                     </div>
@@ -126,7 +134,6 @@
                         {Lang::T('User Cannot change this, only admin. if it Empty it will use Customer Credentials')}
                     </span>
                 </div>
-                <div class="panel-heading"></div>
                 <div class="panel-body">
                     <div class="form-group">
                         <label class="col-md-3 control-label">{Lang::T('Send welcome message')}</label>
@@ -139,12 +146,14 @@
                     </div>
                     <div class="form-group" id="method" style="display: none;">
                         <label class="col-md-3 control-label">{Lang::T('Notification via')}</label>
-                        <label class="col-md-3 control-label"><input type="checkbox" name="sms" value="1">
+                        <label class="col-md-1 control-label"><input type="checkbox" name="sms" value="1">
                             {Lang::T('SMS')}</label>
-                        <label class="col-md-2 control-label"><input type="checkbox" name="wa" value="1">
+                        <label class="col-md-1 control-label"><input type="checkbox" name="wa" value="1">
                             {Lang::T('WA')}</label>
-                        <label class="col-md-2 control-label"><input type="checkbox" name="mail" value="1">
+                        <label class="col-md-1 control-label"><input type="checkbox" name="mail" value="1">
                             {Lang::T('Email')}</label>
+                        <label class="col-md-1 control-label"><input type="checkbox" name="inbox" value="1">
+                            {Lang::T('Inbox')}</label>
                     </div>
                 </div>
             </div>

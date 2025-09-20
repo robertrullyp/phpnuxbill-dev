@@ -22,7 +22,7 @@ if (isset($routes['1'])) {
 
 switch ($do) {
     case 'post':
-        $username = _post('username');
+        $raw_username = trim(_post('username'));
         $password = _post('password');
         $csrf_token = _post('csrf_token');
         if (!Csrf::check($csrf_token)) {
@@ -67,8 +67,65 @@ switch ($do) {
         }
 
         run_hook('customer_login'); #HOOK
-        if ($username != '' and $password != '') {
-            $d = ORM::for_table('tbl_customers')->where('username', $username)->find_one();
+        $tsEnabled = (!empty($_c['turnstile_client_enabled']) && $_c['turnstile_client_enabled'] == '1');
+        $secret = $_c['turnstile_secret_key'] ?? '';
+        if ($secret === '' && defined('TURNSTILE_SECRET_KEY')) { $secret = TURNSTILE_SECRET_KEY; }
+        if ($tsEnabled && $secret !== '' && !extension_loaded('curl')) {
+            _msglog('e', Lang::T('cURL extension is missing'));
+            r2(getUrl('login'));
+        }
+        if ($tsEnabled && $secret !== '') {
+            $token = _post('cf-turnstile-response');
+            if (empty($token)) {
+                _msglog('e', Lang::T('Verification required'));
+                r2(getUrl('login'));
+            }
+            $ch = curl_init('https://challenges.cloudflare.com/turnstile/v0/siteverify');
+            $payload = http_build_query([
+                'secret'   => $secret,
+                'response' => $token,
+                // 'remoteip' => $_SERVER['REMOTE_ADDR'] ?? '',
+            ]);
+            curl_setopt_array($ch, [
+                CURLOPT_POST => true,
+                CURLOPT_POSTFIELDS => $payload,
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_TIMEOUT => 10,
+                CURLOPT_HTTPHEADER => ['Content-Type: application/x-www-form-urlencoded'],
+            ]);
+            $resp = curl_exec($ch); $http = curl_getinfo($ch, CURLINFO_HTTP_CODE); $err = curl_error($ch); curl_close($ch);
+            $ok = false; $json = null;
+            if ($http === 200 && $resp) { $json = json_decode($resp, true); $ok = !empty($json['success']); }
+            if (!$ok) {
+                $msg = Lang::T('Captcha verification failed');
+                if (!empty($json['error-codes'])) { $msg .= ' (' . implode(', ', (array)$json['error-codes']) . ')'; }
+                elseif (!empty($err)) { $msg .= ' (' . $err . ')'; }
+                _msglog('e', $msg);
+                r2(getUrl('login'));
+            }
+        }
+        if ($raw_username != '' and $password != '') {
+            $loginType = $_c['registration_username'] ?? 'username';
+            switch ($loginType) {
+                case 'phone':
+                    $username = Lang::phoneFormat($raw_username);
+                    $d = ORM::for_table('tbl_customers')
+                        ->where('phonenumber', $username)
+                        ->find_one();
+                    break;
+                case 'email':
+                    $username = strtolower($raw_username);
+                    $d = ORM::for_table('tbl_customers')
+                        ->where_raw('LOWER(email) = ?', $username)
+                        ->find_one();
+                    break;
+                default:
+                    $username = strtolower($raw_username);
+                    $d = ORM::for_table('tbl_customers')
+                        ->where_raw('LOWER(username) = ? OR LOWER(email) = ?', [$username, $username])
+                        ->find_one();
+                    break;
+            }
             if ($d) {
                 $d_pass = $d['password'];
                 if ($d['status'] == 'Banned') {
@@ -216,17 +273,27 @@ switch ($do) {
             $v1 = ORM::for_table('tbl_voucher')->whereRaw("BINARY code = '$voucher'")->find_one();
             if ($v1) {
                 // voucher exists, check customer exists or not
-                $user = ORM::for_table('tbl_customers')->where('username', $username)->find_one();
+                if ($_c['registration_username'] === 'phone') {
+                    $username = Lang::phoneFormat($username);
+                    $user = ORM::for_table('tbl_customers')->where('phonenumber', $username)->find_one();
+                } else {
+                    $user = ORM::for_table('tbl_customers')->where('username', $username)->find_one();
+                }
                 if (!$user) {
                     $d = ORM::for_table('tbl_customers')->create();
-                    $d->username = alphanumeric($username, "+_.@-");
+                    if ($_c['registration_username'] === 'phone') {
+                        $d->username = $username;
+                        $d->phonenumber = $username;
+                    } else {
+                        $d->username = alphanumeric($username, "+_.@-");
+                        $d->phonenumber = (strlen($username) < 21) ? $username : '';
+                    }
                     $d->password = $voucher;
                     $d->fullname = '';
                     $d->address = '';
                     $d->email = '';
-                    $d->phonenumber = (strlen($username) < 21) ? $username : '';
                     if ($d->save()) {
-                        $user = ORM::for_table('tbl_customers')->where('username', $username)->find_one($d->id());
+                        $user = ORM::for_table('tbl_customers')->where($_c['registration_username'] === 'phone' ? 'phonenumber' : 'username', $username)->find_one($d->id());
                         if (!$user) {
                             r2(getUrl('login'), 'e', Lang::T('Voucher activation failed'));
                         }
@@ -393,3 +460,4 @@ switch ($do) {
 
         break;
 }
+

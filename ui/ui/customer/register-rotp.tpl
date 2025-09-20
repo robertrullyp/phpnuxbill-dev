@@ -20,14 +20,11 @@
                 <div class="panel-heading">1. {Lang::T('Register as Member')}</div>
                 <div class="panel-body">
                     <div class="form-group">
-                        <label>
-                            {Lang::T('Phone Number')}
-                        </label>
+                        <label>{Lang::T('Phone Number')}</label>
                         <div class="input-group">
-                            <span class="input-group-addon" id="basic-addon1"><i
-                                    class="glyphicon glyphicon-phone-alt"></i></span>
+                            <span class="input-group-addon" id="basic-addon1"><i class="glyphicon glyphicon-phone-alt"></i></span>
                             <input type="text" class="form-control" name="phone_number"
-                                placeholder="{if $_c['country_code_phone']!= '' || $_c['registration_username'] == 'phone'}{$_c['country_code_phone']} {Lang::T('Phone Number')}{else}{Lang::T('Phone Number')}{/if}"
+                                placeholder="{if $_c['country_code_phone'] != ''}{$_c['country_code_phone']} {/if}{Lang::T('Phone Number')}"
                                 inputmode="numeric" pattern="[0-9]*">
                         </div>
                     </div>

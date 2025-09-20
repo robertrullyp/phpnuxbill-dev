@@ -26,11 +26,16 @@ if (_post('send') == 'balance') {
         if ($user['status'] != 'Active') {
             _alert(Lang::T('This account status') . ' : ' . Lang::T($user['status']), 'danger', "");
         }
-        $target = ORM::for_table('tbl_customers')->where('username', _post('username'))->find_one();
+        $username = _post('username');
+        if ($_c['registration_username'] === 'phone') {
+            $username = Lang::phoneFormat($username);
+            $target = ORM::for_table('tbl_customers')->where('phonenumber', $username)->find_one();
+        } else {
+            $target = ORM::for_table('tbl_customers')->where('username', $username)->find_one();
+        }
         if (!$target) {
             r2(getUrl('home'), 'd', Lang::T('Username not found'));
         }
-        $username = _post('username');
         $balance = _post('balance');
         if ($user['balance'] < $balance) {
             r2(getUrl('home'), 'd', Lang::T('insufficient balance'));
@@ -94,13 +99,17 @@ if (_post('send') == 'balance') {
     if ($user['status'] != 'Active') {
         _alert(Lang::T('This account status') . ' : ' . Lang::T($user['status']), 'danger', "");
     }
+    $username = _post('username');
+    if ($_c['registration_username'] === 'phone') {
+        $username = Lang::phoneFormat($username);
+    }
     $actives = ORM::for_table('tbl_user_recharges')
-        ->where('username', _post('username'))
+        ->where('username', $username)
         ->find_many();
     foreach ($actives as $active) {
         $router = ORM::for_table('tbl_routers')->where('name', $active['routers'])->find_one();
         if ($router) {
-            r2(getUrl('order/send/$router[id]/$active[plan_id]&u=') . trim(_post('username')), 's', Lang::T('Review package before recharge'));
+            r2(getUrl('order/send/$router[id]/$active[plan_id]&u=') . trim($username), 's', Lang::T('Review package before recharge'));
         }
     }
     r2(getUrl('home'), 'w', Lang::T('Your friend do not have active package'));

@@ -145,8 +145,11 @@ switch ($action) {
 
         $r = ORM::for_table('tbl_routers')->find_many();
         $ui->assign('r', $r);
+        $plans = ORM::for_table('tbl_plans')->find_many();
+        $ui->assign('plans', $plans);
         if (function_exists("shell_exec")) {
-            $php = trim(shell_exec('which php'));
+            $which = stripos(php_uname('s'), "Win") === 0 ? 'where' : 'which';
+            $php = trim(shell_exec("$which php"));
             if (empty($php)) {
                 $php = 'php';
             }
@@ -403,6 +406,10 @@ switch ($action) {
         $tzone = _post('tzone');
         $date_format = _post('date_format');
         $country_code_phone = _post('country_code_phone');
+        if (!ctype_digit($country_code_phone)) {
+            r2(getUrl('settings/localisation'), 'e', Lang::T('Country code must contain digits only'));
+        }
+        $country_code_phone = preg_replace('/\D/', '', $country_code_phone);
         $lan = _post('lan');
         run_hook('save_localisation'); #HOOK
         if ($tzone == '' or $date_format == '' or $lan == '') {
@@ -1208,3 +1215,4 @@ switch ($action) {
     default:
         $ui->display('admin/404.tpl');
 }
+

@@ -21,11 +21,9 @@
                         <div class="form-group">
                             <label>{Lang::T('Phone Number')}</label>
                             <div class="input-group">
-                                <span class="input-group-addon" id="basic-addon1"><i
-                                        class="glyphicon glyphicon-phone-alt"></i></span>
-                                <input type="text" class="form-control" name="phone_number" value="{$phone_number}"
-                                    readonly
-                                    placeholder="{if $_c['country_code_phone']!= '' || $_c['registration_username'] == 'phone'}{$_c['country_code_phone']} {Lang::T('Phone Number')}{else}{Lang::T('Phone Number')}{/if}">
+                                <span class="input-group-addon" id="basic-addon1"><i class="glyphicon glyphicon-phone-alt"></i></span>
+                                <input type="text" class="form-control" name="phone_number" value="{$phone_number}" readonly
+                                    placeholder="{if $_c['country_code_phone'] != ''}{$_c['country_code_phone']} {/if}{Lang::T('Phone Number')}">
                             </div>
                         </div>
                         <div class="form-group">
@@ -44,11 +42,15 @@
                             <input type="text" {if $_c['man_fields_fname'] neq 'no'}required{/if} class="form-control"
                                 id="fullname" value="{$fullname}" name="fullname">
                         </div>
+                        {if $_c['registration_username'] != 'email'}
                         <div class="form-group">
                             <label>{Lang::T('Email')}</label>
                             <input type="text" class="form-control" {if $_c['man_fields_email'] neq 'no'}required{/if}
                                 placeholder="xxxxxx@xxx.xx" id="email" value="{$email}" name="email">
                         </div>
+                        {else}
+                        <input type="hidden" id="email" name="email" value="{$email}">
+                        {/if}
                         <div class="form-group">
                             <label>{Lang::T('Home Address')}</label>
                             <input type="text" name="address" {if $_c['man_fields_address'] neq 'no'}required{/if}
@@ -65,11 +67,38 @@
                 <div class="panel-body">
                     <div class="form-container">
                         <!-- Username Field -->
+                        {if $_c['registration_username'] == 'username'}
                         <div class="form-group">
                             <label>{Lang::T('Usernames')}</label>
                             <input type="text" required class="form-control" id="username" name="username"
-                                placeholder="{Lang::T('Choose a Usernames')}">
+                                placeholder="{Lang::T('Choose a Usernames')}" value="{$username}">
                         </div>
+                        {elseif $_c['registration_username'] == 'email'}
+                        <div class="form-group">
+                            <label>{Lang::T('Email')}</label>
+                            <input type="text" required class="form-control" id="username" name="username"
+                                placeholder="xxxxxx@xxx.xx" value="{$username}">
+                        </div>
+                        <script>
+                        document.addEventListener('DOMContentLoaded', function() {
+                            var u = document.getElementById('username');
+                            var e = document.getElementById('email');
+                            if (u && e) {
+                                e.value = u.value;
+                                u.addEventListener('input', function(){ e.value = u.value; });
+                            }
+                        });
+                        </script>
+                        {else}
+                        <input type="hidden" id="username" name="username">
+                        <script>
+                        document.addEventListener('DOMContentLoaded', function() {
+                            var u = document.getElementById('username');
+                            var p = document.getElementsByName('phone_number')[0];
+                            if (u && p) { u.value = p.value; }
+                        });
+                        </script>
+                        {/if}
                         <!-- Password Fields -->
                         <div class="form-group">
                             <label>{Lang::T('Password')}</label>

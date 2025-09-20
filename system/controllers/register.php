@@ -24,19 +24,27 @@ switch ($do) {
         }
         Csrf::generateAndStoreToken();
         $otp_code = _post('otp_code');
-        $username = alphanumeric(_post('username'), "+_.@-");
+        $phone_number = alphanumeric(_post('phone_number'), "+_.@-");
+        if ($_c['registration_username'] === 'phone') {
+            $username = Lang::phoneFormat($phone_number);
+        } else {
+            $username = alphanumeric(_post('username'), "+_.@-");
+        }
         $email = _post('email');
+        if ($_c['registration_username'] === 'email') {
+            $email = $username;
+        }
         $fullname = _post('fullname');
         $password = _post('password');
         $cpassword = _post('cpassword');
         $address = _post('address');
 
-        // Separate phone number input if OTP is required
-        $phone_number = ($config['sms_otp_registration'] == 'yes') ? alphanumeric(_post('phone_number'), "+_.@-") : $username;
-
         $msg = '';
-        if (Validator::Length($username, 35, 2) == false) {
+        if ($_c['registration_username'] !== 'phone' && Validator::Length($username, 35, 2) == false) {
             $msg .= "Username should be between 3 to 55 characters<br>";
+        }
+        if ($_c['registration_username'] === 'email' && !Validator::Email($username)) {
+            $msg .= 'Email is not Valid<br>';
         }
         if ($config['man_fields_fname'] == 'yes') {
             if (Validator::Length($fullname, 36, 2) == false) {
@@ -59,10 +67,10 @@ switch ($do) {
         if ($_c['sms_otp_registration'] == 'yes') {
             $otpPath .= sha1("$phone_number$db_pass") . ".txt";
             run_hook('validate_otp'); #HOOK
-            // Expire after 10 minutes
-            if (file_exists($otpPath) && time() - filemtime($otpPath) > 1200) {
+            // Expire after configured time
+            if (file_exists($otpPath) && time() - filemtime($otpPath) > (int)$_c['otp_expiry']) {
                 unlink($otpPath);
-                r2(getUrl('register'), 's', 'Verification code expired');
+                r2(getUrl('register'), 'e', 'Verification code expired');
             } else if (file_exists($otpPath)) {
                 $code = file_get_contents($otpPath);
                 if ($code != $otp_code) {
@@ -81,14 +89,35 @@ switch ($do) {
                     unlink($otpPath);
                 }
             } else {
-                r2(getUrl('register'), 's', 'No Verification code');
+                r2(getUrl('register'), 'e', 'No Verification code');
             }
         }
 
-        // Check if username already exists
-        $d = ORM::for_table('tbl_customers')->where('username', $username)->find_one();
-        if ($d) {
-            $msg .= Lang::T('Account already exists') . '<br>';
+        // Validate phone number format
+        if ($_c['sms_otp_registration'] == 'yes' || $_c['registration_username'] === 'phone') {
+            if (!Validator::PhoneWithCountry($phone_number)) {
+                $msg .= Lang::T('Invalid phone number; start with 62 or 0') . '<br>';
+            }
+        }
+
+        if ($_c['registration_username'] === 'phone') {
+            $formatted = $username;
+            $d = ORM::for_table('tbl_customers')->where('phonenumber', $username)->find_one();
+            if ($d) {
+                $msg .= Lang::T('Account already exists') . '<br>';
+            }
+        } else {
+            $formatted = Lang::phoneFormat($phone_number);
+            $d = ORM::for_table('tbl_customers')->where('username', $username)->find_one();
+            if ($d) {
+                $msg .= Lang::T('Account already exists') . '<br>';
+            }
+            if ($_c['sms_otp_registration'] == 'yes') {
+                $d = ORM::for_table('tbl_customers')->where('phonenumber', $formatted)->find_one();
+                if ($d) {
+                    $msg .= Lang::T('Phone number already exists') . '<br>';
+                }
+            }
         }
         // Check if phone number already exists
         $d = ORM::for_table('tbl_customers')->where('phonenumber', $phone_number)->find_one();
@@ -102,8 +131,12 @@ switch ($do) {
             $d->password = $password;
             $d->fullname = $fullname;
             $d->address = $address;
-            $d->email = $email;
-            $d->phonenumber = $phone_number;
+            if ($_c['registration_username'] === 'email') {
+                $d->email = $d->username;
+            } else {
+                $d->email = $email;
+            }
+            $d->phonenumber = $formatted;
             if ($d->save()) {
                 $user = $d->id();
                 if ($config['photo_register'] == 'yes' && !empty($_FILES['photo']['name']) && file_exists($_FILES['photo']['tmp_name'])) {
@@ -128,6 +161,12 @@ switch ($do) {
                     unlink($_FILES['photo']['tmp_name']);
                 User::setFormCustomField($user);
                 run_hook('register_user'); #HOOK
+                if (isset($config['welcome_package_enable']) && $config['welcome_package_enable'] == 'yes' && !empty($config['welcome_package_plan'])) {
+                    $plan = ORM::for_table('tbl_plans')->find_one($config['welcome_package_plan']);
+                    if ($plan) {
+                        Package::rechargeUser($user, $plan['routers'], $plan['id'], 'Welcome', 'Auto');
+                    }
+                }
                 $msg .= Lang::T('Registration successful') . '<br>';
                 if ($config['reg_nofify_admin'] == 'yes') {
                     sendTelegram($config['CompanyName'] . ' - ' . Lang::T('New User Registration') . "\n\nFull Name: " . $fullname . "\nUsername: " . $username . "\nEmail: " . $email . "\nPhone Number: " . $phone_number . "\nAddress: " . $address);
@@ -208,29 +247,65 @@ switch ($do) {
         if ($_c['sms_otp_registration'] == 'yes') {
             $phone_number = _post('phone_number');
             if (!empty($phone_number)) {
-                $d = ORM::for_table('tbl_customers')->where('phonenumber', $phone_number)->find_one();
-                if ($d) {
-                    r2(getUrl('register'), 'e', Lang::T('Phone number already registered by another customer'));
+                if ($_c['registration_username'] === 'phone') {
+                    if (!Validator::PhoneWithCountry($phone_number)) {
+                        r2(getUrl('register'), 'e', Lang::T('Invalid phone number; start with 62 or 0'));
+                    }
+                    $phone_number = Lang::phoneFormat($phone_number);
+                    $d = ORM::for_table('tbl_customers')->where('phonenumber', $phone_number)->find_one();
+                    if ($d) {
+                        r2(getUrl('register'), 'e', Lang::T('Account already exists'));
+                    }
+                } else {
+                    $d = ORM::for_table('tbl_customers')->where('username', $phone_number)->find_one();
+                    if ($d) {
+                        r2(getUrl('register'), 'e', Lang::T('Account already exists'));
+                    }
+                    if (!Validator::PhoneWithCountry($phone_number)) {
+                        r2(getUrl('register'), 'e', Lang::T('Invalid phone number; start with 62 or 0'));
+                    }
+                    $phone_number = Lang::phoneFormat($phone_number);
+                    $d = ORM::for_table('tbl_customers')->where('phonenumber', $phone_number)->find_one();
+                    if ($d) {
+                        r2(getUrl('register'), 'e', Lang::T('Phone number already exists'));
+                    }
                 }
                 if (!file_exists($otpPath)) {
                     mkdir($otpPath);
                     touch($otpPath . 'index.html');
                 }
                 $otpPath .= sha1($phone_number . $db_pass) . ".txt";
-                if (file_exists($otpPath) && time() - filemtime($otpPath) < 600) {
+                if (file_exists($otpPath) && time() - filemtime($otpPath) < (int)$_c['otp_wait']) {
                     $ui->assign('phone_number', $phone_number);
-                    $ui->assign('notify', 'Please wait ' . (600 - (time() - filemtime($otpPath))) . ' seconds before sending another SMS');
+                    $ui->assign('notify', 'Please wait ' . ((int)$_c['otp_wait'] - (time() - filemtime($otpPath))) . ' seconds before sending another SMS');
                     $ui->assign('notify_t', 'd');
                     $ui->assign('_title', Lang::T('Register'));
                     $ui->assign('csrf_token', $csrf_token);
-                    $ui->display('customer/register-otp.tpl');
+                    $ui->display('customer/register-rotp.tpl');
+                    return;
                 } else {
                     $otp = rand(100000, 999999);
                     file_put_contents($otpPath, $otp);
                     if ($config['phone_otp_type'] == 'whatsapp') {
-                        Message::sendWhatsapp($phone_number, $config['CompanyName'] . "\n\n" . Lang::T("Registration code") . "\n$otp");
+                        $waSent = Message::sendWhatsapp($phone_number, $config['CompanyName'] . "\n\n" . Lang::T("Registration code") . "\n$otp");
+                        if ($waSent === false) {
+                            $ui->assign('notify', Lang::T('OTP not sent: phone number isn\'t registered on WhatsApp'));
+                            $ui->assign('notify_t', 'd');
+                            $ui->assign('_title', Lang::T('Register'));
+                            run_hook('view_otp_register'); #HOOK
+                            $ui->display('customer/register-rotp.tpl');
+                            return;
+                        }
                     } else if ($config['phone_otp_type'] == 'both') {
-                        Message::sendWhatsapp($phone_number, $config['CompanyName'] . "\n\n" . Lang::T("Registration code") . "\n$otp");
+                        $waSent = Message::sendWhatsapp($phone_number, $config['CompanyName'] . "\n\n" . Lang::T("Registration code") . "\n$otp");
+                        if ($waSent === false) {
+                            $ui->assign('notify', Lang::T('OTP not sent: phone number isn\'t registered on WhatsApp'));
+                            $ui->assign('notify_t', 'd');
+                            $ui->assign('_title', Lang::T('Register'));
+                            run_hook('view_otp_register'); #HOOK
+                            $ui->display('customer/register-rotp.tpl');
+                            return;
+                        }
                         Message::sendSMS($phone_number, $config['CompanyName'] . "\n\n" . Lang::T("Registration code") . "\n$otp");
                     } else {
                         Message::sendSMS($phone_number, $config['CompanyName'] . "\n\n" . Lang::T("Registration code") . "\n$otp");
@@ -248,6 +323,7 @@ switch ($do) {
                 run_hook('view_otp_register'); #HOOK
                 $ui->assign('csrf_token', $csrf_token);
                 $ui->display('customer/register-rotp.tpl');
+                return;
             }
         } else {
             $UPLOAD_URL_PATH = str_replace($root_path, '', $UPLOAD_PATH);

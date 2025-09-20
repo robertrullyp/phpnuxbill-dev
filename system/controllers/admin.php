@@ -21,7 +21,7 @@ if (isset($routes['1'])) {
 
 switch ($do) {
     case 'post':
-        $username = _post('username');
+        $username = strtolower(trim(_post('username')));
         $password = _post('password');
         //csrf token
         $csrf_token = _post('csrf_token');
@@ -30,9 +30,6 @@ switch ($do) {
         }
         Csrf::generateAndStoreToken();
         run_hook('admin_login'); #HOOK
-
-        // ==== Cloudflare Turnstile server-side validation ====
-        // Aktif jika toggle Admin ON dan secret tersedia (bypass untuk API)
         $tsEnabled = (!empty($_c['turnstile_admin_enabled']) && $_c['turnstile_admin_enabled'] == '1');
         $secret = $_c['turnstile_secret_key'] ?? '';
         if ($secret === '' && defined('TURNSTILE_SECRET_KEY')) {
@@ -66,7 +63,6 @@ switch ($do) {
                 $ok = isset($json['success']) && $json['success'] === true;
             }
             if (!$ok) {
-                // Pesan lebih rinci jika tersedia
                 $msg = Lang::T('Verification failed');
                 if (!empty($json['error-codes'])) {
                     $msg .= ' (' . implode(', ', (array)$json['error-codes']) . ')';
@@ -76,11 +72,12 @@ switch ($do) {
                 _log($username . ' ' . Lang::T('Failed Turnstile verification'), 'Admin');
                 _alert($msg, 'danger', "admin");
             }
-        }
-        // ==== end Turnstile validation ====
-
+        }   
         if ($username != '' and $password != '') {
-            $d = ORM::for_table('tbl_users')->where('username', $username)->find_one();
+            $username = strtolower($username);
+            $d = ORM::for_table('tbl_users')
+                ->where_raw('LOWER(username) = ? OR LOWER(email) = ?', [$username, $username])
+                ->find_one();
             if ($d) {
                 $d_pass = $d['password'];
                 if (Password::_verify($password, $d_pass) == true) {
@@ -111,7 +108,6 @@ switch ($do) {
         break;
     default:
         run_hook('view_login'); #HOOK
-        // Oper ke template: gunakan site key dari setting, fallback ke konstanta
         $sitekey = $_c['turnstile_site_key'] ?? '';
         if ($sitekey === '' && defined('TURNSTILE_SITE_KEY')) {
             $sitekey = TURNSTILE_SITE_KEY;
@@ -122,3 +118,4 @@ switch ($do) {
         $ui->display('admin/admin/login.tpl');
         break;
 }
+

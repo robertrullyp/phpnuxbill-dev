@@ -95,11 +95,25 @@
                                     {Lang::T('Yes')}
                                 </option>
                             </select>
-                        </div>
-                        <p class="help-block col-md-4"><small>
+                    </div>
+                    <p class="help-block col-md-4"><small>
                                 {Lang::T('OTP is required when user want to change Email Address')}
                             </small>
                         </p>
+                    </div>
+                    <div class="form-group">
+                        <label class="col-md-3 control-label">{Lang::T('OTP Wait Time')}</label>
+                        <div class="col-md-5">
+                            <input type="number" name="otp_wait" id="otp_wait" class="form-control" value="{$_c['otp_wait']}">
+                        </div>
+                        <p class="help-block col-md-4"><small>{Lang::T('Seconds before a new OTP can be requested')}</small></p>
+                    </div>
+                    <div class="form-group">
+                        <label class="col-md-3 control-label">{Lang::T('OTP Expiry')}</label>
+                        <div class="col-md-5">
+                            <input type="number" name="otp_expiry" id="otp_expiry" class="form-control" value="{$_c['otp_expiry']}">
+                        </div>
+                        <p class="help-block col-md-4"><small>{Lang::T('Validity duration in seconds for an OTP')}</small></p>
                     </div>
                     <div class="form-group">
                         <label class="col-md-3 control-label">{Lang::T('Show Bandwidth Plan')}</label>

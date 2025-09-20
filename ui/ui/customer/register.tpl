@@ -17,31 +17,35 @@
                 <div class="panel-heading">1. {Lang::T('Register as Member')}</div>
                 <div class="panel-body">
                     <div class="form-container">
+                        {if $_c['registration_username'] != 'phone'}
                         <div class="form-group">
                             <label>
-                                {if $_c['registration_username'] == 'phone'}
-                                    {Lang::T('Phone Number')}
-                                {elseif $_c['registration_username'] == 'email'}
+                                {if $_c['registration_username'] == 'email'}
                                     {Lang::T('Email')}
-                                {else}
+                                {elseif $_c['registration_username'] == 'username'}
                                     {Lang::T('Usernames')}
+                                {else}
+                                    {Lang::T('Phone Number')}
                                 {/if}
                             </label>
                             <div class="input-group">
-                                {if $_c['registration_username'] == 'phone'}
-                                    <span class="input-group-addon" id="basic-addon1"><i
-                                            class="glyphicon glyphicon-phone-alt"></i></span>
-                                {elseif $_c['registration_username'] == 'email'}
+                                {if $_c['registration_username'] == 'email'}
                                     <span class="input-group-addon" id="basic-addon1"><i
                                             class="glyphicon glyphicon-envelope"></i></span>
-                                {else}
+                                {elseif $_c['registration_username'] == 'username'}
                                     <span class="input-group-addon" id="basic-addon1"><i
                                             class="glyphicon glyphicon-user"></i></span>
+                                {else}
+                                    <span class="input-group-addon" id="basic-addon1"><i
+                                            class="glyphicon glyphicon-phone-alt"></i></span>
                                 {/if}
-                                <input type="text" class="form-control" name="username"
-                                    placeholder="{if $_c['country_code_phone']!= '' || $_c['registration_username'] == 'phone'}{$_c['country_code_phone']} {Lang::T('Phone Number')}{elseif $_c['registration_username'] == 'email'}{Lang::T('Email')}{else}{Lang::T('Usernames')}{/if}">
+                                <input type="text" class="form-control" id="username" name="username"
+                                    placeholder="{if $_c['registration_username'] == 'email'}{Lang::T('Email')}{elseif $_c['registration_username'] == 'username'}{Lang::T('Usernames')}{else}{if $_c['country_code_phone'] != ''}{$_c['country_code_phone']} {/if}{Lang::T('Phone Number')}{/if}">
                             </div>
                         </div>
+                        {else}
+                        <input type="hidden" id="username" name="username">
+                        {/if}
                         {if $_c['photo_register'] == 'yes'}
                             <div class="form-group">
                                 <label>{Lang::T('Photo')}</label>
@@ -53,11 +57,25 @@
                             <input type="text" {if $_c['man_fields_fname'] neq 'no'}required{/if} class="form-control"
                                 id="fullname" value="{$fullname}" name="fullname">
                         </div>
+                        {if $_c['registration_username'] != 'email'}
                         <div class="form-group">
                             <label>{Lang::T('Email')}</label>
                             <input type="text" {if $_c['man_fields_email'] neq 'no'}required{/if} class="form-control"
                                 id="email" placeholder="xxxxxxx@xxxx.xx" value="{$email}" name="email">
                         </div>
+                        {else}
+                        <input type="hidden" id="email" name="email" value="{$username}">
+                        <script>
+                        document.addEventListener('DOMContentLoaded', function() {
+                            var u = document.getElementById('username');
+                            var e = document.getElementById('email');
+                            if (u && e) {
+                                e.value = u.value;
+                                u.addEventListener('input', function() { e.value = u.value; });
+                            }
+                        });
+                        </script>
+                        {/if}
                         <div class="form-group">
                             <label>{Lang::T('Home Address')}</label>
                             <input type="text" {if $_c['man_fields_address'] neq 'no'}required{/if} name="address"

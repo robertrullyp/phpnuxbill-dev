@@ -113,6 +113,9 @@ foreach ($result as $value) {
     $config[$value['setting']] = $value['value'];
 }
 
+if (empty($config['otp_wait']))  $config['otp_wait']  = 600;
+if (empty($config['otp_expiry'])) $config['otp_expiry'] = 1200;
+
 if(empty($config['dashboard_Admin'])){
     $config['dashboard_Admin'] = "12.7,5.12";
 }

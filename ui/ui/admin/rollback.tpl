@@ -1,9 +1,5 @@
 {include file="sections/header.tpl"}
 
-<center><a href="https://s.id/standwithpalestine" target="_blank"><img
-            src="https://raw.githubusercontent.com/Safouene1/support-palestine-banner/master/banner-support.svg"
-            class="img-responsive"></a></center>
-<br><br>
 <div class="row">
     <div class="col-sm-6">
         <div class="box box-hovered mb20 box-primary">
@@ -17,7 +13,7 @@
                             <tr>
                             <td>{Lang::dateTimeFormat(str_replace(['Z','T'],'',$data['commit']['author']['date']))}</td>
                                 <td>
-                                    <a href="/update.php?update_url=https://github.com/hotspotbilling/phpnuxbill/archive/{$data['sha']}.zip"
+                                    <a href="/update.php?update_url=https://github.com/robertrullyp/phpnuxbill-dev/archive/{$data['sha']}.zip"
                                         class="btn btn-sm btn-primary">
                                         install
                                     </a>
@@ -42,7 +38,7 @@
                             <tr>
                             <td>{Lang::dateTimeFormat(str_replace(['Z','T'],'',$data['commit']['author']['date']))}</td>
                                 <td>
-                                    <a href="/update.php?update_url=https://github.com/hotspotbilling/phpnuxbill/archive/{$data['sha']}.zip"
+                                    <a href="/update.php?update_url=https://github.com/robertrullyp/phpnuxbill-dev/archive/{$data['sha']}.zip"
                                         class="btn btn-sm btn-primary">
                                         install
                                     </a>

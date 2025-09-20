@@ -39,6 +39,8 @@ switch ($action) {
         $ui->assign('_title', 'Top Up');
         $ui->assign('_system_menu', 'balance');
         $plans_balance = ORM::for_table('tbl_plans')->where('enabled', '1')->where('type', 'Balance')->where('prepaid', 'yes')->find_many();
+        // Apply visibility filter for current user
+        $plans_balance = Package::filterPlansForCustomer($plans_balance, $user['id']);
         $ui->assign('plans_balance', $plans_balance);
         $ui->assign('csrf_token', Csrf::generateAndStoreToken());
         $ui->display('customer/orderBalance.tpl');
@@ -127,6 +129,12 @@ switch ($action) {
                 ->where('prepaid', 'yes')
                 ->find_many();
         }
+        // Apply visibility filter for current user
+        if (isset($radius_pppoe)) { $radius_pppoe = Package::filterPlansForCustomer($radius_pppoe, $user['id']); }
+        if (isset($radius_hotspot)) { $radius_hotspot = Package::filterPlansForCustomer($radius_hotspot, $user['id']); }
+        if (isset($plans_pppoe)) { $plans_pppoe = Package::filterPlansForCustomer($plans_pppoe, $user['id']); }
+        if (isset($plans_hotspot)) { $plans_hotspot = Package::filterPlansForCustomer($plans_hotspot, $user['id']); }
+        if (isset($plans_vpn)) { $plans_vpn = Package::filterPlansForCustomer($plans_vpn, $user['id']); }
         $ui->assign('routers', $routers);
         $ui->assign('radius_pppoe', $radius_pppoe);
         $ui->assign('radius_hotspot', $radius_hotspot);
@@ -215,6 +223,10 @@ switch ($action) {
         $plan = ORM::for_table('tbl_plans')->find_one($routes[3]);
         if (!$plan) {
             r2(getUrl('order/package'), 'e', Lang::T("Plan Not found"));
+        }
+        // visibility guard: prevent buying plans not assigned to this customer
+        if (!Package::isPlanVisibleToCustomer($plan, $user['id'])) {
+            r2(getUrl('order/package'), 'e', Lang::T('Plan not available for your account'));
         }
         if ($plan['is_radius'] == '1') {
             $router_name = 'radius';
@@ -308,7 +320,13 @@ switch ($action) {
             if (!Csrf::check($csrf_token)) {
                 r2($_SERVER['HTTP_REFERER'], 'e', Lang::T('Invalid or Expired CSRF Token') . '.');
             }
-            $target = ORM::for_table('tbl_customers')->where('username', _post('username'))->find_one();
+            $username = _post('username');
+            if ($_c['registration_username'] === 'phone') {
+                $username = Lang::phoneFormat($username);
+                $target = ORM::for_table('tbl_customers')->where('phonenumber', $username)->find_one();
+            } else {
+                $target = ORM::for_table('tbl_customers')->where('username', $username)->find_one();
+            }
             list($bills, $add_cost) = User::getBills($target['id']);
             if (!empty($add_cost)) {
                 $ui->assign('bills', $bills);
@@ -325,8 +343,12 @@ switch ($action) {
             if ($user['username'] == $target['username']) {
                 r2(getUrl('order/pay/$routes[2]/$routes[3]'), 's', '^_^ v');
             }
+            // Ensure the plan is visible to the target customer when visibility is custom
+            if (!Package::isPlanVisibleToCustomer($plan, $target['id'])) {
+                r2(getUrl('order/package'), 'e', Lang::T('Plan not available for the target customer'));
+            }
             $active = ORM::for_table('tbl_user_recharges')
-                ->where('username', _post('username'))
+                ->where('username', $username)
                 ->where('status', 'on')
                 ->find_one();
 
@@ -418,6 +440,12 @@ switch ($action) {
             $tax_rate = $tax_rate_setting;
         }
         $plan = ORM::for_table('tbl_plans')->find_one($routes['3']);
+        if (!$plan) {
+            r2(getUrl('order/package'), 'e', Lang::T('Plan Not found'));
+        }
+        if (!Package::isPlanVisibleToCustomer($plan, $user['id'])) {
+            r2(getUrl('order/package'), 'e', Lang::T('Plan not available for your account'));
+        }
         $add_cost = 0;
         if ($router['name'] != 'balance') {
             list($bills, $add_cost) = User::getBills($id_customer);
@@ -629,6 +657,10 @@ switch ($action) {
                 }
                 if (empty($router) || empty($plan)) {
                     r2(getUrl('order/package'), 'e', Lang::T("Plan Not found"));
+                }
+                // Ensure visibility for current user
+                if (!Package::isPlanVisibleToCustomer($plan, $user['id'])) {
+                    r2(getUrl('order/package'), 'e', Lang::T('Plan not available for your account'));
                 }
                 $d = ORM::for_table('tbl_payment_gateway')
                     ->where('username', $user['username'])

@@ -2,6 +2,14 @@
 
 # CHANGELOG
 
+## 2025.8.28
+
+- Plugin Manager: point repository source to custom JSON in fork; updated cache key and loading path.
+- Payment Gateway: update Duitku repository entry to `robertrullyp/phpnuxbill-pgplugin-duitku` in local `plugin-repository.json` for testing.
+- Updater: fix extracted folder detection to support fork archive names (e.g., `phpnuxbill-dev-main` or commit SHA).
+- Community: make Latest Version fetch more resilient (fetch with fallback); align Rollback to this fork commits and ZIPs.
+- Version bumped to `2025.8.28`.
+
 ## 2024.10.23
 
 - Custom Balance admin refill Requested by Javi Tech

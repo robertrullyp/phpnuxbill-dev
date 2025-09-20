@@ -1,10 +1,5 @@
 {include file="sections/header.tpl"}
 
-<center><a href="https://s.id/standwithpalestine" target="_blank"><img
-            src="https://raw.githubusercontent.com/Safouene1/support-palestine-banner/master/banner-support.svg"
-            class="img-responsive"></a></center>
-<br><br>
-
 <div class="row">
     <div class="col-sm-6">
 
@@ -42,78 +37,15 @@
     <div class="col-sm-6">
         <div class="box box-hovered mb20 box-primary">
             <div class="box-header">
-                <h3 class="box-title">{Lang::T('Donations')} 🇮🇩</h3>
-            </div>
-            <div class="box-body">{Lang::T('To support further development, please donate to iBNuX. Your donation will help ensure the continued development of this application.')}</div>
-            <div class="table-responsive">
-                <table class="table table-bordered table-striped">
-                    <tbody>
-                        <tr>
-                            <td>BCA</td>
-                            <td>5410-454-825</td>
-                        </tr>
-                        <tr>
-                            <td>Mandiri</td>
-                            <td>163-000-1855-793</td>
-                        </tr>
-                        <tr>
-                            <td>Atas nama</td>
-                            <td>Ibnu Maksum</td>
-                        </tr>
-                    </tbody>
-                </table>
-            </div>
-            <div class="box-footer">
-                <div class="btn-group btn-group-justified" role="group" aria-label="...">
-                    <a href="https://trakteer.id/ibnux" target="_blank"
-                        class="btn btn-success text-black btn-sm btn-block">Trakteer</a>
-                    <a href="https://karyakarsa.com/ibnux/support" target="_blank"
-                        class="btn btn-info text-black btn-sm btn-block">karyakarsa</a>
-                </div>
-            </div>
-        </div>
-    </div>
-    <div class="col-sm-6">
-        <div class="box box-hovered mb20 box-primary">
-            <div class="box-header">
-                <h3 class="box-title">{Lang::T('Donations other than')} 🇮🇩</h3>
+                <h3 class="box-title">{Lang::T('Chat with Me — Bring Some Cup of Coffee')}</h3>
             </div>
             <div class="box-body">
-                {Lang::T('Your donation will help support and continue the development of PHPNuxBill.')}
-            </div>
-            <div class="table-responsive">
-                <table class="table table-bordered table-striped">
-                    <tbody>
-                        <tr>
-                            <td>Bank Central Asia</td>
-                            <td>5410-454-825</td>
-                        </tr>
-                        <tr>
-                            <td>SWIFT/BIC</td>
-                            <td>CENAIDJA</td>
-                        </tr>
-                        <tr>
-                            <td>Jakarta</td>
-                            <td>Indonesia</td>
-                        </tr>
-                        <tr>
-                            <td>Account Name</td>
-                            <td>Ibnu Maksum</td>
-                        </tr>
-                    </tbody>
-                </table>
+                {Lang::T('Let\'s talk and ask your needs')}
             </div>
             <div class="box-footer">
-                <div class="btn-group btn-group-justified" role="group" aria-label="...">
-                    <a href="https://paypal.me/ibnux" target="_blank"
-                        class="btn btn-primary btn-sm btn-block">Paypal</a>
-                </div>
+                <a href="https://t.me/robertrullyp" target="_blank" class="btn btn-primary btn-sm btn-block">{Lang::T('Telegram')}</a>
             </div>
         </div>
-    </div>
-</div>
-<div class="row">
-    <div class="col-sm-6">
         <div class="box box-hovered mb20 box-primary">
             <div class="box-header">
                 <h3 class="box-title">{Lang::T('Chat with Me — Paid Support $50')}</h3>
@@ -123,6 +55,17 @@
             </div>
             <div class="box-footer">
                 <a href="https://t.me/ibnux" target="_blank" class="btn btn-primary btn-sm btn-block">{Lang::T('Telegram')}</a>
+            </div>
+        </div>
+        <div class="box box-hovered mb20 box-primary">
+            <div class="box-header">
+                <h3 class="box-title">{Lang::T('Or Chat with Me and bring some cup of coffee')}</h3>
+            </div>
+            <div class="box-body">
+                {Lang::T('Confirm your donation to continue this paid support. Or, ask about alternative donations available to suit your needs.')}
+            </div>
+            <div class="box-footer">
+                <a href="https://t.me/robertrullyp" target="_blank" class="btn btn-primary btn-sm btn-block">{Lang::T('Telegram')}</a>
             </div>
         </div>
         <div class="box box-primary box-hovered mb20 activities">
@@ -146,7 +89,7 @@
             <div class="box-body">
                 <b>PHPNuxBill</b>
                 {Lang::T('is a Hotspot and PPPoE billing platform for Mikrotik developed using PHP. The application uses Mikrotik API to communicate with the router, ensuring efficient and easy integration. If you feel you get more benefits from this application, we would greatly appreciate your contribution through donation.')}<br>{Lang::T('Watch project –')} <a
-                    href="https://github.com/hotspotbilling/phpnuxbill" target="_blank">{Lang::T('IN HERE')}</a>
+                    href="https://github.com/robertrullyp/phpnuxbill-dev" target="_blank">{Lang::T('IN HERE')}</a>
             </div>
             <div class="box-footer" id="currentVersion">ver</div>
             <div class="box-footer" id="latestVersion">ver</div>
@@ -154,7 +97,7 @@
                 <div class="btn-group btn-group-justified" role="group" aria-label="...">
                     <a href="./update.php"
                         class="btn btn-success btn-sm btn-block">{Lang::T('Install Latest Version')}</a>
-                    <a href="https://github.com/hotspotbilling/phpnuxbill/archive/refs/heads/master.zip" target="_blank"
+                    <a href="https://github.com/robertrullyp/phpnuxbill-dev/archive/refs/heads/main.zip" target="_blank"
                         class="btn btn-warning btn-sm btn-block text-black">{Lang::T('Download Latest Version')}</a>
                 </div>
                 <center><a href="{Text::url('community/rollback')}"
@@ -165,7 +108,7 @@
                 <div class="btn-group btn-group-justified" role="group" aria-label="...">
                     <a href="./CHANGELOG.md" target="_blank"
                         class="btn btn-default btn-sm btn-block">{Lang::T('Current Changelog')}</a>
-                    <a href="https://github.com/hotspotbilling/phpnuxbill/blob/master/CHANGELOG.md" target="_blank"
+                    <a href="https://github.com/robertrullyp/phpnuxbill-dev/blob/main/CHANGELOG.md" target="_blank"
                         class="btn btn-default btn-sm btn-block">{Lang::T('Repo Changelog')}</a>
                 </div>
             </div>
@@ -268,15 +211,53 @@
 </div>
 </div>
 <script>
-    window.addEventListener('DOMContentLoaded', function() {
-        $.getJSON("./version.json?" + Math.random(), function(data) {
-            $('#currentVersion').html('Current Version: ' + data.version);
-        });
-        $.getJSON("https://raw.githubusercontent.com/hotspotbilling/phpnuxbill/master/version.json?" + Math
-            .random(),
-            function(data) {
-                $('#latestVersion').html('Latest Version: ' + data.version);
-            });
+    window.addEventListener('DOMContentLoaded', function () {
+        function setText(sel, txt) {
+            var el = document.querySelector(sel);
+            if (el) el.textContent = txt;
+        }
+        // Current version (local)
+        fetch('./version.json?' + Math.random())
+            .then(function (r) { return r.json(); })
+            .then(function (data) { setText('#currentVersion', 'Current Version: ' + data.version); })
+            .catch(function () { setText('#currentVersion', 'Current Version: unknown'); });
+
+        // Helpers
+        function latestFromUpdatesJson(updates) {
+            try {
+                var keys = Object.keys(updates || {});
+                if (!keys.length) return null;
+                function weight(v) {
+                    var p = (v + '').split('.').map(function (x) { return parseInt(x, 10) || 0; });
+                    return (p[0] || 0) * 10000 + (p[1] || 0) * 100 + (p[2] || 0);
+                }
+                var best = keys[0];
+                var bestW = weight(best);
+                keys.forEach(function (k) { var w = weight(k); if (w > bestW) { best = k; bestW = w; } });
+                return best;
+            } catch (e) { return null; }
+        }
+
+        function setLatestFromRemote() {
+            var verUrl = 'https://raw.githubusercontent.com/robertrullyp/phpnuxbill-dev/main/version.json?' + Math.random();
+            var updUrl = 'https://raw.githubusercontent.com/robertrullyp/phpnuxbill-dev/main/system/updates.json?' + Math.random();
+            fetch(verUrl, { mode: 'cors' })
+                .then(function (r) { if (!r.ok) throw new Error('bad status'); return r.json(); })
+                .then(function (data) { if (data && data.version) { setText('#latestVersion', 'Latest Version: ' + data.version); } else { throw new Error('no version'); } })
+                .catch(function () {
+                    // Fallback: infer latest from updates.json
+                    fetch(updUrl, { mode: 'cors' })
+                        .then(function (r) { if (!r.ok) throw new Error('bad status'); return r.json(); })
+                        .then(function (data) {
+                            var v = latestFromUpdatesJson(data);
+                            if (v) setText('#latestVersion', 'Latest Version: ' + v); else setText('#latestVersion', 'Latest Version: unavailable');
+                        })
+                        .catch(function () { setText('#latestVersion', 'Latest Version: unavailable'); });
+                });
+        }
+
+        // Latest version (remote repo) with fallback
+        setLatestFromRemote();
     });
-</script>
+    </script>
 {include file="sections/footer.tpl"}

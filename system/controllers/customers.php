@@ -525,10 +525,16 @@ switch ($action) {
         if (!Validator::Length($password, 36, 2)) {
             $msg .= 'Password should be between 3 to 35 characters' . '<br>';
         }
+        if (!Validator::PhoneWithCountry($phonenumber)) {
+            $msg .= Lang::T('Invalid phone number; start with 62 or 0') . '<br>';
+        }
 
         $d = ORM::for_table('tbl_customers')->where('username', $username)->find_one();
         if ($d) {
             $msg .= Lang::T('Account already axist') . '<br>';
+        }
+        if (ORM::for_table('tbl_customers')->where('phonenumber', Lang::phoneFormat($phonenumber))->find_one()) {
+            $msg .= Lang::T('Phone number already exists') . '<br>';
         }
         if ($msg == '') {
             $d = ORM::for_table('tbl_customers')->create();
@@ -579,7 +585,7 @@ switch ($action) {
                 $welcomeMessage = str_replace('[[password]]', $d['password'], $welcomeMessage);
                 $welcomeMessage = str_replace('[[url]]', APP_URL . '/?_route=login', $welcomeMessage);
 
-                $emailSubject = "Welcome to " . $config['CompanyName'];
+                $subject = "Welcome to " . $config['CompanyName'];
 
                 $channels = [
                     'sms' => [
@@ -595,8 +601,13 @@ switch ($action) {
                     'email' => [
                         'enabled' => isset($_POST['mail']),
                         'method' => 'Message::sendEmail',
-                        'args' => [$d['email'], $emailSubject, $welcomeMessage, $d['email']]
-                    ]
+                        'args' => [$d['email'], $subject, $welcomeMessage, $d['email']]
+                    ],
+                    'inbox' => [
+                        'enabled' => isset($_POST['inbox']),
+                        'method' => 'Message::addToInbox',
+                        'args' => $d['id'], $subject, $welcomeMessage, $from = 'Admin'
+                    ],
                 ];
 
                 foreach ($channels as $channel => $message) {
@@ -632,7 +643,8 @@ switch ($action) {
         $pppoe_ip = trim(_post('pppoe_ip'));
         $email = _post('email');
         $address = _post('address');
-        $phonenumber = Lang::phoneFormat(_post('phonenumber'));
+        $phonenumber_raw = _post('phonenumber');
+        $phonenumber = Lang::phoneFormat($phonenumber_raw);
         $service_type = _post('service_type');
         $coordinates = _post('coordinates');
         $status = _post('status');
@@ -650,10 +662,20 @@ switch ($action) {
             $msg .= 'Full Name should be between 2 to 25 characters' . '<br>';
         }
 
+        if (!Validator::PhoneWithCountry($phonenumber_raw)) {
+            $msg .= Lang::T('Invalid phone number; start with 62 or 0') . '<br>';
+        }
+
         $c = ORM::for_table('tbl_customers')->find_one($id);
 
         if (!$c) {
             $msg .= Lang::T('Data Not Found') . '<br>';
+        }
+
+        if ($c && $c['phonenumber'] != $phonenumber) {
+            if (ORM::for_table('tbl_customers')->where('phonenumber', $phonenumber)->find_one()) {
+                $msg .= Lang::T('Phone number already registered by another customer') . '<br>';
+            }
         }
 
         //lets find user Customers Attributes using id
@@ -936,7 +958,29 @@ switch ($action) {
             fclose($fp);
             die();
         }
-        $d = Paginator::findMany($query, ['search' => $search], 30, $append_url);
+
+        if (!empty($_COOKIE['customer_per_page']) && $_COOKIE['customer_per_page'] != $config['customer_per_page']) {
+            $d = ORM::for_table('tbl_appconfig')->where('setting', 'customer_per_page')->find_one();
+            if ($d) {
+                $d->value = $_COOKIE['customer_per_page'];
+                $d->save();
+            } else {
+                $d = ORM::for_table('tbl_appconfig')->create();
+                $d->setting = 'customer_per_page';
+                $d->value = $_COOKIE['customer_per_page'];
+                $d->save();
+            }
+        } 
+        if (!empty($config['customer_per_page']) && empty($_COOKIE['customer_per_page'])) {
+            $_COOKIE['customer_per_page'] = $config['customer_per_page'];
+            setcookie('customer_per_page', $config['customer_per_page'], time() + (86400 * 30), "/");
+        }
+
+        $ui->assign('cookie', $_COOKIE['customer_per_page']);
+
+        $per_page = !empty($_COOKIE['customer_per_page']) ? $_COOKIE['customer_per_page'] : (!empty($config['customer_per_page']) ? $config['customer_per_page'] : '30');
+
+        $d = Paginator::findMany($query, ['search' => $search], $per_page, $append_url);
         $ui->assign('d', $d);
         $ui->assign('statuses', ORM::for_table('tbl_customers')->getEnum("status"));
         $ui->assign('filter', $filter);

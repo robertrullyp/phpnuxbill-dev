@@ -10,6 +10,90 @@
 class Package
 {
     /**
+     * Determine if a plan is visible to a specific customer.
+     */
+    public static function isPlanVisibleToCustomer($plan, $customerId)
+    {
+        if (!$plan) {
+            return false;
+        }
+        // Default to visible if no visibility column yet (backward compatibility)
+        if (!isset($plan['visibility']) || $plan['visibility'] === 'all') {
+            return true;
+        }
+        if ($plan['visibility'] === 'custom') {
+            $row = ORM::for_table('tbl_plan_customers')
+                ->where('plan_id', $plan['id'])
+                ->where('customer_id', $customerId)
+                ->find_one();
+            return !empty($row);
+        }
+        if ($plan['visibility'] === 'exclude') {
+            $row = ORM::for_table('tbl_plan_customers')
+                ->where('plan_id', $plan['id'])
+                ->where('customer_id', $customerId)
+                ->find_one();
+            // excluded if mapping exists
+            return empty($row);
+        }
+        return true;
+    }
+
+    /**
+     * Filter a list of plans to only those visible to a customer.
+     * @param array<int,array|\IdiormResultSet|\ORM> $plans
+     * @return array
+     */
+    public static function filterPlansForCustomer($plans, $customerId)
+    {
+        if (empty($plans)) {
+            return [];
+        }
+        // Collect IDs and visibility flags if present
+        $ids = [];
+        $customIds = [];
+        $excludeIds = [];
+        foreach ($plans as $p) {
+            $pid = is_array($p) ? $p['id'] : $p->id;
+            $ids[] = $pid;
+            $visibility = is_array($p) ? ($p['visibility'] ?? 'all') : ($p->visibility ?? 'all');
+            if ($visibility === 'custom') {
+                $customIds[] = $pid;
+            } elseif ($visibility === 'exclude') {
+                $excludeIds[] = $pid;
+            }
+        }
+        $allowedCustom = [];
+        $excluded = [];
+        if (!empty($customIds)) {
+            $rows = ORM::for_table('tbl_plan_customers')
+                ->where_in('plan_id', $customIds)
+                ->where('customer_id', $customerId)
+                ->find_array();
+            if ($rows) {
+                $allowedCustom = array_column($rows, 'plan_id');
+            }
+        }
+        if (!empty($excludeIds)) {
+            $rows = ORM::for_table('tbl_plan_customers')
+                ->where_in('plan_id', $excludeIds)
+                ->where('customer_id', $customerId)
+                ->find_array();
+            if ($rows) {
+                $excluded = array_column($rows, 'plan_id');
+            }
+        }
+        $out = [];
+        foreach ($plans as $p) {
+            $pid = is_array($p) ? $p['id'] : $p->id;
+            $visibility = is_array($p) ? ($p['visibility'] ?? 'all') : ($p->visibility ?? 'all');
+            if ($visibility === 'all' || ($visibility === 'custom' && in_array($pid, $allowedCustom)) || ($visibility === 'exclude' && !in_array($pid, $excluded))) {
+                $out[] = $p;
+            }
+        }
+        return $out;
+    }
+    /**
      * @param int   $id_customer String user identifier
      * @param string $router_name router name for this package
      * @param int   $plan_id plan id for this package
@@ -72,7 +156,7 @@ class Package
         }
 
 
-        if (!$p['enabled']) {
+        if (!$p['enabled'] && $gateway != 'Welcome') {
             if (!isset($admin) || !isset($admin['id']) || empty($admin['id'])) {
                 r2(getUrl('home'), 'e', Lang::T('Plan Not found'));
             }

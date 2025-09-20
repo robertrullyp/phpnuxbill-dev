@@ -26,22 +26,27 @@
                         </div>
                     </div>
                     <div class="form-group">
-                        <label class="col-md-3 control-label">{Lang::T('Usernames')}</label>
+                        <label class="col-md-3 control-label">
+                            {if $_c['registration_username'] == 'phone'}
+                                {Lang::T('Phone Number')}
+                            {elseif $_c['registration_username'] == 'email'}
+                                {Lang::T('Email')}
+                            {else}
+                                {Lang::T('Usernames')}
+                            {/if}
+                        </label>
                         <div class="col-md-9">
                             <div class="input-group">
                                 {if $_c['registration_username'] == 'phone'}
-                                    <span class="input-group-addon" id="basic-addon1"><i
-                                            class="glyphicon glyphicon-phone-alt"></i></span>
+                                    <span class="input-group-addon" id="basic-addon1"><i class="glyphicon glyphicon-phone-alt"></i></span>
                                 {elseif $_c['registration_username'] == 'email'}
-                                    <span class="input-group-addon" id="basic-addon1"><i
-                                            class="glyphicon glyphicon-envelope"></i></span>
+                                    <span class="input-group-addon" id="basic-addon1"><i class="glyphicon glyphicon-envelope"></i></span>
                                 {else}
-                                    <span class="input-group-addon" id="basic-addon1"><i
-                                            class="glyphicon glyphicon-user"></i></span>
+                                    <span class="input-group-addon" id="basic-addon1"><i class="glyphicon glyphicon-user"></i></span>
                                 {/if}
                                 <input type="text" class="form-control" name="username" id="username" readonly
                                     value="{$_user['username']}"
-                                    placeholder="{if $_c['country_code_phone']!= '' || $_c['registration_username'] == 'phone'}{$_c['country_code_phone']} {Lang::T('Phone Number')}{elseif $_c['registration_username'] == 'email'}{Lang::T('Email')}{else}{Lang::T('Username')}{/if}">
+                                    placeholder="{if $_c['registration_username'] == 'phone'}{if $_c['country_code_phone'] != ''}{$_c['country_code_phone']} {/if}{Lang::T('Phone Number')}{elseif $_c['registration_username'] == 'email'}{Lang::T('Email')}{else}{Lang::T('Usernames')}{/if}">
                             </div>
                         </div>
                     </div>
