@@ -13,18 +13,8 @@ if($db_password != null && ($db_pass == null || empty($db_pass))){
     $db_pass = $db_password;
 }
 
-if (empty($update_url)) {
-    $update_url = 'https://github.com/robertrullyp/phpnuxbill-dev/archive/refs/heads/main.zip';
-}
-
-if(isset($_REQUEST['update_url']) && !empty($_REQUEST['update_url'])){
-    $update_url = $_REQUEST['update_url'];
-    $_SESSION['update_url'] = $update_url;
-}
-
-if(isset($_SESSION['update_url']) && !empty($_SESSION['update_url']) && $_SESSION['update_url'] != $update_url){
-    $update_url = $_SESSION['update_url'];
-}
+// Always use the default, secure update URL. Do not allow override from user input.
+$update_url = 'https://github.com/robertrullyp/phpnuxbill-dev/archive/refs/heads/main.zip';
 
 if (!isset($_SESSION['aid']) || empty($_SESSION['aid'])) {
     r2("./?_route=login&You_are_not_admin", 'e', 'You are not admin');

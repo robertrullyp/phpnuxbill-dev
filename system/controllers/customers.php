@@ -896,8 +896,17 @@ switch ($action) {
 
         if ($search != '') {
             $query = ORM::for_table('tbl_customers')
-                ->whereRaw("username LIKE '%$search%' OR fullname LIKE '%$search%' OR address LIKE '%$search%' " .
-                    "OR phonenumber LIKE '%$search%' OR email LIKE '%$search%' AND status='$filter'");
+                ->where('status', $filter)
+                ->where_raw(
+                    '(username LIKE ? OR fullname LIKE ? OR address LIKE ? OR phonenumber LIKE ? OR email LIKE ?)',
+                    [
+                        "%$search%",
+                        "%$search%",
+                        "%$search%",
+                        "%$search%",
+                        "%$search%"
+                    ]
+                );
         } else {
             $query = ORM::for_table('tbl_customers');
             $query->where("status", $filter);
