@@ -193,7 +193,6 @@
     </script>
 {/literal}
 
-
 </body>
 
 </html>

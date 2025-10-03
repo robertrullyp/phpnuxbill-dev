@@ -23,7 +23,6 @@
 {/if}
 </div>
 
-
 <!-- Modal -->
 <div class="modal fade" id="HTMLModal" tabindex="-1" role="dialog">
     <div class="modal-dialog">
@@ -39,8 +38,6 @@
         </div>
     </div>
 </div>
-
-
 
 <script src="{$app_url}/ui/ui/scripts/jquery.min.js"></script>
 <script src="{$app_url}/ui/ui/scripts/bootstrap.min.js"></script>
@@ -133,7 +130,6 @@
         });
     }
 </script>
-
 
 {literal}
 <script>
@@ -234,7 +230,6 @@
 <script>
     setCookie('user_language', '{$user_language}', 365);
 </script>
-
 
 </body>
 

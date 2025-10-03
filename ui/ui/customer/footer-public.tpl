@@ -34,6 +34,7 @@
         <!--End of Tawk.to Script-->
     {/if}
     <script src="{$app_url}/ui/ui/scripts/vendors.js?v=1"></script>
+
 </body>
 
 </html>
