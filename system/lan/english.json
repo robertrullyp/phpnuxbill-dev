@@ -806,5 +806,12 @@
     "Enter_the_Card_PIN": "Enter the Card PIN",
     "Redeem_Recharge_Card": "Redeem Recharge Card",
     "This_will_sync_dan_send_Customer_active_package_to_Mikrotik": "This will sync dan send Customer active package to Mikrotik",
-    "Extend": "Extend"
+    "Extend": "Extend",
+    "Clear_old_logs_": "Clear old logs?",
+    "Customer_Geo_Location_Information": "Customer Geo Location Information",
+    "Invalid_Username_or_Password": "Invalid Username or Password",
+    "Failed_Login": "Failed Login",
+    "AI_Chatbot": "AI Chatbot",
+    "Chat_Experience": "Chat Experience",
+    "Conversation_History": "Conversation History"
 }

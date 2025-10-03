@@ -97,30 +97,41 @@
     const toggleIcon = document.getElementById('toggleIcon');
     const body = document.body;
     const savedMode = localStorage.getItem('mode');
+
     if (savedMode === 'dark') {
         body.classList.add('dark-mode');
-        toggleIcon.textContent = '🌞';
+        if (toggleIcon) {
+            toggleIcon.textContent = '🌞';
+        }
+    } else if (toggleIcon) {
+        toggleIcon.textContent = '🌜';
     }
 
     function setMode(mode) {
         if (mode === 'dark') {
             body.classList.add('dark-mode');
-            toggleIcon.textContent = '🌞';
+            if (toggleIcon) {
+                toggleIcon.textContent = '🌞';
+            }
         } else {
             body.classList.remove('dark-mode');
-            toggleIcon.textContent = '🌜';
+            if (toggleIcon) {
+                toggleIcon.textContent = '🌜';
+            }
         }
     }
 
-    toggleIcon.addEventListener('click', () => {
-        if (body.classList.contains('dark-mode')) {
-            setMode('light');
-            localStorage.setItem('mode', 'light');
-        } else {
-            setMode('dark');
-            localStorage.setItem('mode', 'dark');
-        }
-    });
+    if (toggleIcon) {
+        toggleIcon.addEventListener('click', () => {
+            if (body.classList.contains('dark-mode')) {
+                setMode('light');
+                localStorage.setItem('mode', 'light');
+            } else {
+                setMode('dark');
+                localStorage.setItem('mode', 'dark');
+            }
+        });
+    }
 </script>
 
 
@@ -223,6 +234,8 @@
 <script>
     setCookie('user_language', '{$user_language}', 365);
 </script>
+
+
 </body>
 
 </html>
