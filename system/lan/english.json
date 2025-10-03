@@ -799,5 +799,8 @@
     "Usernames_have_been_sent_to_your_phone_Whatsapp": "Usernames have been sent to your phone\/Whatsapp",
     "Your_Verification_Code": "Your Verification Code",
     "Verification_Code_has_been_Sent_to_Your_Phone_Email_Whatsapp": "Verification Code has been Sent to Your Phone\/Email\/Whatsapp",
-    "Verification_Code": "Verification Code"
+    "Verification_Code": "Verification Code",
+    "No_email_found_": "No email found.",
+    "FAILED": "FAILED",
+    "Failed_to_connect_to_device": "Failed to connect to device"
 }

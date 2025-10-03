@@ -993,7 +993,7 @@ switch ($action) {
         $ui->assign('d', $d);
         $ui->assign('statuses', ORM::for_table('tbl_customers')->getEnum("status"));
         $ui->assign('filter', $filter);
-        $ui->assign('search', $search);
+        $ui->assign('search', htmlspecialchars($search, ENT_QUOTES, 'UTF-8'));
         $ui->assign('order', $order);
         $ui->assign('order_pos', $order_pos[$order]);
         $ui->assign('orderby', $orderby);

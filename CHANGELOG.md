@@ -2,6 +2,13 @@
 
 # CHANGELOG
 
+## 2025.10.3
+
+- **SECURITY:** Fixed multiple critical SQL Injection vulnerabilities in `radius.php` and `update.php`.
+- **SECURITY:** Fixed a SQL Injection vulnerability in the customer search function.
+- **SECURITY:** Hardened the entire application against Cross-Site Scripting (XSS) by enabling global output escaping in the template engine.
+- Version bumped to `2025.10.3`.
+
 ## 2025.9.20
 
 - Maintenance release: synchronize version metadata with the latest code snapshot.
