@@ -1,9 +1,9 @@
-{include file="sections/header.tpl"}
+{include file="admin/header.tpl"}
 
 {function showWidget pos=0}
     {foreach $widgets as $w}
         {if $w['position'] == $pos}
-            {$w['content']}
+            {$w['content'] nofilter}
         {/if}
     {/foreach}
 {/function}
@@ -74,4 +74,4 @@
     </script>
 {/if}
 
-{include file="sections/footer.tpl"}
+{include file="admin/footer.tpl"}

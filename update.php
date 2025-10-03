@@ -117,56 +117,107 @@ if (empty($step)) {
     // remove downloaded zip
     if (file_exists($file)) unlink($file);
 } else if ($step == 3) {
-    deleteFolder('system/autoload/');
-    deleteFolder('system/vendor/');
-    deleteFolder('ui/ui/');
-    copyFolder($folder, pathFixer('./'));
-    deleteFolder('install/');
-    deleteFolder($folder);
-    if (!file_exists($folder . pathFixer('/system/'))) {
+    // Step 3: Create Backup
+    $backupDir = pathFixer('system/backup/');
+    if (!is_dir($backupDir)) {
+        mkdir($backupDir, 0755, true);
+    }
+    $backupFile = $backupDir . 'pre_update_backup_' . time() . '.zip';
+    $_SESSION['backup_file'] = $backupFile;
+
+    try {
+        $zip = new ZipArchive();
+        if ($zip->open($backupFile, ZipArchive::CREATE | ZipArchive::OVERWRITE) !== TRUE) {
+            throw new Exception("Cannot open zip archive for writing: " . $backupFile);
+        }
+
+        zipFolder(pathFixer('.'), $zip, strlen(pathFixer('.')));
+
+        $zip->close();
         $step++;
-    } else {
-        $msg = "Failed to install update file.";
+    } catch (Exception $e) {
+        $msg = "Failed to create backup: " . $e->getMessage();
         $msgType = "danger";
         $continue = false;
     }
-} else if ($step == 4) {
-    if (file_exists("system/updates.json")) {
-        $db = new pdo(
-            "mysql:host=$db_host;dbname=$db_name",
-            $db_user,
-            $db_pass,
-            array(PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION)
-        );
 
-        $updates = json_decode(file_get_contents("system/updates.json"), true);
-        $dones = [];
-        if (file_exists("system/cache/updates.done.json")) {
-            $dones = json_decode(file_get_contents("system/cache/updates.done.json"), true);
+} else if ($step == 4) {
+    // Step 4: Install (previously step 3)
+    try {
+        deleteFolder('system/autoload/');
+        deleteFolder('system/vendor/');
+        deleteFolder('ui/ui/');
+        copyFolder($folder, pathFixer('./'));
+        deleteFolder('install/');
+        deleteFolder($folder);
+        if (!file_exists($folder . pathFixer('/system/'))) {
+            $step++;
+        } else {
+            throw new Exception("Failed to properly move new files into place.");
         }
-        foreach ($updates as $version => $queries) {
-            if (!in_array($version, $dones)) {
-                foreach ($queries as $q) {
-                    try {
-                        $db->exec($q);
-                    } catch (PDOException $e) {
-                        //ignore, it exists already
+    } catch (Exception $e) {
+        $msg = "Failed to install update files: " . $e->getMessage() . " A backup has been created at: " . htmlspecialchars($_SESSION['backup_file']);
+        $msgType = "danger";
+        $continue = false;
+    }
+} else if ($step == 5) {
+    // Step 5: Database Update (previously step 4)
+    if (file_exists("system/updates.json")) {
+        try {
+            $db = new pdo(
+                "mysql:host=$db_host;dbname=$db_name",
+                $db_user,
+                $db_pass,
+                array(PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION)
+            );
+
+            $updates = json_decode(file_get_contents("system/updates.json"), true);
+            $dones = [];
+            if (file_exists("system/cache/updates.done.json")) {
+                $dones = json_decode(file_get_contents("system/cache/updates.done.json"), true);
+            }
+            foreach ($updates as $version => $queries) {
+                if (!in_array($version, $dones)) {
+                    foreach ($queries as $q) {
+                        try {
+                            $db->exec($q);
+                        } catch (PDOException $e) {
+                            // Log or handle more gracefully in the future
+                            // For now, ignoring "already exists" is the original behavior
+                        }
                     }
+                    $dones[] = $version;
                 }
-                $dones[] = $version;
+            }
+            file_put_contents("system/cache/updates.done.json", json_encode($dones));
+        } catch (Exception $e) {
+            $msg = "Failed to update database: " . $e->getMessage() . ". A backup has been created at: " . htmlspecialchars($_SESSION['backup_file']);
+            $msgType = "danger";
+            $continue = false;
+        }
+    }
+    if ($continue) {
+        $step++;
+    }
+} else if ($step == 6) {
+    // Step 6: Finish (previously step 5)
+    // Clear compiled cache
+    $path = 'ui/compiled/';
+    if(is_dir($path)){
+        $files = scandir($path);
+        foreach ($files as $file) {
+            if (is_file($path . $file)) {
+                unlink($path . $file);
             }
         }
-        file_put_contents("system/cache/updates.done.json", json_encode($dones));
     }
-    $step++;
-} else {
-    $path = 'ui/compiled/';
-    $files = scandir($path);
-    foreach ($files as $file) {
-        if (is_file($path . $file)) {
-            unlink($path . $file);
-        }
+
+    // Delete the successful backup file
+    if (!empty($_SESSION['backup_file']) && file_exists($_SESSION['backup_file'])) {
+        unlink($_SESSION['backup_file']);
+        unset($_SESSION['backup_file']);
     }
+
     $version = json_decode(file_get_contents('version.json'), true)['version'];
     $continue = false;
 }
@@ -206,6 +257,7 @@ function copyFolder($from, $to, $exclude = [])
 }
 function deleteFolder($path)
 {
+    if (!is_dir($path)) return;
     $files = scandir($path);
     foreach ($files as $file) {
         if (is_file($path . $file)) {
@@ -216,6 +268,47 @@ function deleteFolder($path)
         }
     }
     rmdir($path);
+}
+
+function zipFolder($source, &$zip, $stripPath)
+{
+    $source = pathFixer($source);
+    $files = new RecursiveIteratorIterator(
+        new RecursiveDirectoryIterator($source, RecursiveDirectoryIterator::SKIP_DOTS),
+        RecursiveIteratorIterator::SELF_FIRST
+    );
+
+    $exclude = [
+        pathFixer('system/cache'),
+        pathFixer('system/backup')
+    ];
+
+    foreach ($files as $file) {
+        $file = pathFixer($file);
+
+        // Exclude backup and cache directories
+        $excluded = false;
+        foreach($exclude as $ex) {
+            if (strpos($file, $ex) === 0) {
+                $excluded = true;
+                break;
+            }
+        }
+        if ($excluded) continue;
+
+
+        $filePath = $file;
+        $localPath = substr($filePath, $stripPath);
+        if(empty($localPath)) continue;
+        $localPath = ltrim($localPath, DIRECTORY_SEPARATOR);
+
+
+        if (is_dir($file)) {
+            $zip->addEmptyDir($localPath);
+        } else if (is_file($file)) {
+            $zip->addFile($filePath, $localPath);
+        }
+    }
 }
 
 ?>

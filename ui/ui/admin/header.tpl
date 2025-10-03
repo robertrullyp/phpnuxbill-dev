@@ -121,14 +121,14 @@
                             <span>{Lang::T('Dashboard')}</span>
                         </a>
                     </li>
-                    {$_MENU_AFTER_DASHBOARD}
+                    {$_MENU_AFTER_DASHBOARD nofilter}
                     <li {if $_system_menu eq 'customers' }class="active" {/if}>
                         <a href="{Text::url('customers')}">
                             <i class="fa fa-user"></i>
                             <span>{Lang::T('Customer')}</span>
                         </a>
                     </li>
-                    {$_MENU_AFTER_CUSTOMERS}
+                    {$_MENU_AFTER_CUSTOMERS nofilter}
                     {if !in_array($_admin['user_type'],['Report'])}
                     <li class="{if $_routes[0] eq 'plan' || $_routes[0] eq 'coupons'}active{/if} treeview">
                         <a href="#">
@@ -158,11 +158,11 @@
                             <li {if $_routes[1] eq 'deposit' }class="active" {/if}><a
                                     href="{Text::url('plan/deposit')}">{Lang::T('Refill Balance')}</a></li>
                             {/if}
-                            {$_MENU_SERVICES}
+                            {$_MENU_SERVICES nofilter}
                         </ul>
                     </li>
                     {/if}
-                    {$_MENU_AFTER_SERVICES}
+                    {$_MENU_AFTER_SERVICES nofilter}
                     {if in_array($_admin['user_type'],['SuperAdmin','Admin'])}
                     <li class="{if $_system_menu eq 'services'}active{/if} treeview">
                         <a href="#">
@@ -185,11 +185,11 @@
                             <li {if $_routes[1] eq 'balance' }class="active" {/if}><a
                                     href="{Text::url('services/balance')}">{Lang::T('Customer Balance')}</a></li>
                             {/if}
-                            {$_MENU_PLANS}
+                            {$_MENU_PLANS nofilter}
                         </ul>
                     </li>
                     {/if}
-                    {$_MENU_AFTER_PLANS}
+                    {$_MENU_AFTER_PLANS nofilter}
                     <li class="{if in_array($_routes[0], ['maps'])}active{/if} treeview">
                         <a href="#">
                             <i class="fa fa-map-marker"></i> <span>{Lang::T('Maps')}</span>
@@ -202,7 +202,7 @@
                                     href="{Text::url('maps/customer')}">{Lang::T('Customer')}</a></li>
                             <li {if $_routes[1] eq 'routers' }class="active" {/if}><a
                                     href="{Text::url('maps/routers')}">{Lang::T('Routers')}</a></li>
-                            {$_MENU_MAPS}
+                            {$_MENU_MAPS nofilter}
                         </ul>
                     </li>
                     <li class="{if $_system_menu eq 'reports'}active{/if} treeview">
@@ -221,10 +221,10 @@
                                     href="{Text::url('reports/activation')}">{Lang::T('Activation History')}</a></li>
                            {* <li {if $_routes[0] eq 'invoices' }class="active" {/if}><a
                                     href="{Text::url('invoices')}">{Lang::T('Invoices')}</a></li> *}
-                            {$_MENU_REPORTS}
+                            {$_MENU_REPORTS nofilter}
                         </ul>
                     </li>
-                    {$_MENU_AFTER_REPORTS}
+                    {$_MENU_AFTER_REPORTS nofilter}
                     <li class="{if $_system_menu eq 'message'}active{/if} treeview">
                         <a href="#">
                             <i class="ion ion-android-chat"></i> <span>{Lang::T('Send Message')}</span>
@@ -237,10 +237,10 @@
                                     href="{Text::url('message/send')}">{Lang::T('Single Customer')}</a></li>
                             <li {if $_routes[1] eq 'send_bulk' }class="active" {/if}><a
                                     href="{Text::url('message/send_bulk')}">{Lang::T('Bulk Customers')}</a></li>
-                            {$_MENU_MESSAGE}
+                            {$_MENU_MESSAGE nofilter}
                         </ul>
                     </li>
-                    {$_MENU_AFTER_MESSAGE}
+                    {$_MENU_AFTER_MESSAGE nofilter}
                     {if in_array($_admin['user_type'],['SuperAdmin','Admin'])}
                     <li class="{if $_system_menu eq 'network'}active{/if} treeview">
                         <a href="#">
@@ -256,7 +256,7 @@
                                     href="{Text::url('pool/list')}">IP Pool</a></li>
                             <li {if $_routes[0] eq 'pool' and $_routes[1] eq 'port' }class="active" {/if}><a
                                     href="{Text::url('pool/port')}">Port Pool</a></li>
-                            {$_MENU_NETWORK}
+                            {$_MENU_NETWORK nofilter}
                         </ul>
                     </li>
                     {$_MENU_AFTER_NETWORKS}

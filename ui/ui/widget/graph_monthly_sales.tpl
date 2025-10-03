@@ -20,7 +20,7 @@
     {if $_c['hide_tmc'] != 'yes'}
         {literal}
             document.addEventListener("DOMContentLoaded", function() {
-                var monthlySales = JSON.parse('{/literal}{$monthlySales|json_encode}{literal}');
+                var monthlySales = {/literal}{$monthlySales|json_encode nofilter}{literal};
 
                 var monthNames = [
                     'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',

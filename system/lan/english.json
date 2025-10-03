@@ -802,5 +802,9 @@
     "Verification_Code": "Verification Code",
     "No_email_found_": "No email found.",
     "FAILED": "FAILED",
-    "Failed_to_connect_to_device": "Failed to connect to device"
+    "Failed_to_connect_to_device": "Failed to connect to device",
+    "Enter_the_Card_PIN": "Enter the Card PIN",
+    "Redeem_Recharge_Card": "Redeem Recharge Card",
+    "This_will_sync_dan_send_Customer_active_package_to_Mikrotik": "This will sync dan send Customer active package to Mikrotik",
+    "Extend": "Extend"
 }

@@ -20,7 +20,7 @@
 <script type="text/javascript">
     {literal}
         document.addEventListener("DOMContentLoaded", function() {
-            var counts = JSON.parse('{/literal}{$monthlyRegistered|json_encode}{literal}');
+            var counts = {/literal}{$monthlyRegistered|json_encode nofilter}{literal};
 
             var monthNames = [
                 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
