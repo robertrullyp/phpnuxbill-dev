@@ -299,6 +299,16 @@
                         "url":  "https://github.com/hotspotbilling/Verimor-SMS-Gateway",
                         "github":  "https://github.com/hotspotbilling/Verimor-SMS-Gateway",
                         "last_update":  "2025-07-29"
+                    },
+                    {
+                        "id":  "ai-chatbot-phpnuxbill-plugin",
+                        "name":  "AI Chatbot",
+                        "description":  "Adds a configurable AI chatbot widget with proxy, history, and authentication options for PHPNuxBill.",
+                        "ispaid":  false,
+                        "author":  "robertrullyp",
+                        "url":  "https://github.com/robertrullyp/Ai-Chatbot-phpnuxbill-plugin",
+                        "github":  "https://github.com/robertrullyp/Ai-Chatbot-phpnuxbill-plugin",
+                        "last_update":  "2025-10-05"
                     }
                 ],
     "payment_gateway":  [
