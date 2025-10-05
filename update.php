@@ -143,21 +143,82 @@ if (empty($step)) {
 
 } else if ($step == 4) {
     // Step 4: Install (previously step 3)
+    $preservePaths = [
+        'config.php',
+        'config.local.php',
+        '.env',
+        '.env.local',
+        'system/cache',
+        'system/backup',
+        'system/uploads',
+        'system/logs',
+        'system/tmp',
+        'ui/cache',
+        'ui/compiled',
+        'ui/ui_custom',
+        'ui/uploads',
+    ];
+    $replaceDirs = [
+        'system/autoload',
+        'system/vendor',
+        'ui/ui',
+    ];
+    $preparedBackups = [];
     try {
-        deleteFolder('system/autoload/');
-        deleteFolder('system/vendor/');
-        deleteFolder('ui/ui/');
-        copyFolder($folder, pathFixer('./'));
-        deleteFolder('install/');
-        deleteFolder($folder);
-        if (!file_exists($folder . pathFixer('/system/'))) {
+        foreach ($replaceDirs as $dir) {
+            $original = rtrim(pathFixer($dir), DIRECTORY_SEPARATOR);
+            if (!is_dir($original)) {
+                continue;
+            }
+            $backup = $original . '.update-backup';
+            if (is_dir($backup)) {
+                deleteFolder(rtrim($backup, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR);
+            }
+            if (!@rename($original, $backup)) {
+                throw new Exception('Unable to prepare directory for update: ' . $dir);
+            }
+            $preparedBackups[$backup] = $original;
+        }
+
+        copyFolder($folder, pathFixer('./'), $preservePaths);
+
+        foreach ($replaceDirs as $dir) {
+            $expected = rtrim(pathFixer($dir), DIRECTORY_SEPARATOR);
+            if (!is_dir($expected)) {
+                throw new Exception('Missing required directory after update: ' . $dir);
+            }
+        }
+
+        foreach ($preparedBackups as $backup => $original) {
+            if (is_dir($backup)) {
+                deleteFolder(rtrim($backup, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR);
+            }
+        }
+
+        if (file_exists($folder)) {
+            deleteFolder($folder);
+        }
+
+        if (!file_exists($folder)) {
             $step++;
         } else {
-            throw new Exception("Failed to properly move new files into place.");
+            throw new Exception('Failed to remove temporary update directory.');
         }
     } catch (Exception $e) {
-        $msg = "Failed to install update files: " . $e->getMessage() . " A backup has been created at: " . htmlspecialchars($_SESSION['backup_file']);
-        $msgType = "danger";
+        foreach ($preparedBackups as $backup => $original) {
+            if (is_dir($backup) && !is_dir($original)) {
+                @rename($backup, $original);
+            } else if (is_dir($backup)) {
+                deleteFolder(rtrim($backup, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR);
+            }
+        }
+
+        if (file_exists($folder)) {
+            deleteFolder($folder);
+        }
+
+        $msg = 'Failed to install update files: ' . $e->getMessage() . ' A backup has been created at: ' . htmlspecialchars($_SESSION['backup_file']);
+        $msgType = 'danger';
         $continue = false;
     }
 } else if ($step == 5) {
@@ -240,18 +301,73 @@ function r2($to, $ntype = 'e', $msg = '')
     die();
 }
 
-function copyFolder($from, $to, $exclude = [])
+function shouldSkipCopy($relativePath, $exclude)
 {
-    $files = scandir($from);
-    foreach ($files as $file) {
-        if (is_file($from . $file) && !in_array($file, $exclude)) {
-            if (file_exists($to . $file)) unlink($to . $file);
-            rename($from . $file, $to . $file);
-        } else if (is_dir($from . $file) && !in_array($file, ['.', '..'])) {
-            if (!file_exists($to . $file)) {
-                mkdir($to . $file);
+    $relativePath = trim(str_replace('\\', '/', $relativePath), '/');
+    if ($relativePath === '') {
+        return false;
+    }
+    foreach ($exclude as $item) {
+        $normalized = trim(str_replace('\\', '/', $item), '/');
+        if ($normalized === '') {
+            continue;
+        }
+        if ($relativePath === $normalized || strpos($relativePath, $normalized . '/') === 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
+function copyFolder($from, $to, $exclude = [], $base = null)
+{
+    if (!is_dir($from)) {
+        throw new Exception('Source path does not exist: ' . $from);
+    }
+
+    if ($base === null) {
+        $base = rtrim($from, DIRECTORY_SEPARATOR);
+        if (substr($base, -1) !== DIRECTORY_SEPARATOR) {
+            $base .= DIRECTORY_SEPARATOR;
+        } else {
+            $base .= '';
+        }
+    }
+
+    $items = scandir($from);
+    if ($items === false) {
+        throw new Exception('Unable to read directory: ' . $from);
+    }
+
+    foreach ($items as $item) {
+        if ($item === '.' || $item === '..') {
+            continue;
+        }
+
+        $sourcePath = $from . $item;
+        $targetPath = $to . $item;
+        $relativePath = ltrim(str_replace('\\', '/', substr($sourcePath, strlen($base))), '/');
+
+        if (shouldSkipCopy($relativePath, $exclude)) {
+            continue;
+        }
+
+        if (is_dir($sourcePath)) {
+            if (!is_dir($targetPath) && !mkdir($targetPath, 0755, true) && !is_dir($targetPath)) {
+                throw new Exception('Failed to create directory: ' . $relativePath);
             }
-            copyFolder($from . $file . DIRECTORY_SEPARATOR, $to . $file . DIRECTORY_SEPARATOR);
+            copyFolder($sourcePath . DIRECTORY_SEPARATOR, $targetPath . DIRECTORY_SEPARATOR, $exclude, $base);
+        } elseif (is_file($sourcePath)) {
+            $parent = dirname($targetPath);
+            if (!is_dir($parent) && !mkdir($parent, 0755, true) && !is_dir($parent)) {
+                throw new Exception('Failed to create directory for file: ' . $relativePath);
+            }
+            if (file_exists($targetPath) && !unlink($targetPath)) {
+                throw new Exception('Failed to overwrite file: ' . $relativePath);
+            }
+            if (!copy($sourcePath, $targetPath)) {
+                throw new Exception('Failed to copy file: ' . $relativePath);
+            }
         }
     }
 }
@@ -410,7 +526,7 @@ function zipFolder($source, &$zip, $stripPath)
         </section>
         <footer class="footer text-center">
             <a  href="https://github.com/robertrullyp/phpnuxbill-dev" rel="nofollow noreferrer noopener"
-                target="_blank">DRNet</a> Modified by <a href="https://github.com/robertrullyp" rel="nofollow noreferrer noopener"
+                target="_blank">PHPNuxBill-Dev</a> Modified by <a href="https://github.com/robertrullyp" rel="nofollow noreferrer noopener"
                 target="_blank">Mr. Free</a> from PHPNuxBill by <a href="https://github.com/hotspotbilling/phpnuxbill" rel="nofollow noreferrer noopener"
                 target="_blank">iBNuX</a>, Theme by <a href="https://adminlte.io/" rel="nofollow noreferrer noopener"
                 target="_blank">AdminLTE</a>
