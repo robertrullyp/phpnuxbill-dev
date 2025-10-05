@@ -12,8 +12,16 @@
                 <div class="panel-body">
                     <input type="hidden" name="id" value="{$d['id']}">
                     <center>
-                        <img src="{$app_url}/{$UPLOAD_PATH}{$d['photo']}.thumb.jpg" width="200"
-                            onerror="this.src='{$app_url}/{$UPLOAD_PATH}/admin.default.png'" class="img-circle img-responsive" alt="Foto"
+                        {assign var='adminPhotoPath' value=$d['photo']}
+                        {assign var='adminPhotoFallback' value=$app_url|cat:'/'|cat:$UPLOAD_PATH|cat:'/admin.default.png'}
+                        {if !$adminPhotoPath || strstr($adminPhotoPath, 'default')}
+                            {assign var='adminPhotoSrc' value=$adminPhotoFallback}
+                        {else}
+                            {assign var='cleanAdminPhoto' value=$adminPhotoPath|trim:'/'}
+                            {assign var='adminPhotoSrc' value=$app_url|cat:'/'|cat:$UPLOAD_PATH|cat:'/'|cat:$cleanAdminPhoto|cat:'.thumb.jpg'}
+                        {/if}
+                        <img src="{$adminPhotoSrc}" width="200"
+                            onerror="this.src='{$adminPhotoFallback}'" class="img-circle img-responsive" alt="Foto"
                             onclick="return deletePhoto({$d['id']})">
                     </center><br>
                     <div class="form-group">

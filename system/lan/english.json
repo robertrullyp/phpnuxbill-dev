@@ -826,5 +826,12 @@
     "Registration_page": "Registration page",
     "Required": "Required",
     "To_delete__empty_the_name": "To delete, empty the name",
-    "You_are_already_logged_in": "You are already logged in"
+    "You_are_already_logged_in": "You are already logged in",
+    "Edit_User": "Edit User",
+    "Sub_District": "Sub District",
+    "Ward": "Ward",
+    "User_Type": "User Type",
+    "Profile": "Profile",
+    "Credentials": "Credentials",
+    "Confirm_Password": "Confirm Password"
 }

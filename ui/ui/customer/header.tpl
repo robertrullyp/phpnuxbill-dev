@@ -73,6 +73,14 @@
                             </ul>
                         </li>
                         <li class="dropdown user user-menu">
+                            {assign var='customerPhotoPath' value=$_user['photo']}
+                            {assign var='customerAvatarFallback' value=$app_url|cat:'/'|cat:$UPLOAD_PATH|cat:'/user.default.jpg'}
+                            {if !$customerPhotoPath || strstr($customerPhotoPath, 'default')}
+                                {assign var='customerAvatarSrc' value=$customerAvatarFallback}
+                            {else}
+                                {assign var='cleanCustomerPhoto' value=$customerPhotoPath|trim:'/'}
+                                {assign var='customerAvatarSrc' value=$app_url|cat:'/'|cat:$UPLOAD_PATH|cat:'/'|cat:$cleanCustomerPhoto|cat:'.thumb.jpg'}
+                            {/if}
                             <a href="#" class="dropdown-toggle" data-toggle="dropdown">
                                 {if $_c['enable_balance'] == 'yes'}
                                     <span
@@ -80,14 +88,14 @@
                                 {else}
                                     <span>{$_user['fullname']}</span>
                                 {/if}
-                                <img src="{$app_url}/{$UPLOAD_PATH}{$_user['photo']}.thumb.jpg"
-                                    onerror="this.src='{$app_url}/{$UPLOAD_PATH}/user.default.jpg'" class="user-image"
+                                <img src="{$customerAvatarSrc}"
+                                    onerror="this.src='{$customerAvatarFallback}'" class="user-image"
                                     alt="User Image">
                             </a>
                             <ul class="dropdown-menu">
                                 <li class="user-header">
-                                    <img src="{$app_url}/{$UPLOAD_PATH}{$_user['photo']}.thumb.jpg"
-                                        onerror="this.src='{$app_url}/{$UPLOAD_PATH}/user.default.jpg'" class="img-circle"
+                                    <img src="{$customerAvatarSrc}"
+                                        onerror="this.src='{$customerAvatarFallback}'" class="img-circle"
                                         alt="User Image">
 
                                     <p>

@@ -68,16 +68,24 @@
                             </a>
                         </li>
                         <li class="dropdown user user-menu">
+                            {assign var='adminPhotoPath' value=$_admin['photo']}
+                            {assign var='adminAvatarFallback' value=$app_url|cat:'/'|cat:$UPLOAD_PATH|cat:'/admin.default.png'}
+                            {if !$adminPhotoPath || strstr($adminPhotoPath, 'default')}
+                                {assign var='adminAvatarSrc' value=$adminAvatarFallback}
+                            {else}
+                                {assign var='cleanAdminPhoto' value=$adminPhotoPath|trim:'/'}
+                                {assign var='adminAvatarSrc' value=$app_url|cat:'/'|cat:$UPLOAD_PATH|cat:'/'|cat:$cleanAdminPhoto|cat:'.thumb.jpg'}
+                            {/if}
                             <a href="#" class="dropdown-toggle" data-toggle="dropdown">
-                                <img src="{$app_url}/{$UPLOAD_PATH}{$_admin['photo']}.thumb.jpg"
-                                    onerror="this.src='{$app_url}/{$UPLOAD_PATH}/admin.default.png'" class="user-image"
+                                <img src="{$adminAvatarSrc}"
+                                    onerror="this.src='{$adminAvatarFallback}'" class="user-image"
                                     alt="Avatar">
                                 <span class="hidden-xs">{$_admin['fullname']}</span>
                             </a>
                             <ul class="dropdown-menu">
                                 <li class="user-header">
-                                    <img src="{$app_url}/{$UPLOAD_PATH}{$_admin['photo']}.thumb.jpg"
-                                        onerror="this.src='{$app_url}/{$UPLOAD_PATH}/admin.default.png'"
+                                    <img src="{$adminAvatarSrc}"
+                                        onerror="this.src='{$adminAvatarFallback}'"
                                         class="img-circle" alt="Avatar">
                                     <p>
                                         {$_admin['fullname']}
@@ -437,3 +445,4 @@
                     });
                 </script>
                 {/if}
+

@@ -9,8 +9,16 @@
                 <div class="panel-heading">{Lang::T('Edit Contact')}</div>
                 <div class="panel-body">
                     <center>
-                        <img src="{$app_url}/{$UPLOAD_PATH}{$d['photo']}.thumb.jpg" width="200"
-                            onerror="this.src='{$app_url}/{$UPLOAD_PATH}/user.default.jpg'" class="img-circle img-responsive"
+                        {assign var='customerPhotoPath' value=$d['photo']}
+                        {assign var='customerPhotoFallback' value=$app_url|cat:'/'|cat:$UPLOAD_PATH|cat:'/user.default.jpg'}
+                        {if !$customerPhotoPath || strstr($customerPhotoPath, 'default')}
+                            {assign var='customerPhotoSrc' value=$customerPhotoFallback}
+                        {else}
+                            {assign var='cleanCustomerPhoto' value=$customerPhotoPath|trim:'/'}
+                            {assign var='customerPhotoSrc' value=$app_url|cat:'/'|cat:$UPLOAD_PATH|cat:'/'|cat:$cleanCustomerPhoto|cat:'.thumb.jpg'}
+                        {/if}
+                        <img src="{$customerPhotoSrc}" width="200"
+                            onerror="this.src='{$customerPhotoFallback}'" class="img-circle img-responsive"
                             alt="Photo" onclick="return deletePhoto({$d['id']})">
                     </center><br>
                     <input type="hidden" name="id" value="{$d['id']}">

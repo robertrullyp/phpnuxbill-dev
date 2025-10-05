@@ -4,10 +4,18 @@
     <div class="col-sm-4 col-md-4">
         <div class="box box-{if $d['status']=='Active'}primary{else}danger{/if}">
             <div class="box-body box-profile">
+                {assign var='customerPhotoPath' value=$d['photo']}
+                {assign var='customerPhotoFallback' value=$app_url|cat:'/'|cat:$UPLOAD_PATH|cat:'/user.default.jpg'}
+                {if !$customerPhotoPath || strstr($customerPhotoPath, 'default')}
+                    {assign var='customerPhotoSrc' value=$customerPhotoFallback}
+                {else}
+                    {assign var='cleanCustomerPhoto' value=$customerPhotoPath|trim:'/'}
+                    {assign var='customerPhotoSrc' value=$app_url|cat:'/'|cat:$UPLOAD_PATH|cat:'/'|cat:$cleanCustomerPhoto|cat:'.thumb.jpg'}
+                {/if}
                 <img class="profile-user-img img-responsive img-circle"
                     onclick="window.location.href = '{$app_url}/{$UPLOAD_PATH}{$d['photo']}'"
-                    src="{$app_url}/{$UPLOAD_PATH}{$d['photo']}.thumb.jpg"
-                    onerror="this.src='{$app_url}/{$UPLOAD_PATH}/user.default.jpg'" alt="avatar">
+                    src="{$customerPhotoSrc}"
+                    onerror="this.src='{$customerPhotoFallback}'" alt="avatar">
                 <h3 class="profile-username text-center">{$d['fullname']}</h3>
                 <ul class="list-group list-group-unbordered">
                     <li class="list-group-item">

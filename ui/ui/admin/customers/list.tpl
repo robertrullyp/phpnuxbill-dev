@@ -159,7 +159,14 @@
                                     style="cursor:pointer;">{$ds['username']}</td>
                                 <td>
                                     <a href="{$app_url}/{$UPLOAD_PATH}{$ds['photo']}" target="photo">
-                                        <img src="{$app_url}/{$UPLOAD_PATH}{$ds['photo']}.thumb.jpg" width="32" alt="">
+                                        {assign var='rowPhotoPath' value=$ds['photo']}
+                                        {if !$rowPhotoPath || strstr($rowPhotoPath, 'default')}
+                                            {assign var='rowPhotoSrc' value=$app_url|cat:'/'|cat:$UPLOAD_PATH|cat:'/user.default.jpg'}
+                                        {else}
+                                            {assign var='cleanRowPhoto' value=$rowPhotoPath|trim:'/'}
+                                            {assign var='rowPhotoSrc' value=$app_url|cat:'/'|cat:$UPLOAD_PATH|cat:'/'|cat:$cleanRowPhoto|cat:'.thumb.jpg'}
+                                        {/if}
+                                        <img src="{$rowPhotoSrc}" width="32" alt="">
                                     </a>
                                 </td>
                                 <td>{$ds['account_type']}</td>
