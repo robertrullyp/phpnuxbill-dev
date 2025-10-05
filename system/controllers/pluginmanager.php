@@ -166,9 +166,9 @@ switch ($action) {
             $zip->open($file);
             $zip->extractTo($cache);
             $zip->close();
-            $folder = $cache . DIRECTORY_SEPARATOR . $plugin . '-main' . DIRECTORY_SEPARATOR;
-            if (!file_exists($folder)) {
-                $folder = $cache . DIRECTORY_SEPARATOR . $plugin . '-master' . DIRECTORY_SEPARATOR;
+            $folder = resolveExtractedFolder($cache, $plugin);
+            if ($folder === null) {
+                r2(getUrl('pluginmanager'), 'e', 'Extracted Folder is unknown');
             }
             $success = 0;
             if (file_exists($folder . 'plugin')) {
@@ -244,11 +244,8 @@ switch ($action) {
                     $zip->open($file);
                     $zip->extractTo($CACHE_PATH);
                     $zip->close();
-                    $folder = $CACHE_PATH . File::pathFixer('/' . $plugin . '-main/');
-                    if (!file_exists($folder)) {
-                        $folder = $CACHE_PATH . File::pathFixer('/' . $plugin . '-master/');
-                    }
-                    if (!file_exists($folder)) {
+                    $folder = resolveExtractedFolder($CACHE_PATH, $plugin);
+                    if ($folder === null) {
                         r2(getUrl('pluginmanager'), 'e', 'Extracted Folder is unknown');
                     }
                     scanAndRemovePath($folder, $PLUGIN_PATH . DIRECTORY_SEPARATOR);
@@ -299,11 +296,8 @@ switch ($action) {
                     $zip->open($file);
                     $zip->extractTo($CACHE_PATH);
                     $zip->close();
-                    $folder = $CACHE_PATH . File::pathFixer('/' . $plugin . '-main/');
-                    if (!file_exists($folder)) {
-                        $folder = $CACHE_PATH . File::pathFixer('/' . $plugin . '-master/');
-                    }
-                    if (!file_exists($folder)) {
+                    $folder = resolveExtractedFolder($CACHE_PATH, $plugin);
+                    if ($folder === null) {
                         r2(getUrl('pluginmanager'), 'e', 'Extracted Folder is unknown');
                     }
                     File::copyFolder($folder, $PLUGIN_PATH . DIRECTORY_SEPARATOR, ['README.md', 'LICENSE']);
@@ -336,11 +330,8 @@ switch ($action) {
                     $zip->open($file);
                     $zip->extractTo($CACHE_PATH);
                     $zip->close();
-                    $folder = $CACHE_PATH . File::pathFixer('/' . $plugin . '-main/');
-                    if (!file_exists($folder)) {
-                        $folder = $CACHE_PATH . File::pathFixer('/' . $plugin . '-master/');
-                    }
-                    if (!file_exists($folder)) {
+                    $folder = resolveExtractedFolder($CACHE_PATH, $plugin);
+                    if ($folder === null) {
                         r2(getUrl('pluginmanager'), 'e', 'Extracted Folder is unknown');
                     }
                     File::copyFolder($folder, $PAYMENTGATEWAY_PATH . DIRECTORY_SEPARATOR, ['README.md', 'LICENSE']);
@@ -373,11 +364,8 @@ switch ($action) {
                     $zip->open($file);
                     $zip->extractTo($CACHE_PATH);
                     $zip->close();
-                    $folder = $CACHE_PATH . File::pathFixer('/' . $plugin . '-main/');
-                    if (!file_exists($folder)) {
-                        $folder = $CACHE_PATH . File::pathFixer('/' . $plugin . '-master/');
-                    }
-                    if (!file_exists($folder)) {
+                    $folder = resolveExtractedFolder($CACHE_PATH, $plugin);
+                    if ($folder === null) {
                         r2(getUrl('pluginmanager'), 'e', 'Extracted Folder is unknown');
                     }
                     File::copyFolder($folder, $DEVICE_PATH . DIRECTORY_SEPARATOR, ['README.md', 'LICENSE']);
@@ -403,6 +391,47 @@ switch ($action) {
         $ui->display('admin/settings/plugin-manager.tpl');
 }
 
+
+/**
+ * Locate the extracted repository folder regardless of case or branch suffix.
+ */
+function resolveExtractedFolder($basePath, $plugin)
+{
+    $normalizedBase = rtrim($basePath, '\/') . DIRECTORY_SEPARATOR;
+    $candidates = [
+        $normalizedBase . $plugin . '-main' . DIRECTORY_SEPARATOR,
+        $normalizedBase . $plugin . '-master' . DIRECTORY_SEPARATOR,
+    ];
+
+    foreach ($candidates as $candidate) {
+        if (is_dir($candidate)) {
+            return rtrim($candidate, '\/') . DIRECTORY_SEPARATOR;
+        }
+    }
+
+    if (!is_dir($normalizedBase)) {
+        return null;
+    }
+
+    $entries = scandir($normalizedBase);
+    $pluginLower = strtolower($plugin);
+
+    foreach ($entries as $entry) {
+        if ($entry === '.' || $entry === '..') {
+            continue;
+        }
+        $fullPath = $normalizedBase . $entry;
+        if (!is_dir($fullPath)) {
+            continue;
+        }
+        $entryLower = strtolower($entry);
+        if ($entryLower === $pluginLower . '-main' || $entryLower === $pluginLower . '-master' || strpos($entryLower, $pluginLower) === 0) {
+            return rtrim($fullPath, '\/') . DIRECTORY_SEPARATOR;
+        }
+    }
+
+    return null;
+}
 
 function scanAndRemovePath($source, $target)
 {

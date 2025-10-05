@@ -182,6 +182,10 @@ if (empty($step)) {
 
         copyFolder($folder, pathFixer('./'), $preservePaths);
 
+        if (is_dir(pathFixer('install/'))) {
+            deleteFolder(pathFixer('install/'));
+        }
+
         foreach ($replaceDirs as $dir) {
             $expected = rtrim(pathFixer($dir), DIRECTORY_SEPARATOR);
             if (!is_dir($expected)) {
@@ -264,7 +268,7 @@ if (empty($step)) {
     // Step 6: Finish (previously step 5)
     // Clear compiled cache
     $path = 'ui/compiled/';
-    if(is_dir($path)){
+    if (is_dir($path)) {
         $files = scandir($path);
         foreach ($files as $file) {
             if (is_file($path . $file)) {
@@ -279,8 +283,30 @@ if (empty($step)) {
         unset($_SESSION['backup_file']);
     }
 
-    $version = json_decode(file_get_contents('version.json'), true)['version'];
-    $continue = false;
+    $versionLabel = null;
+    if (is_file('version.json')) {
+        $versionData = json_decode(file_get_contents('version.json'), true);
+        if (json_last_error() === JSON_ERROR_NONE && is_array($versionData) && !empty($versionData['version'])) {
+            $versionLabel = $versionData['version'];
+        }
+    }
+
+    $message = 'PHPNuxBill has been updated successfully.';
+    if (!empty($versionLabel)) {
+        $message = 'PHPNuxBill has been updated to Version ' . $versionLabel;
+    }
+
+    $redirectTargets = [
+        'dashboard' => './?_route=dashboard',
+        'community' => './?_route=community',
+    ];
+    $requestedRedirect = isset($_GET['redirect_to']) ? strtolower($_GET['redirect_to']) : '';
+    $target = $redirectTargets['dashboard'];
+    if (!empty($requestedRedirect) && isset($redirectTargets[$requestedRedirect])) {
+        $target = $redirectTargets[$requestedRedirect];
+    }
+
+    r2($target, 's', $message);
 }
 
 function pathFixer($path)
