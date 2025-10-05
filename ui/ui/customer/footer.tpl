@@ -231,6 +231,10 @@
     setCookie('user_language', '{$user_language}', 365);
 </script>
 
+
+
+
+
 </body>
 
 </html>

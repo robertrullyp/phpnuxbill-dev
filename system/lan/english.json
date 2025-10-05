@@ -813,5 +813,18 @@
     "Failed_Login": "Failed Login",
     "AI_Chatbot": "AI Chatbot",
     "Chat_Experience": "Chat Experience",
-    "Conversation_History": "Conversation History"
+    "Conversation_History": "Conversation History",
+    "Enter_Admin_Area": "Enter Admin Area",
+    "Username_or_Email": "Username or Email",
+    "New_Field": "New Field",
+    "Sequence": "Sequence",
+    "Text": "Text",
+    "Number": "Number",
+    "Option": "Option",
+    "Option_Values": "Option Values",
+    "Use_comma_separated_values_______for_this_option_": "Use comma separated values \u200b\u200bfor this option.",
+    "Registration_page": "Registration page",
+    "Required": "Required",
+    "To_delete__empty_the_name": "To delete, empty the name",
+    "You_are_already_logged_in": "You are already logged in"
 }
