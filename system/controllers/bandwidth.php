@@ -119,9 +119,9 @@ switch ($action) {
             $unit_rate_down = $rate_down * 1048576;
         }
         if ($rate_up_unit == 'Kbps') {
-            $unit_rate_up = $min_up * 1024;
+            $unit_rate_up = $rate_up * 1024;
         } else {
-            $unit_rate_up = $min_up * 1048576;
+            $unit_rate_up = $rate_up * 1048576;
         }
 
         $d = ORM::for_table('tbl_bandwidth')->where('name_bw', $name)->find_one();

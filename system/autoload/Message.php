@@ -430,11 +430,46 @@ class Message
     public static function logMessage($messageType, $recipient, $messageContent, $status, $errorMessage = null)
     {
         $log = ORM::for_table('tbl_message_logs')->create();
-        $log->message_type = $messageType;
-        $log->recipient = $recipient;
-        $log->message_content = $messageContent;
-        $log->status = $status;
-        $log->error_message = $errorMessage;
+        $log->message_type = self::sanitizeForLog($messageType);
+        $log->recipient = self::sanitizeForLog($recipient);
+        $log->message_content = self::sanitizeForLog($messageContent);
+        $log->status = self::sanitizeForLog($status);
+        $log->error_message = self::sanitizeForLog($errorMessage);
         $log->save();
+    }
+
+    private static function sanitizeForLog($value)
+    {
+        if ($value === null || $value === '') {
+            return $value;
+        }
+
+        if (!is_string($value)) {
+            return $value;
+        }
+
+        $normalized = $value;
+
+        if (function_exists('mb_detect_encoding')) {
+            $encoding = mb_detect_encoding($normalized, ['UTF-8', 'ISO-8859-1', 'WINDOWS-1252'], true);
+            if ($encoding !== false && $encoding !== 'UTF-8') {
+                $normalized = mb_convert_encoding($normalized, 'UTF-8', $encoding);
+            }
+        }
+
+        if (function_exists('mb_check_encoding') && !mb_check_encoding($normalized, 'UTF-8')) {
+            if (function_exists('iconv')) {
+                $converted = @iconv('UTF-8', 'UTF-8//IGNORE', $normalized);
+                if ($converted !== false) {
+                    $normalized = $converted;
+                }
+            }
+
+            if (function_exists('mb_check_encoding') && !mb_check_encoding($normalized, 'UTF-8')) {
+                $normalized = preg_replace('/[\x00-\x1F\x7F]/u', '', $normalized);
+            }
+        }
+
+        return $normalized;
     }
 }
