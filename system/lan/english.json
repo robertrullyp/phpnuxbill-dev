@@ -896,5 +896,15 @@
     "Check_if_Router_Online_": "Check if Router Online?",
     "To_check_whether_the_Router_is_online_or_not__please_visit_the_following_page": "To check whether the Router is online or not, please visit the following page",
     "Cek_Now": "Cek Now",
-    "Password_changed_successfully__Please_login_again": "Password changed successfully, Please login again"
+    "Password_changed_successfully__Please_login_again": "Password changed successfully, Please login again",
+    "Select_Account": "Select Account",
+    "Select_a_customer": "Select a customer",
+    "Using": "Using",
+    "Postpaid_Recharge_for_the_first_time_use": "Postpaid Recharge for the first time use",
+    "Continue_the_Recharge_process": "Continue the Recharge process",
+    "Confirm": "Confirm",
+    "Plan": "Plan",
+    "Payment_via": "Payment via",
+    "Resend": "Resend",
+    "Invalid_CSRF_token": "Invalid CSRF token"
 }

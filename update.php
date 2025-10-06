@@ -48,6 +48,11 @@ if (!extension_loaded('zip')) {
 }
 
 
+$currentStep = $step;
+$displayStep = $step > 0 ? $step : 1;
+$nextStep = $step <= 0 ? 1 : $step;
+
+
 $file = pathFixer('system/cache/phpnuxbill.zip');
 // Detect repo name from update_url (supports both upstream and fork)
 $repo = 'phpnuxbill';
@@ -70,7 +75,7 @@ if (!empty($_SESSION['update_extract_dir'])) {
 }
 
 if (empty($step)) {
-    $step++;
+    $displayStep = 1;
 } else if ($step == 1) {
     if (file_exists($file)) unlink($file);
 
@@ -87,7 +92,7 @@ if (empty($step)) {
     curl_close($ch);
     fclose($fp);
     if (file_exists($file)) {
-        $step++;
+        $nextStep = 2;
     } else {
         $msg = "Failed to download Update file";
         $msgType = "danger";
@@ -102,7 +107,7 @@ if (empty($step)) {
     $folder = resolveExtractedFolder($repo, $zipBase, $folder);
 
     if (is_dir($folder)) {
-        $step++;
+        $nextStep = 3;
     } else {
         unset($_SESSION['update_extract_dir']);
         $msg = "Failed to extract update file";
@@ -129,7 +134,7 @@ if (empty($step)) {
         zipFolder(pathFixer('.'), $zip, strlen(pathFixer('.')));
 
         $zip->close();
-        $step++;
+        $nextStep = 4;
     } catch (Exception $e) {
         $msg = "Failed to create backup: " . $e->getMessage();
         $msgType = "danger";
@@ -205,7 +210,7 @@ if (empty($step)) {
         unset($_SESSION['update_extract_dir']);
 
         if (!file_exists($folder)) {
-            $step++;
+            $nextStep = 5;
         } else {
             throw new Exception('Failed to remove temporary update directory.');
         }
@@ -265,7 +270,7 @@ if (empty($step)) {
         }
     }
     if ($continue) {
-        $step++;
+        $nextStep = 6;
     }
 } else if ($step == 6) {
     // Step 6: Finish (previously step 5)
@@ -649,8 +654,8 @@ function zipFolder($source, &$zip, $stripPath)
 
     <link rel="stylesheet" href="ui/ui/styles/modern-AdminLTE.min.css">
 
-    <?php if ($continue) { ?>
-        <meta http-equiv="refresh" content="3; ./update.php?step=<?= $step ?>">
+    <?php if ($continue && $nextStep !== $currentStep) { ?>
+        <meta http-equiv="refresh" content="3; ./update.php?step=<?= $nextStep ?>">
     <?php } ?>
     <style>
         ::-moz-selection {
@@ -684,8 +689,8 @@ function zipFolder($source, &$zip, $stripPath)
                             <?= $msg ?>
                         </div>
                     <?php } ?>
-                    <?php if ($continue || $step == 5) { ?>
-                        <?php if ($step == 1) { ?>
+                    <?php if ($displayStep > 0) { ?>
+                        <?php if ($displayStep == 1) { ?>
                             <div class="panel panel-primary">
                                 <div class="panel-heading">Step 1</div>
                                 <div class="panel-body">
@@ -693,37 +698,38 @@ function zipFolder($source, &$zip, $stripPath)
                                     Please wait....
                                 </div>
                             </div>
-                        <?php } else if ($step == 2) { ?>
+                        <?php } else if ($displayStep == 2) { ?>
                             <div class="panel panel-primary">
                                 <div class="panel-heading">Step 2</div>
                                 <div class="panel-body">
-                                    extracting<br>
+                                    Extracting update<br>
                                     Please wait....
                                 </div>
                             </div>
-                        <?php } else if ($step == 3) { ?>
+                        <?php } else if ($displayStep == 3) { ?>
                             <div class="panel panel-primary">
                                 <div class="panel-heading">Step 3</div>
                                 <div class="panel-body">
-                                    Installing<br>
+                                    Creating backup<br>
                                     Please wait....
                                 </div>
                             </div>
-                        <?php } else if ($step == 4) { ?>
+                        <?php } else if ($displayStep == 4) { ?>
                             <div class="panel panel-primary">
                                 <div class="panel-heading">Step 4</div>
                                 <div class="panel-body">
-                                    Updating database...
+                                    Installing update files<br>
+                                    Please wait....
                                 </div>
                             </div>
-                        <?php } else if ($step == 5) { ?>
-                            <div class="panel panel-success">
-                                <div class="panel-heading">Update Finished</div>
+                        <?php } else if ($displayStep == 5) { ?>
+                            <div class="panel panel-primary">
+                                <div class="panel-heading">Step 5</div>
                                 <div class="panel-body">
-                                    PHPNuxBill has been updated to Version <b><?= $version ?></b>
+                                    Running database migrations<br>
+                                    Please wait....
                                 </div>
                             </div>
-                            <meta http-equiv="refresh" content="5; ./?_route=dashboard">
                         <?php } ?>
                     <?php } ?>
                 </div>
