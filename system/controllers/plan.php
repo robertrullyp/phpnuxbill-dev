@@ -1237,13 +1237,35 @@ switch ($action) {
         $ui->assign('_title', Lang::T('Customer'));
 
         $search = _req('search');
-        $status = _req('status');
+        $status = _req('status', '-');
         $router = _req('router');
         $plan = _req('plan');
 
+        $buildFilters = static function ($searchValue, $statusValue, $routerValue, $planValue) {
+            $filters = [];
+
+            if ($searchValue !== '') {
+                $filters['search'] = $searchValue;
+            }
+
+            if ($routerValue !== '') {
+                $filters['router'] = $routerValue;
+            }
+
+            if ($planValue !== '') {
+                $filters['plan'] = $planValue;
+            }
+
+            if ($statusValue !== '-' && $statusValue !== '' && in_array($statusValue, ['on', 'off'], true)) {
+                $filters['status'] = $statusValue;
+            }
+
+            return $filters;
+        };
+
         if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $csrf_token = Csrf::getTokenFromRequest();
-            if (!Csrf::check($csrf_token)) {
+            if ($csrf_token !== '' && !Csrf::check($csrf_token)) {
                 _alert(Lang::T('Invalid CSRF token'), 'danger', 'dashboard');
             }
 
@@ -1252,16 +1274,7 @@ switch ($action) {
             $router = _post('router', $router);
             $plan = _post('plan', $plan);
 
-            $queryParams = [
-                'search' => $search,
-                'status' => ($status === '-' ? '' : $status),
-                'router' => $router,
-                'plan' => $plan,
-            ];
-
-            $queryParams = array_filter($queryParams, function ($value) {
-                return $value !== '' && $value !== null;
-            });
+            $queryParams = $buildFilters($search, $status, $router, $plan);
 
             $redirectUrl = getUrl('plan/list');
             if (!empty($queryParams)) {
@@ -1273,10 +1286,10 @@ switch ($action) {
             exit;
         }
 
-        $append_url = "&search=" . urlencode($search)
-            . "&status=" . urlencode($status)
-            . "&router=" . urlencode($router)
-            . "&plan=" . urlencode($plan);
+        $filters = $buildFilters($search, $status, $router, $plan);
+
+        $filterQueryString = http_build_query($filters, '', '&', PHP_QUERY_RFC3986);
+        $append_url = $filterQueryString !== '' ? '&' . $filterQueryString : '';
         $ui->assign('append_url', $append_url);
         $ui->assign('plan', $plan);
         $ui->assign('status', $status);
@@ -1306,7 +1319,8 @@ switch ($action) {
             ->left_outer_join('tbl_customers', ['tbl_user_recharges.customer_id', '=', 'tbl_customers.id'])
             ->order_by_desc('tbl_user_recharges.id');
 
-        if ($search != '') {
+        if (isset($filters['search'])) {
+            $searchTerm = $filters['search'];
             $query->where_raw(
                 '(
                     tbl_user_recharges.username LIKE ?
@@ -1316,26 +1330,25 @@ switch ($action) {
                     OR tbl_customers.email LIKE ?
                 )',
                 [
-                    "%$search%",
-                    "%$search%",
-                    "%$search%",
-                    "%$search%",
-                    "%$search%",
+                    "%$searchTerm%",
+                    "%$searchTerm%",
+                    "%$searchTerm%",
+                    "%$searchTerm%",
+                    "%$searchTerm%",
                 ]
             );
         }
-        if (!empty($router)) {
-            $query->where('tbl_user_recharges.routers', $router);
+        if (isset($filters['router'])) {
+            $query->where('tbl_user_recharges.routers', $filters['router']);
         }
-        if (!empty($plan)) {
-            $query->where('tbl_user_recharges.plan_id', $plan);
+        if (isset($filters['plan'])) {
+            $query->where('tbl_user_recharges.plan_id', $filters['plan']);
         }
-        if (!empty($status) && $status != '-') {
-            $query->where('tbl_user_recharges.status', $status);
+        if (isset($filters['status'])) {
+            $query->where('tbl_user_recharges.status', $filters['status']);
         }
-        $d = Paginator::findMany($query, ['search' => $search], 25, $append_url);
+        $d = Paginator::findMany($query, $filters, 25);
         run_hook('view_list_billing'); #HOOK
-        $ui->assign('csrf_token', Csrf::generateAndStoreToken());
         $ui->assign('d', $d);
         $ui->assign('search', htmlspecialchars($search, ENT_QUOTES, 'UTF-8'));
         $ui->display('admin/plan/active.tpl');
