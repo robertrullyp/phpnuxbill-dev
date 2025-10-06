@@ -1235,19 +1235,27 @@ switch ($action) {
         break;
     default:
         $ui->assign('_title', Lang::T('Customer'));
+
+        $search = _req('search');
+        $status = _req('status');
+        $router = _req('router');
+        $plan = _req('plan');
+
         if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $csrf_token = _post('csrf_token');
             if (!Csrf::check($csrf_token)) {
                 _alert(Lang::T('Invalid CSRF token'), 'danger', 'dashboard');
             }
+
+            $search = _post('search', $search);
+            $status = _post('status', $status);
+            $router = _post('router', $router);
+            $plan = _post('plan', $plan);
         }
-        $search = _post('search');
-        $status = _req('status');
-        $router = _req('router');
-        $plan = _req('plan');
+
         $append_url = "&search=" . urlencode($search)
             . "&status=" . urlencode($status)
-            . "&router=" . urlencode($type3)
+            . "&router=" . urlencode($router)
             . "&plan=" . urlencode($plan);
         $ui->assign('append_url', $append_url);
         $ui->assign('plan', $plan);
