@@ -906,5 +906,6 @@
     "Plan": "Plan",
     "Payment_via": "Payment via",
     "Resend": "Resend",
-    "Invalid_CSRF_token": "Invalid CSRF token"
+    "Invalid_CSRF_token": "Invalid CSRF token",
+    "Data_Deleted_Successfully": "Data Deleted Successfully"
 }
