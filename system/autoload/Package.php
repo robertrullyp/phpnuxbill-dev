@@ -222,7 +222,7 @@ class Package
         return '';
     }
 
-    protected static function activateLinkedPlans($customerId, $gateway, $channel, $note, array &$processedPlanIds, $plan, $skip)
+    protected static function activateLinkedPlans($customerId, $gateway, $channel, $note, array &$processedPlanIds, $plan, $skip, $primaryRouterName = '')
     {
         if ($skip || $customerId <= 0 || !$plan) {
             return;
@@ -251,6 +251,15 @@ class Package
             }
             $routerName = self::resolveRouterNameForPlan($linkedPlan);
             if (empty($routerName)) {
+                $routerName = self::getExistingRouterForCustomerPlan($customerId, $linkedPlan['id']);
+            }
+            if (empty($routerName)) {
+                $routerName = self::resolveRouterNameForPlan($plan);
+            }
+            if (empty($routerName)) {
+                $routerName = $primaryRouterName;
+            }
+            if (empty($routerName)) {
                 continue;
             }
             if (!is_array($linkedPlan)) {
@@ -260,6 +269,25 @@ class Package
             $combinedNote = trim($note . "\n" . $linkedNoteText);
             self::rechargeUser($customerId, $routerName, $linkedPlan['id'], $gateway, $channel, $combinedNote, $processedPlanIds);
         }
+    }
+
+    protected static function getExistingRouterForCustomerPlan($customerId, $planId)
+    {
+        $customerId = (int) $customerId;
+        $planId = (int) $planId;
+        if ($customerId <= 0 || $planId <= 0) {
+            return '';
+        }
+        $row = ORM::for_table('tbl_user_recharges')
+            ->select('routers')
+            ->where('customer_id', $customerId)
+            ->where('plan_id', $planId)
+            ->order_by_desc('id')
+            ->find_one();
+        if ($row && !empty($row['routers'])) {
+            return $row['routers'];
+        }
+        return '';
     }
     /**
      * @param int   $id_customer String user identifier
@@ -361,13 +389,13 @@ class Package
 
         if ($router_name == 'balance') {
             $result = self::rechargeBalance($c, $p, $gateway, $channel, $note);
-            self::activateLinkedPlans($id_customer, $gateway, $channel, $note, $processedPlanIds, $p, $isVoucher);
+            self::activateLinkedPlans($id_customer, $gateway, $channel, $note, $processedPlanIds, $p, $isVoucher, $router_name);
             return $result;
         }
 
         if ($router_name == 'Custom Balance') {
             $result = self::rechargeCustomBalance($c, $p, $gateway, $channel, $note);
-            self::activateLinkedPlans($id_customer, $gateway, $channel, $note, $processedPlanIds, $p, $isVoucher);
+            self::activateLinkedPlans($id_customer, $gateway, $channel, $note, $processedPlanIds, $p, $isVoucher, $router_name);
             return $result;
         }
 
@@ -732,7 +760,7 @@ class Package
         if (is_array($bills) && count($bills) > 0) {
             User::billsPaid($bills, $id_customer);
         }
-        self::activateLinkedPlans($id_customer, $gateway, $channel, $note, $processedPlanIds, $p, $isVoucher);
+        self::activateLinkedPlans($id_customer, $gateway, $channel, $note, $processedPlanIds, $p, $isVoucher, $router_name);
         run_hook("recharge_user_finish");
         Message::sendInvoice($c, $t);
         if ($trx) {
