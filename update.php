@@ -8,6 +8,13 @@
 session_start();
 include "config.php";
 
+if (!isset($GLOBALS['update_replace_registered'])) {
+    register_shutdown_function('finalizeDeferredReplacements');
+    $GLOBALS['update_replace_registered'] = true;
+}
+
+processDeferredReplacements();
+
 if($db_password != null && ($db_pass == null || empty($db_pass))){
     // compability for old version
     $db_pass = $db_password;
@@ -29,7 +36,10 @@ if (!is_writeable(pathFixer('.'))) {
     r2("./?_route=community", 'e', 'Folder web is not writable');
 }
 
-$step = $_GET['step'];
+$step = isset($_GET['step']) ? (int)$_GET['step'] : 0;
+if ($step <= 1) {
+    unset($_SESSION['update_extract_dir']);
+}
 $continue = true;
 if (!extension_loaded('zip')) {
     $msg = "No PHP ZIP extension is available";
@@ -49,7 +59,15 @@ if (!empty($urlPath)) {
     }
 }
 $zipBase = basename($update_url, ".zip"); // e.g. main, master, or commit SHA
-$folder = pathFixer('system/cache/' . $repo . '-' . $zipBase . '/');
+$folder = normalizeDir('system/cache/' . $repo . '-' . $zipBase);
+if (!empty($_SESSION['update_extract_dir'])) {
+    $sessionFolder = normalizeDir($_SESSION['update_extract_dir']);
+    if (is_dir($sessionFolder)) {
+        $folder = $sessionFolder;
+    } else {
+        unset($_SESSION['update_extract_dir']);
+    }
+}
 
 if (empty($step)) {
     $step++;
@@ -80,36 +98,13 @@ if (empty($step)) {
     $zip->open($file);
     $zip->extractTo(pathFixer('system/cache/'));
     $zip->close();
-    // Re-evaluate extracted folder with fallbacks (handles main/master/SHA variations)
-    if (!file_exists($folder)) {
-        $cacheBase = pathFixer('system/cache/');
-        $candidates = [
-            pathFixer($cacheBase . $repo . '-' . $zipBase . '/'),
-            pathFixer($cacheBase . $repo . '-main/'),
-            pathFixer($cacheBase . $repo . '-master/'),
-        ];
-        $found = '';
-        foreach ($candidates as $cand) {
-            if (file_exists($cand)) { $found = $cand; break; }
-        }
-        if (empty($found)) {
-            // As a last resort, pick the newest directory matching <repo>-
-            $dirs = scandir($cacheBase);
-            $latestTime = 0;
-            foreach ($dirs as $d) {
-                if ($d === '.' || $d === '..') continue;
-                $full = pathFixer($cacheBase . $d . '/');
-                if (is_dir($full) && strpos($d, $repo . '-') === 0) {
-                    $t = filemtime($full);
-                    if ($t > $latestTime) { $latestTime = $t; $found = $full; }
-                }
-            }
-        }
-        if (!empty($found)) { $folder = $found; }
-    }
-    if (file_exists($folder)) {
+
+    $folder = resolveExtractedFolder($repo, $zipBase, $folder);
+
+    if (is_dir($folder)) {
         $step++;
     } else {
+        unset($_SESSION['update_extract_dir']);
         $msg = "Failed to extract update file";
         $msgType = "danger";
         $continue = false;
@@ -164,7 +159,11 @@ if (empty($step)) {
         'ui/ui',
     ];
     $preparedBackups = [];
+    $folder = resolveExtractedFolder($repo, $zipBase, $folder);
     try {
+        if (!is_dir($folder)) {
+            throw new Exception('Source path does not exist: ' . $folder);
+        }
         foreach ($replaceDirs as $dir) {
             $original = rtrim(pathFixer($dir), DIRECTORY_SEPARATOR);
             if (!is_dir($original)) {
@@ -203,6 +202,8 @@ if (empty($step)) {
             deleteFolder($folder);
         }
 
+        unset($_SESSION['update_extract_dir']);
+
         if (!file_exists($folder)) {
             $step++;
         } else {
@@ -220,6 +221,8 @@ if (empty($step)) {
         if (file_exists($folder)) {
             deleteFolder($folder);
         }
+
+        unset($_SESSION['update_extract_dir']);
 
         $msg = 'Failed to install update files: ' . $e->getMessage() . ' A backup has been created at: ' . htmlspecialchars($_SESSION['backup_file']);
         $msgType = 'danger';
@@ -314,6 +317,171 @@ function pathFixer($path)
     return str_replace("/", DIRECTORY_SEPARATOR, $path);
 }
 
+function normalizeDir($path)
+{
+    $normalized = pathFixer($path);
+    return rtrim($normalized, '\/') . DIRECTORY_SEPARATOR;
+}
+
+function resolveExtractedFolder($repo, $zipBase, $preferred)
+{
+    $preferred = normalizeDir($preferred);
+    if (is_dir($preferred)) {
+        $_SESSION['update_extract_dir'] = $preferred;
+        return $preferred;
+    }
+
+    if (!empty($_SESSION['update_extract_dir'])) {
+        $sessionFolder = normalizeDir($_SESSION['update_extract_dir']);
+        if (is_dir($sessionFolder)) {
+            return $sessionFolder;
+        }
+        unset($_SESSION['update_extract_dir']);
+    }
+
+    $cacheBase = normalizeDir('system/cache/');
+    $candidates = [
+        normalizeDir($cacheBase . $repo . '-' . $zipBase),
+        normalizeDir($cacheBase . $repo . '-main'),
+        normalizeDir($cacheBase . $repo . '-master'),
+    ];
+
+    foreach ($candidates as $candidate) {
+        if (is_dir($candidate)) {
+            $_SESSION['update_extract_dir'] = $candidate;
+            return $candidate;
+        }
+    }
+
+    $latestFolder = '';
+    $latestTime = 0;
+    if (is_dir($cacheBase)) {
+        $entries = scandir($cacheBase);
+        if ($entries !== false) {
+            foreach ($entries as $entry) {
+                if ($entry === '.' || $entry === '..') {
+                    continue;
+                }
+                if (strpos($entry, $repo . '-') !== 0) {
+                    continue;
+                }
+                $fullPath = normalizeDir($cacheBase . $entry);
+                if (is_dir($fullPath)) {
+                    $modified = filemtime($fullPath);
+                    if ($modified > $latestTime) {
+                        $latestTime = $modified;
+                        $latestFolder = $fullPath;
+                    }
+                }
+            }
+        }
+    }
+
+    if (!empty($latestFolder)) {
+        $_SESSION['update_extract_dir'] = $latestFolder;
+        return $latestFolder;
+    }
+
+    return $preferred;
+}
+
+function scheduleDeferredReplacement($source, $target)
+{
+    $job = [
+        'source' => pathFixer($source),
+        'target' => pathFixer($target),
+    ];
+
+    if (!isset($_SESSION['update_pending_replace']) || !is_array($_SESSION['update_pending_replace'])) {
+        $_SESSION['update_pending_replace'] = [];
+    }
+
+    $_SESSION['update_pending_replace'] = array_values(array_filter(
+        $_SESSION['update_pending_replace'],
+        function ($existing) use ($job) {
+            return !isset($existing['target']) || $existing['target'] !== $job['target'];
+        }
+    ));
+
+    $_SESSION['update_pending_replace'][] = $job;
+}
+
+function processDeferredReplacements()
+{
+    if (empty($_SESSION['update_pending_replace']) || !is_array($_SESSION['update_pending_replace'])) {
+        return;
+    }
+
+    $remaining = [];
+
+    foreach ($_SESSION['update_pending_replace'] as $job) {
+        if (empty($job['source']) || empty($job['target'])) {
+            continue;
+        }
+
+        $source = pathFixer($job['source']);
+        $target = pathFixer($job['target']);
+
+        if (!file_exists($source)) {
+            continue;
+        }
+
+        $targetDir = dirname($target);
+        if ($targetDir !== '' && !is_dir($targetDir)) {
+            if (!mkdir($targetDir, 0755, true) && !is_dir($targetDir)) {
+                $remaining[] = $job;
+                continue;
+            }
+        }
+
+        $backup = $target . '.update-backup';
+        $replaced = false;
+
+        if (file_exists($target)) {
+            if (!@rename($target, $backup)) {
+                $remaining[] = $job;
+                if (file_exists($backup) && !file_exists($target)) {
+                    @rename($backup, $target);
+                }
+                continue;
+            }
+        }
+
+        if (@rename($source, $target)) {
+            $replaced = true;
+        } else {
+            if (@copy($source, $target)) {
+                $replaced = true;
+            }
+        }
+
+        if ($replaced) {
+            if (file_exists($backup)) {
+                @unlink($backup);
+            }
+            if (file_exists($source)) {
+                @unlink($source);
+            }
+        } else {
+            if (file_exists($backup)) {
+                @rename($backup, $target);
+            }
+            $remaining[] = $job;
+        }
+    }
+
+    if (!empty($remaining)) {
+        $_SESSION['update_pending_replace'] = $remaining;
+    } else {
+        unset($_SESSION['update_pending_replace']);
+    }
+}
+
+function finalizeDeferredReplacements()
+{
+    processDeferredReplacements();
+}
+
 function r2($to, $ntype = 'e', $msg = '')
 {
 
@@ -387,6 +555,17 @@ function copyFolder($from, $to, $exclude = [], $base = null)
             $parent = dirname($targetPath);
             if (!is_dir($parent) && !mkdir($parent, 0755, true) && !is_dir($parent)) {
                 throw new Exception('Failed to create directory for file: ' . $relativePath);
+            }
+            if ($relativePath === 'update.php') {
+                $staged = pathFixer('system/cache/update.php.pending');
+                if (file_exists($staged) && !unlink($staged)) {
+                    throw new Exception('Failed to stage update.php for replacement.');
+                }
+                if (!copy($sourcePath, $staged)) {
+                    throw new Exception('Failed to stage update.php for replacement.');
+                }
+                scheduleDeferredReplacement($staged, pathFixer(__DIR__ . DIRECTORY_SEPARATOR . 'update.php'));
+                continue;
             }
             if (file_exists($targetPath) && !unlink($targetPath)) {
                 throw new Exception('Failed to overwrite file: ' . $relativePath);
