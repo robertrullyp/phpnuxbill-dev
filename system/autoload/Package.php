@@ -237,38 +237,80 @@ class Package
         if (empty($linkedIds)) {
             return;
         }
+
         $template = Lang::T('Linked Plan Activation Note');
         foreach ($linkedIds as $linkedId) {
             if (in_array($linkedId, $processedPlanIds, true)) {
                 continue;
             }
+
             $linkedPlan = ORM::for_table('tbl_plans')->find_one($linkedId);
             if (!$linkedPlan) {
                 continue;
             }
-            if (isset($linkedPlan['enabled']) && (int) $linkedPlan['enabled'] === 0) {
-                continue;
-            }
-            $routerName = self::resolveRouterNameForPlan($linkedPlan);
-            if (empty($routerName)) {
-                $routerName = self::getExistingRouterForCustomerPlan($customerId, $linkedPlan['id']);
-            }
-            if (empty($routerName)) {
-                $routerName = self::resolveRouterNameForPlan($plan);
-            }
-            if (empty($routerName)) {
-                $routerName = $primaryRouterName;
-            }
-            if (empty($routerName)) {
-                continue;
-            }
+
             if (!is_array($linkedPlan)) {
                 $linkedPlan = $linkedPlan->as_array();
             }
+
+            if (isset($linkedPlan['enabled']) && (int) $linkedPlan['enabled'] === 0) {
+                continue;
+            }
+
+            $routerName = self::determineRouterNameForLinkedPlan(
+                $customerId,
+                $linkedPlan,
+                $plan,
+                $primaryRouterName
+            );
+
+            if (empty($routerName)) {
+                continue;
+            }
+
             $linkedNoteText = str_replace('[[plan]]', $plan['name_plan'], $template);
             $combinedNote = trim($note . "\n" . $linkedNoteText);
-            self::rechargeUser($customerId, $routerName, $linkedPlan['id'], $gateway, $channel, $combinedNote, $processedPlanIds);
+
+            try {
+                self::rechargeUser(
+                    $customerId,
+                    $routerName,
+                    $linkedPlan['id'],
+                    $gateway,
+                    $channel,
+                    $combinedNote,
+                    $processedPlanIds
+                );
+            } catch (Throwable $throwable) {
+                Message::sendTelegram(
+                    "Failed to activate linked plan automatically\n" .
+                    'Customer: ' . $customerId . "\n" .
+                    'Primary Plan: ' . $plan['name_plan'] . "\n" .
+                    'Linked Plan ID: ' . $linkedPlan['id'] . "\n" .
+                    $throwable->getMessage()
+                );
+            }
         }
+    }
+
+    protected static function determineRouterNameForLinkedPlan($customerId, array $linkedPlan, array $primaryPlan, $primaryRouterName = '')
+    {
+        $existingRouter = self::getExistingRouterForCustomerPlan($customerId, $linkedPlan['id']);
+        if (!empty($existingRouter)) {
+            return $existingRouter;
+        }
+
+        $linkedRouter = self::resolveRouterNameForPlan($linkedPlan);
+        if (!empty($linkedRouter)) {
+            return $linkedRouter;
+        }
+
+        $primaryPlanRouter = self::resolveRouterNameForPlan($primaryPlan);
+        if (!empty($primaryPlanRouter)) {
+            return $primaryPlanRouter;
+        }
+
+        return $primaryRouterName;
     }
 
     protected static function getExistingRouterForCustomerPlan($customerId, $planId)
