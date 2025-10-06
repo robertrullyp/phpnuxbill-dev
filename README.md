@@ -17,8 +17,8 @@ Important notes:
 
 ## Current Release
 
-- **Version:** `2025.10.4`
-- **Focus:** Align version metadata across the codebase and document the operational checks used to confirm the platform remains stable after updates.
+- **Version:** `2025.10.6`
+- **Focus:** Give operators finer control over plan lifecycle reminders and prepare linked follow-up plans for smoother upgrades.
 
 ## What's New in This Fork
 
@@ -50,6 +50,8 @@ Enhancements and changes added on top of upstream:
 - Billing and packages
   - Optional “welcome package” support (including inactive plans for welcome selection).
   - Voucher fixes: filtering, batch selection tracking, and stability improvements.
+  - Reminder toggles per plan allow disabling due-date notifications for specific offerings (respected by cron reminders and all plan forms).
+  - Linked plan relationships let admins preconfigure upgrade/downgrade suggestions; links are stored in the new `tbl_plan_links` table and enforced idempotently during updates.
 
 - Plugin Manager improvements
   - Three tabs (Plugins, Payment Gateway, Devices), cache refresh, and clearer source/install actions.

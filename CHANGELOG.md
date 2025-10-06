@@ -2,6 +2,13 @@
 
 # CHANGELOG
 
+## 2025.10.6
+
+- **Plans:** Added a per-plan `reminder_enabled` toggle that is honored by all plan forms and by `system/cron_reminder.php`, allowing operators to suppress renewal notices for specific products.
+- **Plans:** Introduced `tbl_plan_links` with create/update safeguards so admins can define upgrade/downgrade recommendations without duplicating data during repeated migrations.
+- **Maintenance:** Documented the reminder and plan-link workflows in the README and synchronized `version.json` with the new release tag.
+- Version bumped to `2025.10.6`.
+
 ## 2025.10.4
 
 - **Maintenance:** Synchronized release metadata across `version.json` and `system/updates.json` so the updater and UI report the same build.
