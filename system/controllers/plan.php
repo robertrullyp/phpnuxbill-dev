@@ -1242,7 +1242,7 @@ switch ($action) {
         $plan = _req('plan');
 
         if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-            $csrf_token = _post('csrf_token');
+            $csrf_token = Csrf::getTokenFromRequest();
             if (!Csrf::check($csrf_token)) {
                 _alert(Lang::T('Invalid CSRF token'), 'danger', 'dashboard');
             }
@@ -1251,6 +1251,26 @@ switch ($action) {
             $status = _post('status', $status);
             $router = _post('router', $router);
             $plan = _post('plan', $plan);
+
+            $queryParams = [
+                'search' => $search,
+                'status' => ($status === '-' ? '' : $status),
+                'router' => $router,
+                'plan' => $plan,
+            ];
+
+            $queryParams = array_filter($queryParams, function ($value) {
+                return $value !== '' && $value !== null;
+            });
+
+            $redirectUrl = getUrl('plan/list');
+            if (!empty($queryParams)) {
+                $redirectUrl .= (strpos($redirectUrl, '?') === false ? '?' : '&')
+                    . http_build_query($queryParams, '', '&', PHP_QUERY_RFC3986);
+            }
+
+            header('Location: ' . $redirectUrl);
+            exit;
         }
 
         $append_url = "&search=" . urlencode($search)

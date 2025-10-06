@@ -21,11 +21,55 @@ class Csrf
         return hash_equals($storedToken, $token);
     }
 
-    public static function check($token)
+    /**
+     * Retrieve the CSRF token from common transport locations without
+     * applying additional sanitisation that could alter the raw token value.
+     */
+    public static function getTokenFromRequest()
+    {
+        $candidates = [];
+
+        if (isset($_POST['csrf_token'])) {
+            $candidates[] = $_POST['csrf_token'];
+        }
+
+        if (isset($_SERVER['HTTP_X_CSRF_TOKEN'])) {
+            $candidates[] = $_SERVER['HTTP_X_CSRF_TOKEN'];
+        }
+
+        if (isset($_SERVER['HTTP_X_XSRF_TOKEN'])) {
+            $candidates[] = $_SERVER['HTTP_X_XSRF_TOKEN'];
+        }
+
+        if (isset($_GET['csrf_token'])) {
+            $candidates[] = $_GET['csrf_token'];
+        }
+
+        foreach ($candidates as $candidate) {
+            if (is_array($candidate)) {
+                $candidate = reset($candidate);
+            }
+
+            if ($candidate !== null) {
+                $candidate = trim((string) $candidate);
+            }
+
+            if (!empty($candidate)) {
+                return $candidate;
+            }
+        }
+
+        return '';
+    }
+
+    public static function check($token = null)
     {
         global $config, $isApi;
         $enabled = $config['csrf_enabled'] ?? 'yes';
         if ($enabled === 'yes' && !$isApi) {
+            if ($token === null) {
+                $token = self::getTokenFromRequest();
+            }
             if (!empty($_SESSION['csrf_tokens']) && !empty($token)) {
                 foreach ($_SESSION['csrf_tokens'] as $index => $data) {
                     if (self::validateToken($token, $data['token'])) {
