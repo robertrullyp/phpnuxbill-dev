@@ -15,6 +15,11 @@ Important notes:
 - Install and basic usage documentation continue to follow the original project (links below).
 - The built-in updater in this fork downloads release ZIPs from this fork (see `install/update.php`), while database migrations are executed from `system/updates.json` within the codebase.
 
+## Current Release
+
+- **Version:** `2025.10.4`
+- **Focus:** Align version metadata across the codebase and document the operational checks used to confirm the platform remains stable after updates.
+
 ## What's New in This Fork
 
 Enhancements and changes added on top of upstream:
@@ -155,6 +160,18 @@ git fetch upstream --prune
 # Show commits unique to this fork's dev branch
 git log --oneline upstream/master..dev
 ```
+
+## Operational Health Checklist
+
+Use the following quick checks after deploying or updating to ensure the billing system stays in a healthy state:
+
+1. **Authentication & Session Flow** – Verify admin and customer logins (including Turnstile/OTP if enabled) and confirm single-session restrictions behave as configured.
+2. **Billing Lifecycle** – Create a test invoice, apply a voucher, and confirm plan visibility/links reflect the expected customer rules.
+3. **Messaging & Notifications** – Trigger OTP, WhatsApp, and email notifications from the dashboard to ensure the message log records the attempt and no delivery errors occur.
+4. **Scheduler & Cron Jobs** – Check the Cron Monitor widget for recent runs and confirm automated expirations or reminders update affected accounts.
+5. **Plugin & Update Manager** – Refresh plugin caches, ensure repository data loads without errors, and run the updater dry-run to validate version metadata against `system/updates.json`.
+
+Document the outcome of each check in your operations runbook so that future releases can be verified consistently.
 
 ## Freeradius
 

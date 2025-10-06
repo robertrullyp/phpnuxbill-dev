@@ -218,6 +218,7 @@
   ],
   "2025.9.20": [],
   "2025.10.3": [],
+  "2025.10.4": [],
   "2025.10.6": [
     "ALTER TABLE `tbl_plans` ADD `reminder_enabled` TINYINT(1) NOT NULL DEFAULT '1' COMMENT '0 disabled reminders' AFTER `enabled`;",
     "ALTER TABLE `tbl_plans` MODIFY `reminder_enabled` TINYINT(1) NOT NULL DEFAULT '1' COMMENT '0 disabled reminders';",

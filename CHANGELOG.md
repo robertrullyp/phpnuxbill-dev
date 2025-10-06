@@ -2,6 +2,12 @@
 
 # CHANGELOG
 
+## 2025.10.4
+
+- **Maintenance:** Synchronized release metadata across `version.json` and `system/updates.json` so the updater and UI report the same build.
+- **Documentation:** Added a release banner and operational health checklist to the README to guide admins through post-deploy validation.
+- Version bumped to `2025.10.4`.
+
 ## 2025.10.3
 
 - **SECURITY:** Fixed multiple critical SQL Injection vulnerabilities in `radius.php` and `update.php`.
