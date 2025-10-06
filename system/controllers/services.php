@@ -49,40 +49,35 @@ if (!in_array($admin['user_type'], ['SuperAdmin', 'Admin'])) {
 switch ($action) {
     case 'sync':
         set_time_limit(-1);
-        if ($routes['2'] == 'hotspot') {
-            $plans = ORM::for_table('tbl_plans')->where('type', 'Hotspot')->find_many();
-            $log = '';
-            foreach ($plans as $plan) {
-                $dvc = Package::getDevice($plan);
-                if ($_app_stage != 'demo') {
-                    if (file_exists($dvc)) {
-                        require_once $dvc;
-                        (new $plan['device'])->add_plan($plan);
-                        $log .= "DONE : $plan[name_plan], $plan[device]<br>";
-                    } else {
-                        $log .= "FAILED : $plan[name_plan], $plan[device] | Device Not Found<br>";
-                    }
-                }
-            }
-            r2(getUrl('services/hotspot'), 's', $log);
-        } else if ($routes['2'] == 'pppoe') {
-            $plans = ORM::for_table('tbl_plans')->where('type', 'PPPOE')->find_many();
-            $log = '';
-            foreach ($plans as $plan) {
-                $dvc = Package::getDevice($plan);
-                if ($_app_stage != 'demo') {
-                    if (file_exists($dvc)) {
-                        require_once $dvc;
-                        (new $plan['device'])->add_plan($plan);
-                        $log .= "DONE : $plan[name_plan], $plan[device]<br>";
-                    } else {
-                        $log .= "FAILED : $plan[name_plan], $plan[device] | Device Not Found<br>";
-                    }
-                }
-            }
-            r2(getUrl('services/pppoe'), 's', $log);
+        $target = isset($routes['2']) ? strtolower($routes['2']) : '';
+        $syncTargets = [
+            'hotspot' => ['Hotspot', 'services/hotspot'],
+            'pppoe'   => ['PPPOE', 'services/pppoe'],
+            'vpn'     => ['VPN', 'services/vpn'],
+        ];
+
+        if (!isset($syncTargets[$target])) {
+            r2(getUrl('services/hotspot'), 'w', 'Unknown command');
         }
-        r2(getUrl('services/hotspot'), 'w', 'Unknown command');
+
+        list($planType, $redirectRoute) = $syncTargets[$target];
+        $plans = ORM::for_table('tbl_plans')->where('type', $planType)->find_many();
+        $log = '';
+
+        foreach ($plans as $plan) {
+            $dvc = Package::getDevice($plan);
+            if ($_app_stage != 'demo') {
+                if (!empty($dvc) && file_exists($dvc)) {
+                    require_once $dvc;
+                    (new $plan['device'])->add_plan($plan);
+                    $log .= "DONE : $plan[name_plan], $plan[device]<br>";
+                } else {
+                    $log .= "FAILED : $plan[name_plan], $plan[device] | Device Not Found<br>";
+                }
+            }
+        }
+
+        r2(getUrl($redirectRoute), 's', $log);
     case 'hotspot':
         $name = _req('name');
         $type1 = _req('type1');
