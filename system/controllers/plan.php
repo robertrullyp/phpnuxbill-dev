@@ -1281,34 +1281,63 @@ switch ($action) {
         $ui->assign('plan', $plan);
         $ui->assign('status', $status);
         $ui->assign('router', $router);
-        $ui->assign('search', $search);
-        $ui->assign('routers', array_column(ORM::for_table('tbl_user_recharges')->distinct()->select("routers")->whereNotEqual('routers', '')->findArray(), 'routers'));
+        $ui->assign('routers', array_column(
+            ORM::for_table('tbl_user_recharges')
+                ->distinct()
+                ->select('tbl_user_recharges.routers', 'routers')
+                ->whereNotEqual('tbl_user_recharges.routers', '')
+                ->findArray(),
+            'routers'
+        ));
 
-        $plns = ORM::for_table('tbl_user_recharges')->distinct()->select("plan_id")->findArray();
+        $plns = ORM::for_table('tbl_user_recharges')
+            ->distinct()
+            ->select('tbl_user_recharges.plan_id', 'plan_id')
+            ->findArray();
         $ids = array_column($plns, 'plan_id');
         if (count($ids)) {
-            $ui->assign('plans', ORM::for_table('tbl_plans')->select("id")->select('name_plan')->where_id_in($ids)->findArray());
+            $ui->assign('plans', ORM::for_table('tbl_plans')->select('id')->select('name_plan')->where_id_in($ids)->findArray());
         } else {
             $ui->assign('plans', []);
         }
-        $query = ORM::for_table('tbl_user_recharges')->order_by_desc('id');
+        $query = ORM::for_table('tbl_user_recharges')
+            ->select('tbl_user_recharges.*')
+            ->select('tbl_customers.fullname', 'customer_fullname')
+            ->left_outer_join('tbl_customers', ['tbl_user_recharges.customer_id', '=', 'tbl_customers.id'])
+            ->order_by_desc('tbl_user_recharges.id');
 
         if ($search != '') {
-            $query->where_like("username", "%$search%");
+            $query->where_raw(
+                '(
+                    tbl_user_recharges.username LIKE ?
+                    OR tbl_customers.fullname LIKE ?
+                    OR tbl_customers.address LIKE ?
+                    OR tbl_customers.phonenumber LIKE ?
+                    OR tbl_customers.email LIKE ?
+                )',
+                [
+                    "%$search%",
+                    "%$search%",
+                    "%$search%",
+                    "%$search%",
+                    "%$search%",
+                ]
+            );
         }
         if (!empty($router)) {
-            $query->where('routers', $router);
+            $query->where('tbl_user_recharges.routers', $router);
         }
         if (!empty($plan)) {
-            $query->where('plan_id', $plan);
+            $query->where('tbl_user_recharges.plan_id', $plan);
         }
         if (!empty($status) && $status != '-') {
-            $query->where('status', $status);
+            $query->where('tbl_user_recharges.status', $status);
         }
         $d = Paginator::findMany($query, ['search' => $search], 25, $append_url);
         run_hook('view_list_billing'); #HOOK
         $ui->assign('csrf_token', Csrf::generateAndStoreToken());
         $ui->assign('d', $d);
+        $ui->assign('search', htmlspecialchars($search, ENT_QUOTES, 'UTF-8'));
         $ui->display('admin/plan/active.tpl');
         break;
 }
