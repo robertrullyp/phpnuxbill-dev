@@ -183,7 +183,7 @@
             </div>
             <div class="box-footer">
                 {Lang::T('If you download the update file manually, sometimes the update may change the database structure. After the file is successfully uploaded, click this button to update the database structure.')}
-                <a href="./update.php?step=4" class="btn btn-default btn-sm btn-block">{Lang::T('Update Database')}</a>
+                <a href="./update.php?step=5" class="btn btn-default btn-sm btn-block">{Lang::T('Update Database')}</a>
             </div>
         </div>
 
