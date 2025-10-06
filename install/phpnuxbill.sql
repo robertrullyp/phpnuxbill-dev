@@ -115,6 +115,7 @@ CREATE TABLE `tbl_plans` (
   `plan_expired` int NOT NULL DEFAULT '0',
   `expired_date` TINYINT(1) NOT NULL DEFAULT '20',
   `enabled` tinyint(1) NOT NULL DEFAULT '1' COMMENT '0 disabled\r\n',
+  `reminder_enabled` tinyint(1) NOT NULL DEFAULT '1' COMMENT '0 disabled reminders',
   `prepaid` enum('yes','no') CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci DEFAULT 'yes' COMMENT 'is prepaid',
   `visibility` enum('all','custom','exclude') CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL DEFAULT 'all' COMMENT 'plan visibility for customers',
   `plan_type` enum('Business','Personal') COLLATE utf8mb4_general_ci DEFAULT 'Personal' COMMENT 'For selecting account type',
@@ -141,6 +142,13 @@ CREATE TABLE `tbl_plan_customers` (
   UNIQUE KEY `plan_customer_unique` (`plan_id`,`customer_id`),
   KEY `idx_plan_id` (`plan_id`),
   KEY `idx_customer_id` (`customer_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+DROP TABLE IF EXISTS `tbl_plan_links`;
+CREATE TABLE `tbl_plan_links` (
+  `id` int NOT NULL,
+  `plan_id` int NOT NULL,
+  `linked_plan_id` int NOT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 DROP TABLE IF EXISTS `tbl_routers`;
@@ -355,6 +363,11 @@ ALTER TABLE `tbl_payment_gateway`
 ALTER TABLE `tbl_plans`
   ADD PRIMARY KEY (`id`);
 
+ALTER TABLE `tbl_plan_links`
+  ADD PRIMARY KEY (`id`),
+  ADD UNIQUE KEY `unique_plan_link` (`plan_id`,`linked_plan_id`),
+  ADD KEY `idx_plan_links_linked` (`linked_plan_id`);
+
 ALTER TABLE `tbl_pool`
   ADD PRIMARY KEY (`id`);
 
@@ -393,6 +406,9 @@ ALTER TABLE `tbl_payment_gateway`
   MODIFY `id` int NOT NULL AUTO_INCREMENT;
 
 ALTER TABLE `tbl_plans`
+  MODIFY `id` int NOT NULL AUTO_INCREMENT;
+
+ALTER TABLE `tbl_plan_links`
   MODIFY `id` int NOT NULL AUTO_INCREMENT;
 
 ALTER TABLE `tbl_pool`

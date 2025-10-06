@@ -93,6 +93,174 @@ class Package
         }
         return $out;
     }
+
+    public static function getPlanOptionsList($excludeId = null)
+    {
+        $query = ORM::for_table('tbl_plans')
+            ->select_many('id', 'name_plan', 'type')
+            ->order_by_asc('name_plan');
+        if ($excludeId !== null) {
+            $query->where_not_equal('id', (int) $excludeId);
+        }
+        return $query->find_array();
+    }
+
+    public static function getLinkedPlanIds($planId)
+    {
+        $planId = (int) $planId;
+        if ($planId <= 0) {
+            return [];
+        }
+        $rows = ORM::for_table('tbl_plan_links')
+            ->select_many('plan_id', 'linked_plan_id')
+            ->where_any_is([
+                ['plan_id' => $planId],
+                ['linked_plan_id' => $planId],
+            ])
+            ->find_array();
+        if (empty($rows)) {
+            return [];
+        }
+        $ids = [];
+        foreach ($rows as $row) {
+            $rowPlan = (int) $row['plan_id'];
+            $rowLinked = (int) $row['linked_plan_id'];
+            if ($rowPlan === $planId && $rowLinked > 0) {
+                $ids[] = $rowLinked;
+            } elseif ($rowLinked === $planId && $rowPlan > 0) {
+                $ids[] = $rowPlan;
+            }
+        }
+        return array_values(array_unique($ids));
+    }
+
+    public static function syncLinkedPlans($planId, array $linkedPlanIds)
+    {
+        $planId = (int) $planId;
+        if ($planId <= 0) {
+            return;
+        }
+        $linkedPlanIds = array_filter(array_unique(array_map('intval', $linkedPlanIds)), function ($id) use ($planId) {
+            return $id > 0 && $id !== $planId;
+        });
+
+        self::removePlanLinks($planId);
+
+        if (empty($linkedPlanIds)) {
+            return;
+        }
+
+        $validIds = ORM::for_table('tbl_plans')
+            ->select('id')
+            ->where_in('id', $linkedPlanIds)
+            ->find_array();
+
+        if (empty($validIds)) {
+            return;
+        }
+
+        foreach ($validIds as $row) {
+            $linkedId = (int) $row['id'];
+            self::createPlanLinkRecord($planId, $linkedId);
+            self::createPlanLinkRecord($linkedId, $planId);
+        }
+    }
+
+    public static function removePlanLinks($planId)
+    {
+        $planId = (int) $planId;
+        if ($planId <= 0) {
+            return;
+        }
+        ORM::for_table('tbl_plan_links')->where('plan_id', $planId)->delete_many();
+        ORM::for_table('tbl_plan_links')->where('linked_plan_id', $planId)->delete_many();
+    }
+
+    protected static function createPlanLinkRecord($planId, $linkedPlanId)
+    {
+        $planId = (int) $planId;
+        $linkedPlanId = (int) $linkedPlanId;
+        if ($planId <= 0 || $linkedPlanId <= 0 || $planId === $linkedPlanId) {
+            return;
+        }
+        $exists = ORM::for_table('tbl_plan_links')
+            ->where('plan_id', $planId)
+            ->where('linked_plan_id', $linkedPlanId)
+            ->find_one();
+        if ($exists) {
+            return;
+        }
+        $row = ORM::for_table('tbl_plan_links')->create();
+        $row->plan_id = $planId;
+        $row->linked_plan_id = $linkedPlanId;
+        $row->save();
+    }
+
+    protected static function resolveRouterNameForPlan($plan)
+    {
+        if (!$plan) {
+            return '';
+        }
+        if (!is_array($plan)) {
+            $plan = $plan->as_array();
+        }
+        if (!empty($plan['is_radius'])) {
+            return 'radius';
+        }
+        if (!empty($plan['type']) && $plan['type'] === 'Balance') {
+            if (!empty($plan['routers'])) {
+                return $plan['routers'];
+            }
+            return 'balance';
+        }
+        if (!empty($plan['routers'])) {
+            return $plan['routers'];
+        }
+        if (!empty($plan['device']) && stripos($plan['device'], 'radius') !== false) {
+            return 'radius';
+        }
+        return '';
+    }
+
+    protected static function activateLinkedPlans($customerId, $gateway, $channel, $note, array &$processedPlanIds, $plan, $skip)
+    {
+        if ($skip || $customerId <= 0 || !$plan) {
+            return;
+        }
+        if (!is_array($plan)) {
+            $plan = $plan->as_array();
+        }
+        if (empty($plan['id'])) {
+            return;
+        }
+        $linkedIds = self::getLinkedPlanIds($plan['id']);
+        if (empty($linkedIds)) {
+            return;
+        }
+        $template = Lang::T('Linked Plan Activation Note');
+        foreach ($linkedIds as $linkedId) {
+            if (in_array($linkedId, $processedPlanIds, true)) {
+                continue;
+            }
+            $linkedPlan = ORM::for_table('tbl_plans')->find_one($linkedId);
+            if (!$linkedPlan) {
+                continue;
+            }
+            if (isset($linkedPlan['enabled']) && (int) $linkedPlan['enabled'] === 0) {
+                continue;
+            }
+            $routerName = self::resolveRouterNameForPlan($linkedPlan);
+            if (empty($routerName)) {
+                continue;
+            }
+            if (!is_array($linkedPlan)) {
+                $linkedPlan = $linkedPlan->as_array();
+            }
+            $linkedNoteText = str_replace('[[plan]]', $plan['name_plan'], $template);
+            $combinedNote = trim($note . "\n" . $linkedNoteText);
+            self::rechargeUser($customerId, $routerName, $linkedPlan['id'], $gateway, $channel, $combinedNote, $processedPlanIds);
+        }
+    }
     /**
      * @param int   $id_customer String user identifier
      * @param string $router_name router name for this package
@@ -102,7 +270,7 @@ class Package
      * @param array $pgids payment gateway ids
      * @return boolean
      */
-    public static function rechargeUser($id_customer, $router_name, $plan_id, $gateway, $channel, $note = '')
+    public static function rechargeUser($id_customer, $router_name, $plan_id, $gateway, $channel, $note = '', &$processedPlanIds = null)
     {
         global $config, $admin, $c, $p, $b, $t, $d, $zero, $trx, $_app_stage, $isChangePlan;
         $date_only = date("Y-m-d");
@@ -116,14 +284,23 @@ class Package
             return;
         }
 
-        if ($id_customer == '' or $router_name == '' or $plan_id == '') {
+        if ($processedPlanIds === null) {
+            $processedPlanIds = [];
+        }
+        $planIdInt = (int) $plan_id;
+        if ($planIdInt <= 0 || in_array($planIdInt, $processedPlanIds, true)) {
+            return false;
+        }
+        $processedPlanIds[] = $planIdInt;
+
+        if ($id_customer == '' or $router_name == '' or $planIdInt == 0) {
             return false;
         }
         if (trim($gateway) == 'Voucher' && $id_customer == 0) {
             $isVoucher = true;
         }
 
-        $p = ORM::for_table('tbl_plans')->where('id', $plan_id)->find_one();
+        $p = ORM::for_table('tbl_plans')->where('id', $planIdInt)->find_one();
 
         if (!$isVoucher) {
             $c = ORM::for_table('tbl_customers')->where('id', $id_customer)->find_one();
@@ -183,11 +360,15 @@ class Package
 
 
         if ($router_name == 'balance') {
-            return self::rechargeBalance($c, $p, $gateway, $channel);
+            $result = self::rechargeBalance($c, $p, $gateway, $channel, $note);
+            self::activateLinkedPlans($id_customer, $gateway, $channel, $note, $processedPlanIds, $p, $isVoucher);
+            return $result;
         }
 
         if ($router_name == 'Custom Balance') {
-            return self::rechargeCustomBalance($c, $p, $gateway, $channel);
+            $result = self::rechargeCustomBalance($c, $p, $gateway, $channel, $note);
+            self::activateLinkedPlans($id_customer, $gateway, $channel, $note, $processedPlanIds, $p, $isVoucher);
+            return $result;
         }
 
         /**
@@ -345,7 +526,7 @@ class Package
             if (Validator::containsKeyword($p['device'])) {
                 $b->customer_id = $id_customer;
                 $b->username = $c['username'];
-                $b->plan_id = $plan_id;
+                $b->plan_id = $planIdInt;
                 $b->namebp = $p['name_plan'];
                 $b->recharged_on = $date_only;
                 $b->recharged_time = $time_only;
@@ -461,7 +642,7 @@ class Package
                 $d = ORM::for_table('tbl_user_recharges')->create();
                 $d->customer_id = $id_customer;
                 $d->username = $c['username'];
-                $d->plan_id = $plan_id;
+                $d->plan_id = $planIdInt;
                 $d->namebp = $p['name_plan'];
                 $d->recharged_on = $date_only;
                 $d->recharged_time = $time_only;
@@ -551,6 +732,7 @@ class Package
         if (is_array($bills) && count($bills) > 0) {
             User::billsPaid($bills, $id_customer);
         }
+        self::activateLinkedPlans($id_customer, $gateway, $channel, $note, $processedPlanIds, $p, $isVoucher);
         run_hook("recharge_user_finish");
         Message::sendInvoice($c, $t);
         if ($trx) {

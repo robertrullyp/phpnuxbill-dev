@@ -207,6 +207,8 @@ switch ($action) {
             }
         }
         $ui->assign('devices', $devices);
+        $ui->assign('plan_options', Package::getPlanOptionsList());
+        $ui->assign('selected_linked_plans', []);
         run_hook('view_add_plan'); #HOOK
         $ui->display('admin/hotspot/add.tpl');
         break;
@@ -243,6 +245,8 @@ switch ($action) {
                 }
             }
             $ui->assign('devices', $devices);
+            $ui->assign('plan_options', Package::getPlanOptionsList($id));
+            $ui->assign('selected_linked_plans', Package::getLinkedPlanIds($id));
             //select expired plan
             if ($d['is_radius']) {
                 $exps = ORM::for_table('tbl_plans')->selects('id', 'name_plan')->where('type', 'Hotspot')->where("is_radius", 1)->findArray();
@@ -263,6 +267,7 @@ switch ($action) {
         $d = ORM::for_table('tbl_plans')->find_one($id);
         if ($d) {
             run_hook('delete_plan'); #HOOK
+            Package::removePlanLinks($id);
             $dvc = Package::getDevice($d);
             if ($_app_stage != 'demo') {
                 if (file_exists($dvc)) {
@@ -300,6 +305,8 @@ switch ($action) {
         $expired_date = _post('expired_date');
         $visibility = _post('visibility') ?: 'all';
         $_SESSION['last_visibility'] = $visibility;
+        $reminderEnabled = isset($_POST['reminder_enabled']) ? (int) $_POST['reminder_enabled'] : 0;
+        $linkedPlans = isset($_POST['linked_plans']) ? (array) $_POST['linked_plans'] : [];
 
         $msg = '';
         if (Validator::UnsignedNumber($validity) == false) {
@@ -349,6 +356,7 @@ switch ($action) {
             }
             $d->enabled = $enabled;
             $d->prepaid = $prepaid;
+            $d->reminder_enabled = $reminderEnabled ? 1 : 0;
             // set visibility for new plan
             $d->visibility = in_array($visibility, ['all','custom','exclude']) ? $visibility : 'all';
             $d->device = $device;
@@ -361,6 +369,9 @@ switch ($action) {
                 $d->expired_date = 20;
             }
             $d->save();
+
+            $linkedPlanIds = array_filter(array_unique(array_map('intval', $linkedPlans)));
+            Package::syncLinkedPlans($d->id(), $linkedPlanIds);
 
             // Save visibility mapping for custom/exclude selections
             if (in_array($d['visibility'], ['custom','exclude'])) {
@@ -417,6 +428,7 @@ switch ($action) {
         $on_logout = _post('on_logout');
         $expired_date = _post('expired_date');
         $visibility = _post('visibility') ?: 'all';
+        $_SESSION['last_visibility'] = $visibility;
         $msg = '';
         if (Validator::UnsignedNumber($validity) == false) {
             $msg .= 'The validity must be a number' . '<br>';
@@ -477,6 +489,7 @@ switch ($action) {
             $d->plan_expired = $plan_expired;
             $d->enabled = $enabled;
             $d->prepaid = $prepaid;
+            $d->reminder_enabled = $reminderEnabled ? 1 : 0;
             $d->visibility = in_array($visibility, ['all','custom','exclude']) ? $visibility : 'all';
             $d->on_login = $on_login;
             $d->on_logout = $on_logout;
@@ -490,6 +503,9 @@ switch ($action) {
                 $d->expired_date = 20;
             }
             $d->save();
+
+            $linkedPlanIds = array_filter(array_unique(array_map('intval', $linkedPlans)));
+            Package::syncLinkedPlans($id, $linkedPlanIds);
 
             // Update visibility mapping
             ORM::for_table('tbl_plan_customers')->where('plan_id', $id)->delete_many();
@@ -647,6 +663,8 @@ switch ($action) {
             }
         }
         $ui->assign('devices', $devices);
+        $ui->assign('plan_options', Package::getPlanOptionsList());
+        $ui->assign('selected_linked_plans', []);
         run_hook('view_add_ppoe'); #HOOK
         $ui->display('admin/pppoe/add.tpl');
         break;
@@ -683,6 +701,8 @@ switch ($action) {
                 }
             }
             $ui->assign('devices', $devices);
+            $ui->assign('plan_options', Package::getPlanOptionsList($id));
+            $ui->assign('selected_linked_plans', Package::getLinkedPlanIds($id));
             //select expired plan
             if ($d['is_radius']) {
                 $exps = ORM::for_table('tbl_plans')->selects('id', 'name_plan')->where('type', 'PPPOE')->where("is_radius", 1)->findArray();
@@ -711,6 +731,7 @@ switch ($action) {
         $d = ORM::for_table('tbl_plans')->find_one($id);
         if ($d) {
             run_hook('delete_ppoe'); #HOOK
+            Package::removePlanLinks($id);
 
             $dvc = Package::getDevice($d);
             if ($_app_stage != 'demo') {
@@ -741,6 +762,8 @@ switch ($action) {
         $enabled = _post('enabled');
         $prepaid = _post('prepaid');
         $expired_date = _post('expired_date');
+        $reminderEnabled = isset($_POST['reminder_enabled']) ? (int) $_POST['reminder_enabled'] : 0;
+        $linkedPlans = isset($_POST['linked_plans']) ? (array) $_POST['linked_plans'] : [];
         $visibility = _post('visibility') ?: 'all';
         $_SESSION['last_visibility'] = $visibility;
 
@@ -801,6 +824,7 @@ switch ($action) {
                 $d->is_radius = 0;
                 $d->routers = $routers;
             }
+            $d->plan_expired = (int)$plan_expired;
             if ($prepaid == 'no') {
                 if ($expired_date > 28 && $expired_date < 1) {
                     $expired_date = 20;
@@ -811,9 +835,13 @@ switch ($action) {
             }
             $d->enabled = $enabled;
             $d->prepaid = $prepaid;
+            $d->reminder_enabled = $reminderEnabled ? 1 : 0;
             $d->visibility = in_array($visibility, ['all','custom','exclude']) ? $visibility : 'all';
             $d->device = $device;
             $d->save();
+
+            $linkedPlanIds = array_filter(array_unique(array_map('intval', $linkedPlans)));
+            Package::syncLinkedPlans($d->id(), $linkedPlanIds);
 
             // Handle custom visibility mapping for PPPoE plan
             if (in_array($d['visibility'], ['custom','exclude'])) {
@@ -862,7 +890,8 @@ switch ($action) {
         $_SESSION['last_visibility'] = $visibility;
         $on_login = _post('on_login');
         $on_logout = _post('on_logout');
-        $visibility = _post('visibility') ?: 'all';
+        $reminderEnabled = isset($_POST['reminder_enabled']) ? (int) $_POST['reminder_enabled'] : 0;
+        $linkedPlans = isset($_POST['linked_plans']) ? (array) $_POST['linked_plans'] : [];
 
         $msg = '';
         if (Validator::UnsignedNumber($validity) == false) {
@@ -921,6 +950,7 @@ switch ($action) {
             $d->device = $device;
             $d->on_login = $on_login;
             $d->on_logout = $on_logout;
+            $d->reminder_enabled = $reminderEnabled ? 1 : 0;
             $d->visibility = in_array($visibility, ['all','custom','exclude']) ? $visibility : 'all';
             if ($prepaid == 'no') {
                 if ($expired_date > 28 && $expired_date < 1) {
@@ -931,6 +961,9 @@ switch ($action) {
                 $d->expired_date = 0;
             }
             $d->save();
+
+            $linkedPlanIds = array_filter(array_unique(array_map('intval', $linkedPlans)));
+            Package::syncLinkedPlans($id, $linkedPlanIds);
 
             // Update visibility mapping
             ORM::for_table('tbl_plan_customers')->where('plan_id', $id)->delete_many();
@@ -997,6 +1030,8 @@ switch ($action) {
     case 'balance-add':
         $ui->assign('_title', Lang::T('Balance Plans'));
         $ui->assign('last_visibility', isset($_SESSION['last_visibility']) ? $_SESSION['last_visibility'] : 'all');
+        $ui->assign('plan_options', Package::getPlanOptionsList());
+        $ui->assign('selected_linked_plans', []);
         run_hook('view_add_balance'); #HOOK
         $ui->display('admin/balance/add.tpl');
         break;
@@ -1005,6 +1040,8 @@ switch ($action) {
         $id = $routes['2'];
         $d = ORM::for_table('tbl_plans')->find_one($id);
         $ui->assign('d', $d);
+        $ui->assign('plan_options', Package::getPlanOptionsList($id));
+        $ui->assign('selected_linked_plans', Package::getLinkedPlanIds($id));
         // Preload selected customers for visibility
         $assigned = ORM::for_table('tbl_plan_customers')->select('customer_id')->where('plan_id', $id)->find_array();
         $selectedIds = array_column($assigned, 'customer_id');
@@ -1022,6 +1059,7 @@ switch ($action) {
         $d = ORM::for_table('tbl_plans')->find_one($id);
         if ($d) {
             run_hook('delete_balance'); #HOOK
+            Package::removePlanLinks($id);
             $d->delete();
             r2(getUrl('services/balance'), 's', Lang::T('Data Deleted Successfully'));
         }
@@ -1035,6 +1073,8 @@ switch ($action) {
         $prepaid = _post('prepaid');
         $visibility = _post('visibility') ?: 'all';
         $_SESSION['last_visibility'] = $visibility;
+        $reminderEnabled = isset($_POST['reminder_enabled']) ? (int) $_POST['reminder_enabled'] : 0;
+        $linkedPlans = isset($_POST['linked_plans']) ? (array) $_POST['linked_plans'] : [];
 
         $msg = '';
         if (Validator::UnsignedNumber($price) == false) {
@@ -1059,8 +1099,12 @@ switch ($action) {
             $d->enabled = $enabled;
             $d->price_old = $price_old;
             $d->prepaid = 'yes';
+            $d->reminder_enabled = $reminderEnabled ? 1 : 0;
             $d->visibility = in_array($visibility, ['all','custom','exclude']) ? $visibility : 'all';
             $d->save();
+
+            $linkedPlanIds = array_filter(array_unique(array_map('intval', $linkedPlans)));
+            Package::syncLinkedPlans($id, $linkedPlanIds);
 
             // Update visibility mapping
             ORM::for_table('tbl_plan_customers')->where('plan_id', $id)->delete_many();
@@ -1086,6 +1130,8 @@ switch ($action) {
         $enabled = _post('enabled');
         $visibility = _post('visibility') ?: 'all';
         $_SESSION['last_visibility'] = $visibility;
+        $reminderEnabled = isset($_POST['reminder_enabled']) ? (int) $_POST['reminder_enabled'] : 0;
+        $linkedPlans = isset($_POST['linked_plans']) ? (array) $_POST['linked_plans'] : [];
 
         $msg = '';
         if (Validator::UnsignedNumber($price) == false) {
@@ -1112,8 +1158,12 @@ switch ($action) {
             $d->pool = '';
             $d->enabled = $enabled;
             $d->prepaid = 'yes';
+            $d->reminder_enabled = $reminderEnabled ? 1 : 0;
             $d->visibility = in_array($visibility, ['all','custom','exclude']) ? $visibility : 'all';
             $d->save();
+
+            $linkedPlanIds = array_filter(array_unique(array_map('intval', $linkedPlans)));
+            Package::syncLinkedPlans($d->id(), $linkedPlanIds);
 
             if (in_array($d['visibility'], ['custom','exclude'])) {
                 $selected = isset($_POST['visible_customers']) ? (array)$_POST['visible_customers'] : [];
@@ -1260,86 +1310,10 @@ switch ($action) {
             }
         }
         $ui->assign('devices', $devices);
+        $ui->assign('plan_options', Package::getPlanOptionsList());
+        $ui->assign('selected_linked_plans', []);
         run_hook('view_add_vpn'); #HOOK
         $ui->display('admin/vpn/add.tpl');
-        break;
-
-    case 'vpn-add-post':
-        $plan_type = _post('plan_type');
-        $name = _post('name_plan');
-        $id_bw = _post('id_bw');
-        $price = _post('price');
-        $validity = _post('validity');
-        $validity_unit = _post('validity_unit');
-        $routers = _post('routers');
-        $device = _post('device');
-        $pool = _post('pool_name');
-        $plan_expired = _post('plan_expired');
-        $enabled = _post('enabled');
-        $prepaid = _post('prepaid');
-        $expired_date = _post('expired_date');
-        $visibility = _post('visibility') ?: 'all';
-
-        $msg = '';
-        if (Validator::UnsignedNumber($validity) == false) {
-            $msg .= 'The validity must be a number' . '<br>';
-        }
-        if (Validator::UnsignedNumber($price) == false) {
-            $msg .= 'The price must be a number' . '<br>';
-        }
-        if ($name == '' or $id_bw == '' or $price == '' or $validity == '' or $pool == '') {
-            $msg .= Lang::T('All field is required') . '<br>';
-        }
-        run_hook('add_vpn'); #HOOK
-        if ($msg == '') {
-            $d = ORM::for_table('tbl_plans')->create();
-            $d->type = 'VPN';
-            $d->name_plan = $name;
-            $d->id_bw = $id_bw;
-            $d->price = $price;
-            $d->plan_type = $plan_type;
-            $d->validity = $validity;
-            $d->validity_unit = $validity_unit;
-            $d->routers = $routers;
-            $d->pool = $pool;
-            $d->plan_expired = (int)$plan_expired;
-            $d->enabled = $enabled;
-            $d->prepaid = $prepaid;
-            if ($prepaid == 'no') {
-                if ($expired_date > 28 && $expired_date < 1) { $expired_date = 20; }
-                $d->expired_date = $expired_date;
-            } else {
-                $d->expired_date = 0;
-            }
-            $d->device = $device;
-            $d->visibility = in_array($visibility, ['all','custom','exclude']) ? $visibility : 'all';
-            $d->save();
-
-            // Save visibility mapping if needed
-            if (in_array($d['visibility'], ['custom','exclude'])) {
-                $selected = isset($_POST['visible_customers']) ? (array)$_POST['visible_customers'] : [];
-                $selected = array_filter(array_unique(array_map('intval', $selected)));
-                foreach ($selected as $cid) {
-                    $m = ORM::for_table('tbl_plan_customers')->create();
-                    $m->plan_id = (int)$d->id();
-                    $m->customer_id = $cid;
-                    $m->save();
-                }
-            }
-
-            $dvc = Package::getDevice($d);
-            if ($_app_stage != 'demo') {
-                if (file_exists($dvc)) {
-                    require_once $dvc;
-                    (new $d['device'])->add_plan($d);
-                } else {
-                    new Exception(Lang::T("Devices Not Found"));
-                }
-            }
-            r2(getUrl('services/vpn'), 's', Lang::T('Data Created Successfully'));
-        } else {
-            r2(getUrl('services/vpn-add'), 'e', $msg);
-        }
         break;
 
     case 'vpn-edit':
@@ -1374,6 +1348,8 @@ switch ($action) {
                 }
             }
             $ui->assign('devices', $devices);
+            $ui->assign('plan_options', Package::getPlanOptionsList($id));
+            $ui->assign('selected_linked_plans', Package::getLinkedPlanIds($id));
             //select expired plan
             if ($d['is_radius']) {
                 $exps = ORM::for_table('tbl_plans')->selects('id', 'name_plan')->where('type', 'VPN')->where("is_radius", 1)->findArray();
@@ -1402,6 +1378,7 @@ switch ($action) {
         $d = ORM::for_table('tbl_plans')->find_one($id);
         if ($d) {
             run_hook('delete_vpn'); #HOOK
+            Package::removePlanLinks($id);
 
             $dvc = Package::getDevice($d);
             if ($_app_stage != 'demo') {
@@ -1432,6 +1409,10 @@ switch ($action) {
         $enabled = _post('enabled');
         $prepaid = _post('prepaid');
         $expired_date = _post('expired_date');
+        $visibility = _post('visibility') ?: 'all';
+        $_SESSION['last_visibility'] = $visibility;
+        $reminderEnabled = isset($_POST['reminder_enabled']) ? (int) $_POST['reminder_enabled'] : 0;
+        $linkedPlans = isset($_POST['linked_plans']) ? (array) $_POST['linked_plans'] : [];
 
 
         $msg = '';
@@ -1501,8 +1482,23 @@ switch ($action) {
             $d->enabled = $enabled;
             $d->prepaid = $prepaid;
             $d->device = $device;
+            $d->reminder_enabled = $reminderEnabled ? 1 : 0;
             $d->visibility = in_array($visibility, ['all','custom','exclude']) ? $visibility : 'all';
             $d->save();
+
+            $linkedPlanIds = array_filter(array_unique(array_map('intval', $linkedPlans)));
+            Package::syncLinkedPlans($d->id(), $linkedPlanIds);
+
+            if (in_array($d['visibility'], ['custom','exclude'])) {
+                $selected = isset($_POST['visible_customers']) ? (array)$_POST['visible_customers'] : [];
+                $selected = array_filter(array_unique(array_map('intval', $selected)));
+                foreach ($selected as $cid) {
+                    $m = ORM::for_table('tbl_plan_customers')->create();
+                    $m->plan_id = (int)$d->id();
+                    $m->customer_id = $cid;
+                    $m->save();
+                }
+            }
 
             $dvc = Package::getDevice($d);
             if ($_app_stage != 'demo') {
@@ -1538,6 +1534,8 @@ switch ($action) {
         $on_login = _post('on_login');
         $on_logout = _post('on_logout');
         $visibility = _post('visibility') ?: 'all';
+        $reminderEnabled = isset($_POST['reminder_enabled']) ? (int) $_POST['reminder_enabled'] : 0;
+        $linkedPlans = isset($_POST['linked_plans']) ? (array) $_POST['linked_plans'] : [];
 
         $msg = '';
         if (Validator::UnsignedNumber($validity) == false) {
@@ -1596,6 +1594,7 @@ switch ($action) {
             $d->device = $device;
             $d->on_login = $on_login;
             $d->on_logout = $on_logout;
+            $d->reminder_enabled = $reminderEnabled ? 1 : 0;
             if ($prepaid == 'no') {
                 if ($expired_date > 28 && $expired_date < 1) {
                     $expired_date = 20;
@@ -1606,6 +1605,9 @@ switch ($action) {
             }
             $d->visibility = in_array($visibility, ['all','custom','exclude']) ? $visibility : 'all';
             $d->save();
+
+            $linkedPlanIds = array_filter(array_unique(array_map('intval', $linkedPlans)));
+            Package::syncLinkedPlans($id, $linkedPlanIds);
 
             // Update visibility mapping
             ORM::for_table('tbl_plan_customers')->where('plan_id', $id)->delete_many();

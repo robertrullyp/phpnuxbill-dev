@@ -84,6 +84,18 @@
                     echo "ALTER TABLE `tbl_plans` ADD `enabled` tinyint(1) NOT NULL DEFAULT '1' COMMENT '0 disabled' AFTER `pool`;\n\n";
                     $dbh->exec("ALTER TABLE `tbl_plans` ADD `enabled` tinyint(1) NOT NULL DEFAULT '1' COMMENT '0 disabled' AFTER `pool`;");
 
+                    $stmt = $dbh->query("SHOW COLUMNS FROM `tbl_plans` LIKE 'reminder_enabled'");
+                    if (!$stmt->fetch()) {
+                        echo "ALTER TABLE `tbl_plans` ADD `reminder_enabled` TINYINT(1) NOT NULL DEFAULT '1' COMMENT '0 disabled reminders' AFTER `enabled`;\n\n";
+                        $dbh->exec("ALTER TABLE `tbl_plans` ADD `reminder_enabled` TINYINT(1) NOT NULL DEFAULT '1' COMMENT '0 disabled reminders' AFTER `enabled`;");
+                    }
+
+                    $stmt = $dbh->query("SHOW TABLES LIKE 'tbl_plan_links'");
+                    if (!$stmt->fetch()) {
+                        echo "CREATE TABLE `tbl_plan_links` (\n    `id` int NOT NULL AUTO_INCREMENT,\n    `plan_id` int NOT NULL,\n    `linked_plan_id` int NOT NULL,\n    PRIMARY KEY (`id`),\n    UNIQUE KEY `unique_plan_link` (`plan_id`,`linked_plan_id`),\n    KEY `idx_plan_links_linked` (`linked_plan_id`)\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;\n\n";
+                        $dbh->exec("CREATE TABLE `tbl_plan_links` (`id` int NOT NULL AUTO_INCREMENT, `plan_id` int NOT NULL, `linked_plan_id` int NOT NULL, PRIMARY KEY (`id`), UNIQUE KEY `unique_plan_link` (`plan_id`,`linked_plan_id`), KEY `idx_plan_links_linked` (`linked_plan_id`)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;");
+                    }
+
                     echo "ALTER TABLE `tbl_routers` ADD `enabled` tinyint(1) NOT NULL DEFAULT '1' COMMENT '0 disabled' AFTER `description`;\n\n";
                     $dbh->exec("ALTER TABLE `tbl_routers` ADD `enabled` tinyint(1) NOT NULL DEFAULT '1' COMMENT '0 disabled' AFTER `description`;");
                     echo "ALTER TABLE `tbl_routers` CHANGE `description` `description` VARCHAR(256) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL DEFAULT NULL;";

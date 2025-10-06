@@ -37,6 +37,12 @@ foreach ($d as $ds) {
     if (in_array($ds['expiration'], [$day1, $day3, $day7])) {
         $u = ORM::for_table('tbl_user_recharges')->where('id', $ds['id'])->find_one();
         $p = ORM::for_table('tbl_plans')->where('id', $u['plan_id'])->find_one();
+        if (!$p) {
+            continue;
+        }
+        if (isset($p['reminder_enabled']) && (int) $p['reminder_enabled'] === 0) {
+            continue;
+        }
         $c = ORM::for_table('tbl_customers')->where('id', $ds['customer_id'])->find_one();
         if ($p['validity_unit'] == 'Period') {
             // Postpaid price from field

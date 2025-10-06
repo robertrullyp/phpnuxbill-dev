@@ -69,6 +69,29 @@
                             <p class="help-block">{Lang::T('Search by Full Name, Username, Phone or Email')}</p>
                         </div>
                     </div>
+                    <div class="form-group">
+                        <label class="col-md-3 control-label">{Lang::T('Reminder Notification')}</label>
+                        <div class="col-md-9">
+                            <input type="hidden" name="reminder_enabled" value="0">
+                            <label class="checkbox-inline">
+                                <input type="checkbox" name="reminder_enabled" value="1" {if !isset($d['reminder_enabled']) || $d['reminder_enabled'] != 0}checked{/if}>
+                                {Lang::T('Send reminder notifications for this plan')}
+                            </label>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label class="col-md-3 control-label">{Lang::T('Linked Plans')}</label>
+                        <div class="col-md-9">
+                            <select name="linked_plans[]" class="form-control select2" multiple>
+                                {foreach $plan_options as $plan}
+                                    <option value="{$plan.id}" {if isset($selected_linked_plans) && in_array($plan.id, $selected_linked_plans)}selected{/if}>
+                                        {$plan.name_plan} ({$plan.type})
+                                    </option>
+                                {/foreach}
+                            </select>
+                            <p class="help-block">{Lang::T('Linked Plans Help')}</p>
+                        </div>
+                    </div>
                     {if $_c['radius_enable'] and $d['is_radius']}
                         <div class="form-group">
                             <label class="col-md-3 control-label">Radius
