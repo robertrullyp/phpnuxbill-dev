@@ -1266,7 +1266,7 @@ switch ($action) {
         if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $csrf_token = Csrf::getTokenFromRequest();
             if ($csrf_token !== '' && !Csrf::check($csrf_token)) {
-                _alert(Lang::T('Invalid CSRF token'), 'danger', 'dashboard');
+                _msglog('e', Lang::T('Invalid CSRF token'));
             }
 
             $search = _post('search', $search);
