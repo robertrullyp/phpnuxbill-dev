@@ -257,12 +257,6 @@ switch ($action) {
             $login_page_description = _post('login_page_description');
             $login_Page_template = _post('login_Page_template');
             $login_page_type = _post('login_page_type');
-            $csrf_token = _post('csrf_token');
-
-            if (!Csrf::check($csrf_token)) {
-                r2(getUrl('settings/app'), 'e', Lang::T('Invalid or Expired CSRF Token') . ".");
-            }
-            Csrf::generateAndStoreToken();
 
             if ($login_page_type == 'custom' && (empty($login_Page_template) || empty($login_page_title) || empty($login_page_description))) {
                 r2(getUrl('settings/app'), 'e', 'Please fill all required fields');
