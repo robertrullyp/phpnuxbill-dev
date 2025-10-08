@@ -2,6 +2,11 @@
 
 # CHANGELOG
 
+## 2025.10.8
+
+- **Maintenance:** Captured the current main-branch snapshot for release, syncing metadata across `version.json`, the README, and the updater registry.
+- Version bumped to `2025.10.8`.
+
 ## 2025.10.6
 
 - **Plans:** Added a per-plan `reminder_enabled` toggle that is honored by all plan forms and by `system/cron_reminder.php`, allowing operators to suppress renewal notices for specific products.
