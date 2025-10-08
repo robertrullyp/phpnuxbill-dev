@@ -298,10 +298,11 @@ switch ($action) {
         $enabled = _post('enabled');
         $prepaid = _post('prepaid');
         $expired_date = _post('expired_date');
-        $visibility = _post('visibility') ?: 'all';
-        $_SESSION['last_visibility'] = $visibility;
+        $visibilityInput = _post('visibility', null);
+        $visibility = Package::normalizeVisibility($visibilityInput);
+        $_SESSION['last_visibility'] = $visibility ?? 'all';
         $reminderEnabled = isset($_POST['reminder_enabled']) ? (int) $_POST['reminder_enabled'] : 0;
-        $linkedPlans = isset($_POST['linked_plans']) ? (array) $_POST['linked_plans'] : [];
+        $linkedPlans = $_POST['linked_plans'] ?? null;
 
         $msg = '';
         if (Validator::UnsignedNumber($validity) == false) {
@@ -353,7 +354,7 @@ switch ($action) {
             $d->prepaid = $prepaid;
             $d->reminder_enabled = $reminderEnabled ? 1 : 0;
             // set visibility for new plan
-            $d->visibility = in_array($visibility, ['all','custom','exclude']) ? $visibility : 'all';
+            $d->visibility = $visibility;
             $d->device = $device;
             if ($prepaid == 'no') {
                 if ($expired_date > 28 && $expired_date < 1) {
@@ -365,7 +366,7 @@ switch ($action) {
             }
             $d->save();
 
-            $linkedPlanIds = array_filter(array_unique(array_map('intval', $linkedPlans)));
+            $linkedPlanIds = Package::normalizeLinkedPlanIds($linkedPlans);
             Package::syncLinkedPlans($d->id(), $linkedPlanIds);
 
             // Save visibility mapping for custom/exclude selections
@@ -422,8 +423,10 @@ switch ($action) {
         $on_login = _post('on_login');
         $on_logout = _post('on_logout');
         $expired_date = _post('expired_date');
-        $visibility = _post('visibility') ?: 'all';
-        $_SESSION['last_visibility'] = $visibility;
+        $visibilityInput = _post('visibility', null);
+        $visibility = Package::normalizeVisibility($visibilityInput);
+        $_SESSION['last_visibility'] = $visibility ?? 'all';
+        $linkedPlans = $_POST['linked_plans'] ?? null;
         $msg = '';
         if (Validator::UnsignedNumber($validity) == false) {
             $msg .= 'The validity must be a number' . '<br>';
@@ -485,7 +488,7 @@ switch ($action) {
             $d->enabled = $enabled;
             $d->prepaid = $prepaid;
             $d->reminder_enabled = $reminderEnabled ? 1 : 0;
-            $d->visibility = in_array($visibility, ['all','custom','exclude']) ? $visibility : 'all';
+            $d->visibility = $visibility;
             $d->on_login = $on_login;
             $d->on_logout = $on_logout;
             $d->device = $device;
@@ -499,7 +502,7 @@ switch ($action) {
             }
             $d->save();
 
-            $linkedPlanIds = array_filter(array_unique(array_map('intval', $linkedPlans)));
+            $linkedPlanIds = Package::normalizeLinkedPlanIds($linkedPlans);
             Package::syncLinkedPlans($id, $linkedPlanIds);
 
             // Update visibility mapping
@@ -758,9 +761,10 @@ switch ($action) {
         $prepaid = _post('prepaid');
         $expired_date = _post('expired_date');
         $reminderEnabled = isset($_POST['reminder_enabled']) ? (int) $_POST['reminder_enabled'] : 0;
-        $linkedPlans = isset($_POST['linked_plans']) ? (array) $_POST['linked_plans'] : [];
-        $visibility = _post('visibility') ?: 'all';
-        $_SESSION['last_visibility'] = $visibility;
+        $linkedPlans = $_POST['linked_plans'] ?? null;
+        $visibilityInput = _post('visibility', null);
+        $visibility = Package::normalizeVisibility($visibilityInput);
+        $_SESSION['last_visibility'] = $visibility ?? 'all';
 
 
         $msg = '';
@@ -831,11 +835,11 @@ switch ($action) {
             $d->enabled = $enabled;
             $d->prepaid = $prepaid;
             $d->reminder_enabled = $reminderEnabled ? 1 : 0;
-            $d->visibility = in_array($visibility, ['all','custom','exclude']) ? $visibility : 'all';
+            $d->visibility = $visibility;
             $d->device = $device;
             $d->save();
 
-            $linkedPlanIds = array_filter(array_unique(array_map('intval', $linkedPlans)));
+            $linkedPlanIds = Package::normalizeLinkedPlanIds($linkedPlans);
             Package::syncLinkedPlans($d->id(), $linkedPlanIds);
 
             // Handle custom visibility mapping for PPPoE plan
@@ -881,12 +885,13 @@ switch ($action) {
         $enabled = _post('enabled');
         $prepaid = _post('prepaid');
         $expired_date = _post('expired_date');
-        $visibility = _post('visibility') ?: 'all';
-        $_SESSION['last_visibility'] = $visibility;
+        $visibilityInput = _post('visibility', null);
+        $visibility = Package::normalizeVisibility($visibilityInput);
+        $_SESSION['last_visibility'] = $visibility ?? 'all';
         $on_login = _post('on_login');
         $on_logout = _post('on_logout');
         $reminderEnabled = isset($_POST['reminder_enabled']) ? (int) $_POST['reminder_enabled'] : 0;
-        $linkedPlans = isset($_POST['linked_plans']) ? (array) $_POST['linked_plans'] : [];
+        $linkedPlans = $_POST['linked_plans'] ?? null;
 
         $msg = '';
         if (Validator::UnsignedNumber($validity) == false) {
@@ -946,7 +951,7 @@ switch ($action) {
             $d->on_login = $on_login;
             $d->on_logout = $on_logout;
             $d->reminder_enabled = $reminderEnabled ? 1 : 0;
-            $d->visibility = in_array($visibility, ['all','custom','exclude']) ? $visibility : 'all';
+            $d->visibility = $visibility;
             if ($prepaid == 'no') {
                 if ($expired_date > 28 && $expired_date < 1) {
                     $expired_date = 20;
@@ -957,7 +962,7 @@ switch ($action) {
             }
             $d->save();
 
-            $linkedPlanIds = array_filter(array_unique(array_map('intval', $linkedPlans)));
+            $linkedPlanIds = Package::normalizeLinkedPlanIds($linkedPlans);
             Package::syncLinkedPlans($id, $linkedPlanIds);
 
             // Update visibility mapping
@@ -1066,10 +1071,11 @@ switch ($action) {
         $price_old = _post('price_old');
         $enabled = _post('enabled');
         $prepaid = _post('prepaid');
-        $visibility = _post('visibility') ?: 'all';
-        $_SESSION['last_visibility'] = $visibility;
+        $visibilityInput = _post('visibility', null);
+        $visibility = Package::normalizeVisibility($visibilityInput);
+        $_SESSION['last_visibility'] = $visibility ?? 'all';
         $reminderEnabled = isset($_POST['reminder_enabled']) ? (int) $_POST['reminder_enabled'] : 0;
-        $linkedPlans = isset($_POST['linked_plans']) ? (array) $_POST['linked_plans'] : [];
+        $linkedPlans = $_POST['linked_plans'] ?? null;
 
         $msg = '';
         if (Validator::UnsignedNumber($price) == false) {
@@ -1095,10 +1101,10 @@ switch ($action) {
             $d->price_old = $price_old;
             $d->prepaid = 'yes';
             $d->reminder_enabled = $reminderEnabled ? 1 : 0;
-            $d->visibility = in_array($visibility, ['all','custom','exclude']) ? $visibility : 'all';
+            $d->visibility = $visibility;
             $d->save();
 
-            $linkedPlanIds = array_filter(array_unique(array_map('intval', $linkedPlans)));
+            $linkedPlanIds = Package::normalizeLinkedPlanIds($linkedPlans);
             Package::syncLinkedPlans($id, $linkedPlanIds);
 
             // Update visibility mapping
@@ -1123,10 +1129,11 @@ switch ($action) {
         $name = _post('name');
         $price = _post('price');
         $enabled = _post('enabled');
-        $visibility = _post('visibility') ?: 'all';
-        $_SESSION['last_visibility'] = $visibility;
+        $visibilityInput = _post('visibility', null);
+        $visibility = Package::normalizeVisibility($visibilityInput);
+        $_SESSION['last_visibility'] = $visibility ?? 'all';
         $reminderEnabled = isset($_POST['reminder_enabled']) ? (int) $_POST['reminder_enabled'] : 0;
-        $linkedPlans = isset($_POST['linked_plans']) ? (array) $_POST['linked_plans'] : [];
+        $linkedPlans = $_POST['linked_plans'] ?? null;
 
         $msg = '';
         if (Validator::UnsignedNumber($price) == false) {
@@ -1154,10 +1161,10 @@ switch ($action) {
             $d->enabled = $enabled;
             $d->prepaid = 'yes';
             $d->reminder_enabled = $reminderEnabled ? 1 : 0;
-            $d->visibility = in_array($visibility, ['all','custom','exclude']) ? $visibility : 'all';
+            $d->visibility = $visibility;
             $d->save();
 
-            $linkedPlanIds = array_filter(array_unique(array_map('intval', $linkedPlans)));
+            $linkedPlanIds = Package::normalizeLinkedPlanIds($linkedPlans);
             Package::syncLinkedPlans($d->id(), $linkedPlanIds);
 
             if (in_array($d['visibility'], ['custom','exclude'])) {
@@ -1404,10 +1411,11 @@ switch ($action) {
         $enabled = _post('enabled');
         $prepaid = _post('prepaid');
         $expired_date = _post('expired_date');
-        $visibility = _post('visibility') ?: 'all';
-        $_SESSION['last_visibility'] = $visibility;
+        $visibilityInput = _post('visibility', null);
+        $visibility = Package::normalizeVisibility($visibilityInput);
+        $_SESSION['last_visibility'] = $visibility ?? 'all';
         $reminderEnabled = isset($_POST['reminder_enabled']) ? (int) $_POST['reminder_enabled'] : 0;
-        $linkedPlans = isset($_POST['linked_plans']) ? (array) $_POST['linked_plans'] : [];
+        $linkedPlans = $_POST['linked_plans'] ?? null;
 
 
         $msg = '';
@@ -1478,10 +1486,10 @@ switch ($action) {
             $d->prepaid = $prepaid;
             $d->device = $device;
             $d->reminder_enabled = $reminderEnabled ? 1 : 0;
-            $d->visibility = in_array($visibility, ['all','custom','exclude']) ? $visibility : 'all';
+            $d->visibility = $visibility;
             $d->save();
 
-            $linkedPlanIds = array_filter(array_unique(array_map('intval', $linkedPlans)));
+            $linkedPlanIds = Package::normalizeLinkedPlanIds($linkedPlans);
             Package::syncLinkedPlans($d->id(), $linkedPlanIds);
 
             if (in_array($d['visibility'], ['custom','exclude'])) {
@@ -1528,9 +1536,10 @@ switch ($action) {
         $expired_date = _post('expired_date');
         $on_login = _post('on_login');
         $on_logout = _post('on_logout');
-        $visibility = _post('visibility') ?: 'all';
+        $visibilityInput = _post('visibility', null);
+        $visibility = Package::normalizeVisibility($visibilityInput);
         $reminderEnabled = isset($_POST['reminder_enabled']) ? (int) $_POST['reminder_enabled'] : 0;
-        $linkedPlans = isset($_POST['linked_plans']) ? (array) $_POST['linked_plans'] : [];
+        $linkedPlans = $_POST['linked_plans'] ?? null;
 
         $msg = '';
         if (Validator::UnsignedNumber($validity) == false) {
@@ -1598,10 +1607,10 @@ switch ($action) {
             } else {
                 $d->expired_date = 0;
             }
-            $d->visibility = in_array($visibility, ['all','custom','exclude']) ? $visibility : 'all';
+            $d->visibility = $visibility;
             $d->save();
 
-            $linkedPlanIds = array_filter(array_unique(array_map('intval', $linkedPlans)));
+            $linkedPlanIds = Package::normalizeLinkedPlanIds($linkedPlans);
             Package::syncLinkedPlans($id, $linkedPlanIds);
 
             // Update visibility mapping

@@ -134,14 +134,16 @@ class Package
         return array_values(array_unique($ids));
     }
 
-    public static function syncLinkedPlans($planId, array $linkedPlanIds)
+    public static function syncLinkedPlans($planId, ?array $linkedPlanIds)
     {
         $planId = (int) $planId;
         if ($planId <= 0) {
             return;
         }
-        $linkedPlanIds = array_filter(array_unique(array_map('intval', $linkedPlanIds)), function ($id) use ($planId) {
-            return $id > 0 && $id !== $planId;
+
+        $linkedPlanIds = self::normalizeLinkedPlanIds($linkedPlanIds);
+        $linkedPlanIds = array_filter($linkedPlanIds, function ($id) use ($planId) {
+            return $id !== $planId;
         });
 
         self::removePlanLinks($planId);
@@ -194,6 +196,48 @@ class Package
         $row->plan_id = $planId;
         $row->linked_plan_id = $linkedPlanId;
         $row->save();
+    }
+
+    public static function normalizeVisibility($visibility)
+    {
+        if ($visibility === null) {
+            return null;
+        }
+
+        if (is_string($visibility)) {
+            $visibility = trim($visibility);
+            if ($visibility === '' || strtolower($visibility) === 'null') {
+                return null;
+            }
+        }
+
+        $validOptions = ['all', 'custom', 'exclude'];
+        return in_array($visibility, $validOptions, true) ? $visibility : null;
+    }
+
+    public static function normalizeLinkedPlanIds($linkedPlans): array
+    {
+        if ($linkedPlans === null) {
+            return [];
+        }
+
+        if (!is_array($linkedPlans)) {
+            $linkedPlans = [$linkedPlans];
+        }
+
+        $ids = [];
+        foreach ($linkedPlans as $value) {
+            if ($value === '' || $value === null) {
+                continue;
+            }
+            $ids[] = (int) $value;
+        }
+
+        $ids = array_values(array_unique($ids));
+
+        return array_filter($ids, function ($id) {
+            return $id > 0;
+        });
     }
 
     protected static function resolveRouterNameForPlan($plan)
