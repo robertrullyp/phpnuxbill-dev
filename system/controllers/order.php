@@ -578,9 +578,13 @@ switch ($action) {
             r2(getUrl('home'), 'e', Lang::T("Failed to create Transaction.."));
         }
     case 'buy':
-        $csrf_token = _post('csrf_token');
-        if (!Csrf::check($csrf_token)) {
-            r2($_SERVER['HTTP_REFERER'], 'e', Lang::T('Invalid or Expired CSRF Token') . '.');
+        if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+            $csrf_token = _post('csrf_token');
+            if (!Csrf::check($csrf_token)) {
+                $fallbackUrl = getUrl('order/gateway/') . $routes[2] . '/' . $routes[3];
+                $redirectTarget = $_SERVER['HTTP_REFERER'] ?? $fallbackUrl;
+                r2($redirectTarget, 'e', Lang::T('Invalid or Expired CSRF Token') . '.');
+            }
         }
         Csrf::generateAndStoreToken();
         $gateway = _post('gateway');

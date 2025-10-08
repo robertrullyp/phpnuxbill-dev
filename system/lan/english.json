@@ -946,5 +946,17 @@
     "New_port": "New port",
     "Port_Name": "Port Name",
     "Public_IP": "Public IP",
-    "Range_Port": "Range Port"
+    "Range_Port": "Range Port",
+    "Select_Payment_Gateway": "Select Payment Gateway",
+    "Make_Payment": "Make Payment",
+    "Package_Details": "Package Details",
+    "Validity_Period": "Validity Period",
+    "Summary": "Summary",
+    "Pay_Now": "Pay Now",
+    "Payment_Channel": "Payment Channel",
+    "Create_Transaction_Success": "Create Transaction Success",
+    "UNPAID": "UNPAID",
+    "expired": "expired",
+    "Check_for_Payment": "Check for Payment",
+    "Cancel_it_": "Cancel it?"
 }
