@@ -428,6 +428,8 @@ switch ($action) {
         $visibilityInput = _post('visibility', null);
         $visibility = Package::normalizeVisibility($visibilityInput);
         $_SESSION['last_visibility'] = $visibility ?? 'all';
+        $reminderEnabled = isset($_POST['reminder_enabled']) ? (int) $_POST['reminder_enabled'] : 0;
+        $invoiceNotification = isset($_POST['invoice_notification']) ? (int) $_POST['invoice_notification'] : 0;
         $linkedPlans = $_POST['linked_plans'] ?? null;
         $msg = '';
         if (Validator::UnsignedNumber($validity) == false) {
@@ -490,6 +492,7 @@ switch ($action) {
             $d->enabled = $enabled;
             $d->prepaid = $prepaid;
             $d->reminder_enabled = $reminderEnabled ? 1 : 0;
+            $d->invoice_notification = $invoiceNotification ? 1 : 0;
             $d->visibility = $visibility;
             $d->on_login = $on_login;
             $d->on_logout = $on_logout;

@@ -704,7 +704,6 @@ class Package
                 $t->admin_id = '0';
             }
             $t->save();
-            $transactionForNotification = $t;
 
             if ($p['validity_unit'] == 'Period') {
                 // insert price to fields for invoice next month
