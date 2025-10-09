@@ -2,6 +2,13 @@
 
 # CHANGELOG
 
+## 2025.10.9
+
+- **Notifications:** Preserved the most recent recharge transaction when reusing existing plan records so invoice messages are dispatched reliably for active customers.
+- **Plans:** Restored persistence of the `invoice_notification` toggle across plan edit forms, aligning UI state with stored configuration.
+- **Linked Plans:** Ensured auto-activated linked packages defer to their own invoice settings while still delivering notifications when enabled.
+- Version bumped to `2025.10.9`.
+
 ## 2025.10.8
 
 - **Maintenance:** Captured the current main-branch snapshot for release, syncing metadata across `version.json`, the README, and the updater registry.

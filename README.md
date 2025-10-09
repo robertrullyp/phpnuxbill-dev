@@ -17,7 +17,7 @@ Important notes:
 
 ## Current Release
 
-- **Version:** `2025.10.8`
+- **Version:** `2025.10.9`
 - **Focus:** Give operators finer control over plan lifecycle reminders and prepare linked follow-up plans for smoother upgrades.
 
 ## What's New in This Fork
