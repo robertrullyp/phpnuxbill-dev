@@ -90,6 +90,12 @@
                         $dbh->exec("ALTER TABLE `tbl_plans` ADD `reminder_enabled` TINYINT(1) NOT NULL DEFAULT '1' COMMENT '0 disabled reminders' AFTER `enabled`;");
                     }
 
+                    $stmt = $dbh->query("SHOW COLUMNS FROM `tbl_plans` LIKE 'invoice_notification'");
+                    if (!$stmt->fetch()) {
+                        echo "ALTER TABLE `tbl_plans` ADD `invoice_notification` TINYINT(1) NOT NULL DEFAULT '1' COMMENT '0 disable invoice notifications' AFTER `reminder_enabled`;\\n\\n";
+                        $dbh->exec("ALTER TABLE `tbl_plans` ADD `invoice_notification` TINYINT(1) NOT NULL DEFAULT '1' COMMENT '0 disable invoice notifications' AFTER `reminder_enabled`;");
+                    }
+
                     $stmt = $dbh->query("SHOW TABLES LIKE 'tbl_plan_links'");
                     if (!$stmt->fetch()) {
                         echo "CREATE TABLE `tbl_plan_links` (\n    `id` int NOT NULL AUTO_INCREMENT,\n    `plan_id` int NOT NULL,\n    `linked_plan_id` int NOT NULL,\n    PRIMARY KEY (`id`),\n    UNIQUE KEY `unique_plan_link` (`plan_id`,`linked_plan_id`),\n    KEY `idx_plan_links_linked` (`linked_plan_id`)\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;\n\n";

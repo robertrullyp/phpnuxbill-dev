@@ -184,6 +184,8 @@
     "Payment_Notification": "Pemberitahuan Pembayaran",
     "User_will_get_invoice_notification_when_buy_package_or_package_refilled": "Pengguna akan mendapatkan pemberitahuan faktur saat membeli atau mengisi ulang paket",
     "Reminder_Notification": "Pemberitahuan Pengingat",
+    "Invoice_Notification": "Notifikasi Invoice",
+    "Send_invoice_notifications_for_this_plan": "Kirim notifikasi invoice untuk paket ini",
     "Reminder_Notify_Intervals": "Interval Pengingat",
     "1_Day": "1 hari",
     "3_Days": "3 hari",

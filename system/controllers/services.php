@@ -302,6 +302,7 @@ switch ($action) {
         $visibility = Package::normalizeVisibility($visibilityInput);
         $_SESSION['last_visibility'] = $visibility ?? 'all';
         $reminderEnabled = isset($_POST['reminder_enabled']) ? (int) $_POST['reminder_enabled'] : 0;
+        $invoiceNotification = isset($_POST['invoice_notification']) ? (int) $_POST['invoice_notification'] : 0;
         $linkedPlans = $_POST['linked_plans'] ?? null;
 
         $msg = '';
@@ -353,6 +354,7 @@ switch ($action) {
             $d->enabled = $enabled;
             $d->prepaid = $prepaid;
             $d->reminder_enabled = $reminderEnabled ? 1 : 0;
+            $d->invoice_notification = $invoiceNotification ? 1 : 0;
             // set visibility for new plan
             $d->visibility = $visibility;
             $d->device = $device;
@@ -761,6 +763,7 @@ switch ($action) {
         $prepaid = _post('prepaid');
         $expired_date = _post('expired_date');
         $reminderEnabled = isset($_POST['reminder_enabled']) ? (int) $_POST['reminder_enabled'] : 0;
+        $invoiceNotification = isset($_POST['invoice_notification']) ? (int) $_POST['invoice_notification'] : 0;
         $linkedPlans = $_POST['linked_plans'] ?? null;
         $visibilityInput = _post('visibility', null);
         $visibility = Package::normalizeVisibility($visibilityInput);
@@ -835,6 +838,7 @@ switch ($action) {
             $d->enabled = $enabled;
             $d->prepaid = $prepaid;
             $d->reminder_enabled = $reminderEnabled ? 1 : 0;
+            $d->invoice_notification = $invoiceNotification ? 1 : 0;
             $d->visibility = $visibility;
             $d->device = $device;
             $d->save();
@@ -891,6 +895,7 @@ switch ($action) {
         $on_login = _post('on_login');
         $on_logout = _post('on_logout');
         $reminderEnabled = isset($_POST['reminder_enabled']) ? (int) $_POST['reminder_enabled'] : 0;
+        $invoiceNotification = isset($_POST['invoice_notification']) ? (int) $_POST['invoice_notification'] : 0;
         $linkedPlans = $_POST['linked_plans'] ?? null;
 
         $msg = '';
@@ -951,6 +956,7 @@ switch ($action) {
             $d->on_login = $on_login;
             $d->on_logout = $on_logout;
             $d->reminder_enabled = $reminderEnabled ? 1 : 0;
+            $d->invoice_notification = $invoiceNotification ? 1 : 0;
             $d->visibility = $visibility;
             if ($prepaid == 'no') {
                 if ($expired_date > 28 && $expired_date < 1) {
@@ -1075,6 +1081,7 @@ switch ($action) {
         $visibility = Package::normalizeVisibility($visibilityInput);
         $_SESSION['last_visibility'] = $visibility ?? 'all';
         $reminderEnabled = isset($_POST['reminder_enabled']) ? (int) $_POST['reminder_enabled'] : 0;
+        $invoiceNotification = isset($_POST['invoice_notification']) ? (int) $_POST['invoice_notification'] : 0;
         $linkedPlans = $_POST['linked_plans'] ?? null;
 
         $msg = '';
@@ -1101,6 +1108,7 @@ switch ($action) {
             $d->price_old = $price_old;
             $d->prepaid = 'yes';
             $d->reminder_enabled = $reminderEnabled ? 1 : 0;
+            $d->invoice_notification = $invoiceNotification ? 1 : 0;
             $d->visibility = $visibility;
             $d->save();
 
@@ -1133,6 +1141,7 @@ switch ($action) {
         $visibility = Package::normalizeVisibility($visibilityInput);
         $_SESSION['last_visibility'] = $visibility ?? 'all';
         $reminderEnabled = isset($_POST['reminder_enabled']) ? (int) $_POST['reminder_enabled'] : 0;
+        $invoiceNotification = isset($_POST['invoice_notification']) ? (int) $_POST['invoice_notification'] : 0;
         $linkedPlans = $_POST['linked_plans'] ?? null;
 
         $msg = '';
@@ -1161,6 +1170,7 @@ switch ($action) {
             $d->enabled = $enabled;
             $d->prepaid = 'yes';
             $d->reminder_enabled = $reminderEnabled ? 1 : 0;
+            $d->invoice_notification = $invoiceNotification ? 1 : 0;
             $d->visibility = $visibility;
             $d->save();
 
@@ -1415,6 +1425,7 @@ switch ($action) {
         $visibility = Package::normalizeVisibility($visibilityInput);
         $_SESSION['last_visibility'] = $visibility ?? 'all';
         $reminderEnabled = isset($_POST['reminder_enabled']) ? (int) $_POST['reminder_enabled'] : 0;
+        $invoiceNotification = isset($_POST['invoice_notification']) ? (int) $_POST['invoice_notification'] : 0;
         $linkedPlans = $_POST['linked_plans'] ?? null;
 
 
@@ -1486,6 +1497,7 @@ switch ($action) {
             $d->prepaid = $prepaid;
             $d->device = $device;
             $d->reminder_enabled = $reminderEnabled ? 1 : 0;
+            $d->invoice_notification = $invoiceNotification ? 1 : 0;
             $d->visibility = $visibility;
             $d->save();
 
@@ -1539,6 +1551,7 @@ switch ($action) {
         $visibilityInput = _post('visibility', null);
         $visibility = Package::normalizeVisibility($visibilityInput);
         $reminderEnabled = isset($_POST['reminder_enabled']) ? (int) $_POST['reminder_enabled'] : 0;
+        $invoiceNotification = isset($_POST['invoice_notification']) ? (int) $_POST['invoice_notification'] : 0;
         $linkedPlans = $_POST['linked_plans'] ?? null;
 
         $msg = '';
@@ -1599,6 +1612,7 @@ switch ($action) {
             $d->on_login = $on_login;
             $d->on_logout = $on_logout;
             $d->reminder_enabled = $reminderEnabled ? 1 : 0;
+            $d->invoice_notification = $invoiceNotification ? 1 : 0;
             if ($prepaid == 'no') {
                 if ($expired_date > 28 && $expired_date < 1) {
                     $expired_date = 20;

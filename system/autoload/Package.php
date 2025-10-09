@@ -418,6 +418,9 @@ class Package
         }
 
         $p = ORM::for_table('tbl_plans')->where('id', $planIdInt)->find_one();
+        if (!$skipInvoiceNotification && $p && isset($p['invoice_notification']) && (int) $p['invoice_notification'] === 0) {
+            $skipInvoiceNotification = true;
+        }
 
         if (!$isVoucher) {
             $c = ORM::for_table('tbl_customers')->where('id', $id_customer)->find_one();

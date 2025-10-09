@@ -184,6 +184,8 @@
     "Payment_Notification": "Notificacion de pago",
     "User_will_get_invoice_notification_when_buy_package_or_package_refilled": "El usuario recibirá una notificación de factura cuando compre el paquete o recargue el paquete.",
     "Reminder_Notification": "Notificación de recordatorio",
+    "Invoice_Notification": "Notificación de factura",
+    "Send_invoice_notifications_for_this_plan": "Enviar notificaciones de factura para este plan",
     "Reminder_Notify_Intervals": "Recordatorio notificar intervalos",
     "1_Day": "1 día",
     "3_Days": "3 días",

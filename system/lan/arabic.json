@@ -184,6 +184,8 @@
     "Payment_Notification": "إشعار الدفع",
     "User_will_get_invoice_notification_when_buy_package_or_package_refilled": "سيحصل المستخدم على إشعار بالفاتورة عند شراء حزمة أو إعادة تعبئة الحزمة",
     "Reminder_Notification": "إشعار التذكير",
+    "Invoice_Notification": "إشعار الفاتورة",
+    "Send_invoice_notifications_for_this_plan": "إرسال إشعارات الفاتورة لهذه الباقة",
     "Reminder_Notify_Intervals": "تذكير الإخطار فترات",
     "1_Day": "يوم واحد",
     "3_Days": "3 أيام",

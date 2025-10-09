@@ -184,6 +184,8 @@
     "Payment_Notification": "Payment Notification",
     "User_will_get_invoice_notification_when_buy_package_or_package_refilled": "User will get invoice notification when buy package or package refilled",
     "Reminder_Notification": "Reminder Notification",
+    "Invoice_Notification": "Invoice Notification",
+    "Send_invoice_notifications_for_this_plan": "Send invoice notifications for this plan",
     "Reminder_Notify_Intervals": "Hatırlatma Aralıkları Bildirim",
     "1_Day": "1 gün",
     "3_Days": "3 gün",

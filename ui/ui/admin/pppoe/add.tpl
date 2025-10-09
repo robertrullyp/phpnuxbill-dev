@@ -37,7 +37,7 @@
                         </div>
                     </div>
                     <div class="form-group" id="visibility_customers" style="display:none;">
-                        <label class="col-md-2 control-label">{Lang::T('Allowed Customers')}</label>
+                        <label class="col-md-2 control-label">{Lang::T('Customer List')}</label>
                         <div class="col-md-6">
                             <select id="visible_customers" name="visible_customers[]" class="form-control select2" multiple></select>
                             <p class="help-block">{Lang::T('Search by Full Name, Username, Phone or Email')}</p>
@@ -50,6 +50,16 @@
                             <label class="checkbox-inline">
                                 <input type="checkbox" name="reminder_enabled" value="1" checked>
                                 {Lang::T('Send reminder notifications for this plan')}
+                            </label>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label class="col-md-2 control-label">{Lang::T('Invoice Notification')}</label>
+                        <div class="col-md-10">
+                            <input type="hidden" name="invoice_notification" value="0">
+                            <label class="checkbox-inline">
+                                <input type="checkbox" name="invoice_notification" value="1" checked>
+                                {Lang::T('Send invoice notifications for this plan')}
                             </label>
                         </div>
                     </div>

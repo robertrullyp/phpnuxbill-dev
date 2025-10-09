@@ -228,5 +228,8 @@
     "ALTER TABLE `tbl_plan_links` ADD KEY `idx_plan_links_linked` (`linked_plan_id`);",
     "ALTER TABLE `tbl_plan_links` MODIFY `id` int NOT NULL AUTO_INCREMENT;"
   ],
-  "2025.10.8": []
+  "2025.10.8": [],
+  "2025.10.9": [
+    "ALTER TABLE `tbl_plans` ADD `invoice_notification` TINYINT(1) NOT NULL DEFAULT '1' COMMENT '0 disable invoice notifications' AFTER `reminder_enabled`;"
+  ]
 }
