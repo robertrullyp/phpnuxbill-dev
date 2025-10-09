@@ -323,7 +323,8 @@ class Package
                     $gateway,
                     $channel,
                     $combinedNote,
-                    $processedPlanIds
+                    $processedPlanIds,
+                    true
                 );
             } catch (Throwable $throwable) {
                 Message::sendTelegram(
@@ -376,15 +377,17 @@ class Package
         return '';
     }
     /**
-     * @param int   $id_customer String user identifier
-     * @param string $router_name router name for this package
-     * @param int   $plan_id plan id for this package
-     * @param string $gateway payment gateway name
-     * @param string $channel channel payment gateway
-     * @param array $pgids payment gateway ids
-     * @return boolean
+     * @param int         $id_customer             String user identifier
+     * @param string      $router_name             router name for this package
+     * @param int         $plan_id                 plan id for this package
+     * @param string      $gateway                 payment gateway name
+     * @param string      $channel                 channel payment gateway
+     * @param string      $note                    additional note for transaction
+     * @param array|null  $processedPlanIds        processed plan ids to prevent duplicate activation
+     * @param bool        $skipInvoiceNotification whether to skip sending invoice notification
+     * @return string|false
      */
-    public static function rechargeUser($id_customer, $router_name, $plan_id, $gateway, $channel, $note = '', &$processedPlanIds = null)
+    public static function rechargeUser($id_customer, $router_name, $plan_id, $gateway, $channel, $note = '', &$processedPlanIds = null, $skipInvoiceNotification = false)
     {
         global $config, $admin, $c, $p, $b, $t, $d, $zero, $trx, $_app_stage, $isChangePlan;
         $date_only = date("Y-m-d");
@@ -848,7 +851,9 @@ class Package
         }
         self::activateLinkedPlans($id_customer, $gateway, $channel, $note, $processedPlanIds, $p, $isVoucher, $router_name);
         run_hook("recharge_user_finish");
-        Message::sendInvoice($c, $t);
+        if (!$skipInvoiceNotification) {
+            Message::sendInvoice($c, $t);
+        }
         if ($trx) {
             $trx->trx_invoice = $inv;
         }

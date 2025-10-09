@@ -273,7 +273,11 @@ switch ($action) {
             ->order_by_desc('tbl_transactions.id');
 
         if ($q !== '') {
-            $query->where_like('invoice', "%$q%");
+            $likeTerm = "%$q%";
+            $query->where_raw(
+                '(tbl_transactions.invoice LIKE ? OR tbl_transactions.username LIKE ? OR tbl_customers.fullname LIKE ?)',
+                [$likeTerm, $likeTerm, $likeTerm]
+            );
         }
 
         try {
