@@ -315,6 +315,9 @@ class Package
             $linkedNoteText = str_replace('[[plan]]', $plan['name_plan'], $template);
             $combinedNote = trim($note . "\n" . $linkedNoteText);
 
+            $shouldSkipInvoiceNotification = isset($linkedPlan['invoice_notification'])
+                && (int) $linkedPlan['invoice_notification'] === 0;
+
             try {
                 self::rechargeUser(
                     $customerId,
@@ -324,7 +327,7 @@ class Package
                     $channel,
                     $combinedNote,
                     $processedPlanIds,
-                    true
+                    $shouldSkipInvoiceNotification
                 );
             } catch (Throwable $throwable) {
                 Message::sendTelegram(
