@@ -65,6 +65,43 @@ Compatibility:
 - Fresh installs: schema included in `install/phpnuxbill.sql` matches fork features.
 - Upgrades: run `install/update.php` to apply `system/updates.json` migrations; the fork includes a runtime guard to keep `tbl_plans.visibility` in sync.
 
+## Server Requirements & Dependencies
+
+- PHP 8.1 or newer (8.2 tested in production) with Apache, Nginx, or another web server capable of running PHP-FPM.
+- MySQL 5.7+ or MariaDB 10.3+ for the application database; FreeRADIUS 3.x is optional for RADIUS integration.
+- Composer 2.x to install/update PHP dependencies stored under `system/vendor/`.
+- Git (optional) for pulling updates from this fork or upstream.
+- Cron/scheduler access to execute the automation script(s) that handle expirations, reminders, and other recurring jobs.
+
+### PHP extensions (required)
+
+- `pdo` and `pdo_mysql` for database connectivity.
+- `curl` for HTTP callbacks (Turnstile, messaging providers, plugin fetches, updater).
+- `mbstring` for multibyte-safe string handling across templates and SMS payloads.
+- `gd` for avatar thumbnails and face-detection support.
+- `zip` for plugin ZIP installs, backups, and updater routines.
+- `openssl` for secure mail transport and token generation.
+- `dom`/`xml` and `json` to support mPDF rendering and configuration parsing.
+
+### PHP extensions (recommended/optional)
+
+- `bcmath` to enable barcode generation paths inside mPDF.
+- `intl` when you need locale-aware formatting in custom modules.
+- `apcu`, `redis`, or `wincache` if you plan to plug in shared-memory cache adapters.
+
+### Composer packages
+
+- `mpdf/mpdf` (`^8.1`) to generate PDF invoices, statements, and exports.
+- `smarty/smarty` (`4.5.3`) as the templating engine powering `ui/themes/`.
+- `yosiazwan/php-facedetection` (`^0.1.0`) for optional face-detection in customer uploads.
+
+Install or refresh them with:
+
+```
+cd system
+composer install
+```
+
 ---
 
 ## Perbedaan dari Repository Asli (Ringkas)
