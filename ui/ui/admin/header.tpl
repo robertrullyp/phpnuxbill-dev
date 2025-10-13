@@ -20,7 +20,7 @@
     <link rel="stylesheet" href="{$app_url}/ui/ui/styles/sweetalert2.min.css" />
     <link rel="stylesheet" href="{$app_url}/ui/ui/styles/plugins/pace.css" />
     <link rel="stylesheet" href="{$app_url}/ui/ui/summernote/summernote.min.css" />
-    <link rel="stylesheet" href="{$app_url}/ui/ui/styles/phpnuxbill.css?2025.2.4" />
+    <link rel="stylesheet" href="{$app_url}/ui/ui/styles/phpnuxbill.css?v={$asset_version_phpnuxbill}" />
     <link rel="stylesheet" href="{$app_url}/ui/ui/styles/7.css" />
 
     <script src="{$app_url}/ui/ui/scripts/sweetalert2.all.min.js"></script>

@@ -43,6 +43,19 @@ $ui->setCompileDir(File::pathFixer($UI_PATH . '/compiled/'));
 $ui->setConfigDir(File::pathFixer($UI_PATH . '/conf/'));
 $ui->setCacheDir(File::pathFixer($UI_PATH . '/cache/'));
 $ui->assign('app_url', APP_URL);
+
+$resolveAssetVersion = function ($relativePath) use ($root_path) {
+    $fullPath = $root_path . File::pathFixer('/' . ltrim($relativePath, '/'));
+    if (is_file($fullPath)) {
+        $mtime = @filemtime($fullPath);
+        if ($mtime !== false) {
+            return (string) $mtime;
+        }
+    }
+    return (string) time();
+};
+$ui->assign('asset_version_phpnuxbill', $resolveAssetVersion('ui/ui/styles/phpnuxbill.css'));
+$ui->assign('asset_version_phpnuxbill_customer', $resolveAssetVersion('ui/ui/styles/phpnuxbill.customer.css'));
 $ui->assign('_domain', str_replace('www.', '', parse_url(APP_URL, PHP_URL_HOST)));
 $ui->assign('_url', APP_URL . '/?_route=');
 $ui->assign('_path', __DIR__);
