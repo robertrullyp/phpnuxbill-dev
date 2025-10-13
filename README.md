@@ -17,8 +17,8 @@ Important notes:
 
 ## Current Release
 
-- **Version:** `2025.10.9`
-- **Focus:** Give operators finer control over plan lifecycle reminders and prepare linked follow-up plans for smoother upgrades.
+- **Version:** `2025.10.13`
+- **Focus:** Harden the logout flow with stricter CSRF enforcement and sync metadata for the new security release.
 
 ## What's New in This Fork
 

@@ -2,6 +2,12 @@
 
 # CHANGELOG
 
+## 2025.10.13
+
+- **Security:** Hardened the logout controller to require POST requests and validate CSRF tokens before clearing user sessions, preventing invalid logout attempts from tearing down sessions.
+- **Maintenance:** Synced release metadata across `version.json`, the README, and the updater registry.
+- Version bumped to `2025.10.13`.
+
 ## 2025.10.9
 
 - **Notifications:** Preserved the most recent recharge transaction when reusing existing plan records so invoice messages are dispatched reliably for active customers.

@@ -231,5 +231,6 @@
   "2025.10.8": [],
   "2025.10.9": [
     "ALTER TABLE `tbl_plans` ADD `invoice_notification` TINYINT(1) NOT NULL DEFAULT '1' COMMENT '0 disable invoice notifications' AFTER `reminder_enabled`;"
-  ]
+  ],
+  "2025.10.13": []
 }
