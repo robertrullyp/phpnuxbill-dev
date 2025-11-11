@@ -999,5 +999,6 @@
     "Message": "Message",
     "Info": "Info",
     "Success": "Success",
-    "DRNet_Kapul_Test": "DRNet-Kapul-Test"
+    "DRNet_Kapul_Test": "DRNet-Kapul-Test",
+    "Invalid_logout_request_": "Invalid logout request."
 }

@@ -24,9 +24,14 @@
     function refreshCsrfToken() {
         $.getJSON(appUrl + '/?_route=csrf-refresh')
             .done(function (data) {
-                if (data && typeof data === 'object' && data.csrf_token) {
-                    // Update general CSRF tokens but leave logout token untouched
-                    $('input[name="csrf_token"]').not('[name="csrf_token_logout"]').val(data.csrf_token);
+                if (data && typeof data === 'object') {
+                    if (data.csrf_token) {
+                        $('input[name="csrf_token"]').val(data.csrf_token);
+                    }
+
+                    if (data.csrf_token_logout) {
+                        $('input[name="csrf_token_logout"]').val(data.csrf_token_logout);
+                    }
                 }
             })
             .fail(function () {

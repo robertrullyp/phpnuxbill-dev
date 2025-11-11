@@ -17,8 +17,8 @@ Important notes:
 
 ## Current Release
 
-- **Version:** `2025.10.13`
-- **Focus:** Harden the logout flow with stricter CSRF enforcement and sync metadata for the new security release.
+- **Version:** `2025.10.27`
+- **Focus:** Keep logout CSRF tokens fresh during long admin sessions and align custom themes with the secure POST-based logout flow.
 
 ## What's New in This Fork
 

@@ -2,6 +2,13 @@
 
 # CHANGELOG
 
+## 2025.10.27
+
+- **Security:** Refreshed CSRF logout tokens alongside the standard form tokens so long-running admin/customer sessions can still submit valid POST logouts after the 1-hour expiry window.
+- **Themes:** Updated the `ui_custom` admin and customer headers to submit logout requests via POST with the generated `csrf_token_logout`, removing insecure GET fallbacks in overrides.
+- **Maintenance:** Synced `version.json`, `README.md`, and `system/updates.json` with the new build identifier.
+- Version bumped to `2025.10.27`.
+
 ## 2025.10.13
 
 - **Security:** Hardened the logout controller to require POST requests and validate CSRF tokens before clearing user sessions, preventing invalid logout attempts from tearing down sessions.
