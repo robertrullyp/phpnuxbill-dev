@@ -9,7 +9,9 @@ _admin();
 $ui->assign('_title', 'Plugin Manager');
 $ui->assign('_system_menu', 'settings');
 
-$plugin_repository = 'https://hotspotbilling.github.io/Plugin-Repository/repository.json';
+// Use custom plugin repository hosted in this fork
+// Note: use raw URL to fetch JSON content
+$plugin_repository = 'https://raw.githubusercontent.com/robertrullyp/phpnuxbill-dev/main/plugin-repository.json';
 
 $action = $routes['1'];
 $ui->assign('_admin', $admin);
@@ -20,17 +22,60 @@ if (!in_array($admin['user_type'], ['SuperAdmin', 'Admin'])) {
 }
 
 $cache = $CACHE_PATH . File::pathFixer('/plugin_repository.json');
+$repoError = null;
+$jsonData = null;
+$json = [
+    'plugins' => [],
+    'payment_gateway' => [],
+    'devices' => [],
+];
+$loadedFromCache = false;
+
 if (file_exists($cache) && time() - filemtime($cache) < (24 * 60 * 60)) {
-    $txt = file_get_contents($cache);
-    $json = json_decode($txt, true);
-    if (empty($json['plugins']) && empty($json['payment_gateway'])) {
-        unlink($cache);
-        r2(getUrl('pluginmanager'));
+    $cachedData = file_get_contents($cache);
+    if ($cachedData !== false) {
+        $sanitizedData = ltrim($cachedData, "\xEF\xBB\xBF");
+        if ($sanitizedData !== $cachedData) {
+            file_put_contents($cache, $sanitizedData);
+        }
+        $jsonData = $sanitizedData;
+        $loadedFromCache = true;
+    } else {
+        $repoError = Lang::T('Unable to load plugin repository data. Please try again later.');
     }
 } else {
     $data = Http::getData($plugin_repository);
-    file_put_contents($cache, $data);
-    $json = json_decode($data, true);
+    if ($data !== false && $data !== null) {
+        $sanitizedData = ltrim($data, "\xEF\xBB\xBF");
+        file_put_contents($cache, $sanitizedData);
+        $jsonData = $sanitizedData;
+    } else {
+        $repoError = Lang::T('Unable to load plugin repository data. Please try again later.');
+    }
+}
+
+if ($jsonData !== null) {
+    $decoded = json_decode($jsonData, true);
+    if (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) {
+        $json['plugins'] = isset($decoded['plugins']) && is_array($decoded['plugins']) ? $decoded['plugins'] : [];
+        $json['payment_gateway'] = isset($decoded['payment_gateway']) && is_array($decoded['payment_gateway']) ? $decoded['payment_gateway'] : [];
+        $json['devices'] = isset($decoded['devices']) && is_array($decoded['devices']) ? $decoded['devices'] : [];
+
+        if ($loadedFromCache && empty($json['plugins']) && empty($json['payment_gateway'])) {
+            if (file_exists($cache)) {
+                unlink($cache);
+            }
+            r2(getUrl('pluginmanager'));
+        }
+    } else {
+        $errorMessage = json_last_error_msg();
+        $repoError = Lang::T('Unable to parse plugin repository response. Please refresh later.');
+        if (!empty($errorMessage)) {
+            $repoError .= ' (' . $errorMessage . ')';
+        }
+    }
+} elseif ($repoError === null) {
+    $repoError = Lang::T('Unable to load plugin repository data. Please try again later.');
 }
 switch ($action) {
     case 'refresh':
@@ -121,9 +166,9 @@ switch ($action) {
             $zip->open($file);
             $zip->extractTo($cache);
             $zip->close();
-            $folder = $cache . DIRECTORY_SEPARATOR . $plugin . '-main' . DIRECTORY_SEPARATOR;
-            if (!file_exists($folder)) {
-                $folder = $cache . DIRECTORY_SEPARATOR . $plugin . '-master' . DIRECTORY_SEPARATOR;
+            $folder = resolveExtractedFolder($cache, $plugin);
+            if ($folder === null) {
+                r2(getUrl('pluginmanager'), 'e', 'Extracted Folder is unknown');
             }
             $success = 0;
             if (file_exists($folder . 'plugin')) {
@@ -199,11 +244,8 @@ switch ($action) {
                     $zip->open($file);
                     $zip->extractTo($CACHE_PATH);
                     $zip->close();
-                    $folder = $CACHE_PATH . File::pathFixer('/' . $plugin . '-main/');
-                    if (!file_exists($folder)) {
-                        $folder = $CACHE_PATH . File::pathFixer('/' . $plugin . '-master/');
-                    }
-                    if (!file_exists($folder)) {
+                    $folder = resolveExtractedFolder($CACHE_PATH, $plugin);
+                    if ($folder === null) {
                         r2(getUrl('pluginmanager'), 'e', 'Extracted Folder is unknown');
                     }
                     scanAndRemovePath($folder, $PLUGIN_PATH . DIRECTORY_SEPARATOR);
@@ -254,11 +296,8 @@ switch ($action) {
                     $zip->open($file);
                     $zip->extractTo($CACHE_PATH);
                     $zip->close();
-                    $folder = $CACHE_PATH . File::pathFixer('/' . $plugin . '-main/');
-                    if (!file_exists($folder)) {
-                        $folder = $CACHE_PATH . File::pathFixer('/' . $plugin . '-master/');
-                    }
-                    if (!file_exists($folder)) {
+                    $folder = resolveExtractedFolder($CACHE_PATH, $plugin);
+                    if ($folder === null) {
                         r2(getUrl('pluginmanager'), 'e', 'Extracted Folder is unknown');
                     }
                     File::copyFolder($folder, $PLUGIN_PATH . DIRECTORY_SEPARATOR, ['README.md', 'LICENSE']);
@@ -291,11 +330,8 @@ switch ($action) {
                     $zip->open($file);
                     $zip->extractTo($CACHE_PATH);
                     $zip->close();
-                    $folder = $CACHE_PATH . File::pathFixer('/' . $plugin . '-main/');
-                    if (!file_exists($folder)) {
-                        $folder = $CACHE_PATH . File::pathFixer('/' . $plugin . '-master/');
-                    }
-                    if (!file_exists($folder)) {
+                    $folder = resolveExtractedFolder($CACHE_PATH, $plugin);
+                    if ($folder === null) {
                         r2(getUrl('pluginmanager'), 'e', 'Extracted Folder is unknown');
                     }
                     File::copyFolder($folder, $PAYMENTGATEWAY_PATH . DIRECTORY_SEPARATOR, ['README.md', 'LICENSE']);
@@ -328,11 +364,8 @@ switch ($action) {
                     $zip->open($file);
                     $zip->extractTo($CACHE_PATH);
                     $zip->close();
-                    $folder = $CACHE_PATH . File::pathFixer('/' . $plugin . '-main/');
-                    if (!file_exists($folder)) {
-                        $folder = $CACHE_PATH . File::pathFixer('/' . $plugin . '-master/');
-                    }
-                    if (!file_exists($folder)) {
+                    $folder = resolveExtractedFolder($CACHE_PATH, $plugin);
+                    if ($folder === null) {
                         r2(getUrl('pluginmanager'), 'e', 'Extracted Folder is unknown');
                     }
                     File::copyFolder($folder, $DEVICE_PATH . DIRECTORY_SEPARATOR, ['README.md', 'LICENSE']);
@@ -351,12 +384,54 @@ switch ($action) {
             $zipExt = false;
         }
         $ui->assign('zipExt', $zipExt);
+        $ui->assign('repoError', $repoError);
         $ui->assign('plugins', $json['plugins']);
         $ui->assign('pgs', $json['payment_gateway']);
         $ui->assign('dvcs', $json['devices']);
         $ui->display('admin/settings/plugin-manager.tpl');
 }
 
+
+/**
+ * Locate the extracted repository folder regardless of case or branch suffix.
+ */
+function resolveExtractedFolder($basePath, $plugin)
+{
+    $normalizedBase = rtrim($basePath, '\/') . DIRECTORY_SEPARATOR;
+    $candidates = [
+        $normalizedBase . $plugin . '-main' . DIRECTORY_SEPARATOR,
+        $normalizedBase . $plugin . '-master' . DIRECTORY_SEPARATOR,
+    ];
+
+    foreach ($candidates as $candidate) {
+        if (is_dir($candidate)) {
+            return rtrim($candidate, '\/') . DIRECTORY_SEPARATOR;
+        }
+    }
+
+    if (!is_dir($normalizedBase)) {
+        return null;
+    }
+
+    $entries = scandir($normalizedBase);
+    $pluginLower = strtolower($plugin);
+
+    foreach ($entries as $entry) {
+        if ($entry === '.' || $entry === '..') {
+            continue;
+        }
+        $fullPath = $normalizedBase . $entry;
+        if (!is_dir($fullPath)) {
+            continue;
+        }
+        $entryLower = strtolower($entry);
+        if ($entryLower === $pluginLower . '-main' || $entryLower === $pluginLower . '-master' || strpos($entryLower, $pluginLower) === 0) {
+            return rtrim($fullPath, '\/') . DIRECTORY_SEPARATOR;
+        }
+    }
+
+    return null;
+}
 
 function scanAndRemovePath($source, $target)
 {

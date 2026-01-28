@@ -20,7 +20,7 @@
     <link rel="stylesheet" href="{$app_url}/ui/ui/styles/sweetalert2.min.css" />
     <link rel="stylesheet" href="{$app_url}/ui/ui/styles/plugins/pace.css" />
     <link rel="stylesheet" href="{$app_url}/ui/ui/summernote/summernote.min.css" />
-    <link rel="stylesheet" href="{$app_url}/ui/ui/styles/phpnuxbill.css?2025.2.4" />
+    <link rel="stylesheet" href="{$app_url}/ui/ui/styles/phpnuxbill.css?v={$asset_version_phpnuxbill}" />
     <link rel="stylesheet" href="{$app_url}/ui/ui/styles/7.css" />
 
     <script src="{$app_url}/ui/ui/scripts/sweetalert2.all.min.js"></script>
@@ -68,16 +68,24 @@
                             </a>
                         </li>
                         <li class="dropdown user user-menu">
+                            {assign var='adminPhotoPath' value=$_admin['photo']}
+                            {assign var='adminAvatarFallback' value=$app_url|cat:'/'|cat:$UPLOAD_PATH|cat:'/admin.default.png'}
+                            {if !$adminPhotoPath || strstr($adminPhotoPath, 'default')}
+                                {assign var='adminAvatarSrc' value=$adminAvatarFallback}
+                            {else}
+                                {assign var='cleanAdminPhoto' value=$adminPhotoPath|trim:'/'}
+                                {assign var='adminAvatarSrc' value=$app_url|cat:'/'|cat:$UPLOAD_PATH|cat:'/'|cat:$cleanAdminPhoto|cat:'.thumb.jpg'}
+                            {/if}
                             <a href="#" class="dropdown-toggle" data-toggle="dropdown">
-                                <img src="{$app_url}/{$UPLOAD_PATH}{$_admin['photo']}.thumb.jpg"
-                                    onerror="this.src='{$app_url}/{$UPLOAD_PATH}/admin.default.png'" class="user-image"
+                                <img src="{$adminAvatarSrc}"
+                                    onerror="this.src='{$adminAvatarFallback}'" class="user-image"
                                     alt="Avatar">
                                 <span class="hidden-xs">{$_admin['fullname']}</span>
                             </a>
                             <ul class="dropdown-menu">
                                 <li class="user-header">
-                                    <img src="{$app_url}/{$UPLOAD_PATH}{$_admin['photo']}.thumb.jpg"
-                                        onerror="this.src='{$app_url}/{$UPLOAD_PATH}/admin.default.png'"
+                                    <img src="{$adminAvatarSrc}"
+                                        onerror="this.src='{$adminAvatarFallback}'"
                                         class="img-circle" alt="Avatar">
                                     <p>
                                         {$_admin['fullname']}
@@ -99,8 +107,11 @@
                                 </li>
                                 <li class="user-footer">
                                     <div class="pull-right">
-                                        <a href="{Text::url('logout')}" class="btn btn-default btn-flat"><i
-                                                class="ion ion-power"></i> {Lang::T('Logout')}</a>
+                                        <form method="post" action="{Text::url('logout')}" style="display:inline;">
+                                            <input type="hidden" name="csrf_token_logout" value="{$csrf_token_logout}">
+                                            <button type="submit" class="btn btn-default btn-flat"><i
+                                                    class="ion ion-power"></i> {Lang::T('Logout')}</button>
+                                        </form>
                                     </div>
                                 </li>
                             </ul>
@@ -118,14 +129,14 @@
                             <span>{Lang::T('Dashboard')}</span>
                         </a>
                     </li>
-                    {$_MENU_AFTER_DASHBOARD}
+                    {$_MENU_AFTER_DASHBOARD nofilter}
                     <li {if $_system_menu eq 'customers' }class="active" {/if}>
                         <a href="{Text::url('customers')}">
                             <i class="fa fa-user"></i>
                             <span>{Lang::T('Customer')}</span>
                         </a>
                     </li>
-                    {$_MENU_AFTER_CUSTOMERS}
+                    {$_MENU_AFTER_CUSTOMERS nofilter}
                     {if !in_array($_admin['user_type'],['Report'])}
                     <li class="{if $_routes[0] eq 'plan' || $_routes[0] eq 'coupons'}active{/if} treeview">
                         <a href="#">
@@ -155,11 +166,11 @@
                             <li {if $_routes[1] eq 'deposit' }class="active" {/if}><a
                                     href="{Text::url('plan/deposit')}">{Lang::T('Refill Balance')}</a></li>
                             {/if}
-                            {$_MENU_SERVICES}
+                            {$_MENU_SERVICES nofilter}
                         </ul>
                     </li>
                     {/if}
-                    {$_MENU_AFTER_SERVICES}
+                    {$_MENU_AFTER_SERVICES nofilter}
                     {if in_array($_admin['user_type'],['SuperAdmin','Admin'])}
                     <li class="{if $_system_menu eq 'services'}active{/if} treeview">
                         <a href="#">
@@ -182,11 +193,11 @@
                             <li {if $_routes[1] eq 'balance' }class="active" {/if}><a
                                     href="{Text::url('services/balance')}">{Lang::T('Customer Balance')}</a></li>
                             {/if}
-                            {$_MENU_PLANS}
+                            {$_MENU_PLANS nofilter}
                         </ul>
                     </li>
                     {/if}
-                    {$_MENU_AFTER_PLANS}
+                    {$_MENU_AFTER_PLANS nofilter}
                     <li class="{if in_array($_routes[0], ['maps'])}active{/if} treeview">
                         <a href="#">
                             <i class="fa fa-map-marker"></i> <span>{Lang::T('Maps')}</span>
@@ -199,7 +210,7 @@
                                     href="{Text::url('maps/customer')}">{Lang::T('Customer')}</a></li>
                             <li {if $_routes[1] eq 'routers' }class="active" {/if}><a
                                     href="{Text::url('maps/routers')}">{Lang::T('Routers')}</a></li>
-                            {$_MENU_MAPS}
+                            {$_MENU_MAPS nofilter}
                         </ul>
                     </li>
                     <li class="{if $_system_menu eq 'reports'}active{/if} treeview">
@@ -218,10 +229,10 @@
                                     href="{Text::url('reports/activation')}">{Lang::T('Activation History')}</a></li>
                            {* <li {if $_routes[0] eq 'invoices' }class="active" {/if}><a
                                     href="{Text::url('invoices')}">{Lang::T('Invoices')}</a></li> *}
-                            {$_MENU_REPORTS}
+                            {$_MENU_REPORTS nofilter}
                         </ul>
                     </li>
-                    {$_MENU_AFTER_REPORTS}
+                    {$_MENU_AFTER_REPORTS nofilter}
                     <li class="{if $_system_menu eq 'message'}active{/if} treeview">
                         <a href="#">
                             <i class="ion ion-android-chat"></i> <span>{Lang::T('Send Message')}</span>
@@ -234,10 +245,10 @@
                                     href="{Text::url('message/send')}">{Lang::T('Single Customer')}</a></li>
                             <li {if $_routes[1] eq 'send_bulk' }class="active" {/if}><a
                                     href="{Text::url('message/send_bulk')}">{Lang::T('Bulk Customers')}</a></li>
-                            {$_MENU_MESSAGE}
+                            {$_MENU_MESSAGE nofilter}
                         </ul>
                     </li>
-                    {$_MENU_AFTER_MESSAGE}
+                    {$_MENU_AFTER_MESSAGE nofilter}
                     {if in_array($_admin['user_type'],['SuperAdmin','Admin'])}
                     <li class="{if $_system_menu eq 'network'}active{/if} treeview">
                         <a href="#">
@@ -253,7 +264,7 @@
                                     href="{Text::url('pool/list')}">IP Pool</a></li>
                             <li {if $_routes[0] eq 'pool' and $_routes[1] eq 'port' }class="active" {/if}><a
                                     href="{Text::url('pool/port')}">Port Pool</a></li>
-                            {$_MENU_NETWORK}
+                            {$_MENU_NETWORK nofilter}
                         </ul>
                     </li>
                     {$_MENU_AFTER_NETWORKS}
@@ -434,3 +445,4 @@
                     });
                 </script>
                 {/if}
+

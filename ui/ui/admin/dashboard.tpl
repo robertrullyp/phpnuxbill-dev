@@ -1,9 +1,9 @@
-{include file="sections/header.tpl"}
+{include file="admin/header.tpl"}
 
 {function showWidget pos=0}
     {foreach $widgets as $w}
         {if $w['position'] == $pos}
-            {$w['content']}
+            {$w['content'] nofilter}
         {/if}
     {/foreach}
 {/function}
@@ -40,7 +40,7 @@
                 var localVersion = data.version;
                 $('#version').html('Version: ' + localVersion);
                 $.getJSON(
-                    "https://raw.githubusercontent.com/hotspotbilling/phpnuxbill/master/version.json?" +
+                    "https://raw.githubusercontent.com/robertrullyp/phpnuxbill-dev/main/version.json?" +
                     Math
                     .random(),
                     function(data) {
@@ -74,4 +74,4 @@
     </script>
 {/if}
 
-{include file="sections/footer.tpl"}
+{include file="admin/footer.tpl"}

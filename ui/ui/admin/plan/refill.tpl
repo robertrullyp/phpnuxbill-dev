@@ -6,6 +6,7 @@
             <div class="panel-heading">{Lang::T('Refill Account')}</div>
             <div class="panel-body">
                 <form class="form-horizontal" method="post" role="form" action="{Text::url('')}plan/refill-post">
+                    <input type="hidden" name="csrf_token" value="{$csrf_token}">
                     <div class="form-group">
                         <label class="col-md-2 control-label">{Lang::T('Select Account')}</label>
                         <div class="col-md-6">

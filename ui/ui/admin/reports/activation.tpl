@@ -15,7 +15,7 @@
                                     <span class="fa fa-search"></span>
                                 </div>
                                 <input type="text" name="q" class="form-control" value="{$q}"
-                                    placeholder="{Lang::T('Invoice')}...">
+                                    placeholder="{Lang::T('Invoice')}, {Lang::T('Username')} {Lang::T('Or')} {Lang::T('Fullname')}...">
                                 <div class="input-group-btn">
                                     <button class="btn btn-success" type="submit">{Lang::T('Search')}</button>
                                 </div>

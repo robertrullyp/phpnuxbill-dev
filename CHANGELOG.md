@@ -2,6 +2,64 @@
 
 # CHANGELOG
 
+## 2025.10.27
+
+- **Security:** Refreshed CSRF logout tokens alongside the standard form tokens so long-running admin/customer sessions can still submit valid POST logouts after the 1-hour expiry window.
+- **Themes:** Updated the `ui_custom` admin and customer headers to submit logout requests via POST with the generated `csrf_token_logout`, removing insecure GET fallbacks in overrides.
+- **Maintenance:** Synced `version.json`, `README.md`, and `system/updates.json` with the new build identifier.
+- Version bumped to `2025.10.27`.
+
+## 2025.10.13
+
+- **Security:** Hardened the logout controller to require POST requests and validate CSRF tokens before clearing user sessions, preventing invalid logout attempts from tearing down sessions.
+- **Maintenance:** Synced release metadata across `version.json`, the README, and the updater registry.
+- Version bumped to `2025.10.13`.
+
+## 2025.10.9
+
+- **Notifications:** Preserved the most recent recharge transaction when reusing existing plan records so invoice messages are dispatched reliably for active customers.
+- **Plans:** Restored persistence of the `invoice_notification` toggle across plan edit forms, aligning UI state with stored configuration.
+- **Linked Plans:** Ensured auto-activated linked packages defer to their own invoice settings while still delivering notifications when enabled.
+- Version bumped to `2025.10.9`.
+
+## 2025.10.8
+
+- **Maintenance:** Captured the current main-branch snapshot for release, syncing metadata across `version.json`, the README, and the updater registry.
+- Version bumped to `2025.10.8`.
+
+## 2025.10.6
+
+- **Plans:** Added a per-plan `reminder_enabled` toggle that is honored by all plan forms and by `system/cron_reminder.php`, allowing operators to suppress renewal notices for specific products.
+- **Plans:** Introduced `tbl_plan_links` with create/update safeguards so admins can define upgrade/downgrade recommendations without duplicating data during repeated migrations.
+- **Maintenance:** Documented the reminder and plan-link workflows in the README and synchronized `version.json` with the new release tag.
+- Version bumped to `2025.10.6`.
+
+## 2025.10.4
+
+- **Maintenance:** Synchronized release metadata across `version.json` and `system/updates.json` so the updater and UI report the same build.
+- **Documentation:** Added a release banner and operational health checklist to the README to guide admins through post-deploy validation.
+- Version bumped to `2025.10.4`.
+
+## 2025.10.3
+
+- **SECURITY:** Fixed multiple critical SQL Injection vulnerabilities in `radius.php` and `update.php`.
+- **SECURITY:** Fixed a SQL Injection vulnerability in the customer search function.
+- **SECURITY:** Hardened the entire application against Cross-Site Scripting (XSS) by enabling global output escaping in the template engine.
+- Version bumped to `2025.10.3`.
+
+## 2025.9.20
+
+- Maintenance release: synchronize version metadata with the latest code snapshot.
+- Version bumped to `2025.9.20`.
+
+## 2025.8.28
+
+- Plugin Manager: point repository source to custom JSON in fork; updated cache key and loading path.
+- Payment Gateway: update Duitku repository entry to `robertrullyp/phpnuxbill-pgplugin-duitku` in local `plugin-repository.json` for testing.
+- Updater: fix extracted folder detection to support fork archive names (e.g., `phpnuxbill-dev-main` or commit SHA).
+- Community: make Latest Version fetch more resilient (fetch with fallback); align Rollback to this fork commits and ZIPs.
+- Version bumped to `2025.8.28`.
+
 ## 2024.10.23
 
 - Custom Balance admin refill Requested by Javi Tech

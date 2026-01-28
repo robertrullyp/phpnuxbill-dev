@@ -9,6 +9,7 @@
                     <center><img src="{$app_url}/{$logo}?" class="img-responsive"></center>
                 {/if}
                 <form class="form-horizontal" method="post" action="{Text::url('')}plan/print" target="_blank">
+                    <input type="hidden" name="csrf_token" value="{$csrf_token}">
                     <pre id="content"
                     style="border: 0px; ;text-align: center; background-color: transparent; background-image: url('{$app_url}/system/uploads/paid.png');background-repeat:no-repeat;background-position: center"></pre>
                     <textarea class="hidden" id="formcontent" name="content">{$invoice}</textarea>

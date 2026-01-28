@@ -23,7 +23,6 @@
 {/if}
 </div>
 
-
 <!-- Modal -->
 <div class="modal fade" id="HTMLModal" tabindex="-1" role="dialog">
     <div class="modal-dialog">
@@ -40,14 +39,15 @@
     </div>
 </div>
 
-
-
 <script src="{$app_url}/ui/ui/scripts/jquery.min.js"></script>
 <script src="{$app_url}/ui/ui/scripts/bootstrap.min.js"></script>
 <script src="{$app_url}/ui/ui/scripts/adminlte.min.js"></script>
 
 <script src="{$app_url}/ui/ui/scripts/plugins/select2.min.js"></script>
 <script src="{$app_url}/ui/ui/scripts/custom.js?2025.2.5"></script>
+{if $_c['csrf_enabled']=='yes'}
+    <script src="{$app_url}/ui/ui/scripts/csrf-refresh.js"></script>
+{/if}
 
 {if isset($xfooter)}
 {$xfooter}
@@ -94,32 +94,42 @@
     const toggleIcon = document.getElementById('toggleIcon');
     const body = document.body;
     const savedMode = localStorage.getItem('mode');
+
     if (savedMode === 'dark') {
         body.classList.add('dark-mode');
-        toggleIcon.textContent = '🌞';
+        if (toggleIcon) {
+            toggleIcon.textContent = '🌞';
+        }
+    } else if (toggleIcon) {
+        toggleIcon.textContent = '🌜';
     }
 
     function setMode(mode) {
         if (mode === 'dark') {
             body.classList.add('dark-mode');
-            toggleIcon.textContent = '🌞';
+            if (toggleIcon) {
+                toggleIcon.textContent = '🌞';
+            }
         } else {
             body.classList.remove('dark-mode');
-            toggleIcon.textContent = '🌜';
+            if (toggleIcon) {
+                toggleIcon.textContent = '🌜';
+            }
         }
     }
 
-    toggleIcon.addEventListener('click', () => {
-        if (body.classList.contains('dark-mode')) {
-            setMode('light');
-            localStorage.setItem('mode', 'light');
-        } else {
-            setMode('dark');
-            localStorage.setItem('mode', 'dark');
-        }
-    });
+    if (toggleIcon) {
+        toggleIcon.addEventListener('click', () => {
+            if (body.classList.contains('dark-mode')) {
+                setMode('light');
+                localStorage.setItem('mode', 'light');
+            } else {
+                setMode('dark');
+                localStorage.setItem('mode', 'dark');
+            }
+        });
+    }
 </script>
-
 
 {literal}
 <script>
@@ -220,6 +230,13 @@
 <script>
     setCookie('user_language', '{$user_language}', 365);
 </script>
+
+
+
+
+
+
+
 </body>
 
 </html>

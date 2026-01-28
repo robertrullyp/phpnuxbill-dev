@@ -19,6 +19,12 @@ if (!in_array($admin['user_type'], ['SuperAdmin', 'Admin'])) {
 switch ($action) {
     case 'list':
         run_hook('view_list_bandwidth'); #HOOK
+        if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+            $csrf_token = _post('csrf_token');
+            if (!Csrf::check($csrf_token)) {
+                r2($_SERVER['HTTP_REFERER'], 'e', Lang::T('Invalid or Expired CSRF Token') . '.');
+            }
+        }
         $name = _post('name');
         if ($name != '') {
             $query = ORM::for_table('tbl_bandwidth')->where_like('name_bw', '%' . $name . '%')->order_by_desc('id');
@@ -29,6 +35,8 @@ switch ($action) {
         }
 
         $ui->assign('d', $d);
+        $csrf_token = Csrf::generateAndStoreToken();
+        $ui->assign('csrf_token', $csrf_token);
         $ui->display('admin/bandwidth/list.tpl');
         break;
 
@@ -37,6 +45,8 @@ switch ($action) {
             _alert(Lang::T('You do not have permission to access this page'), 'danger', "dashboard");
         }
         run_hook('view_add_bandwidth'); #HOOK
+        $csrf_token = Csrf::generateAndStoreToken();
+        $ui->assign('csrf_token', $csrf_token);
         $ui->display('admin/bandwidth/add.tpl');
         break;
 
@@ -50,6 +60,8 @@ switch ($action) {
         if ($d) {
             $ui->assign('burst', explode(" ", $d['burst']));
             $ui->assign('d', $d);
+            $csrf_token = Csrf::generateAndStoreToken();
+            $ui->assign('csrf_token', $csrf_token);
             $ui->display('admin/bandwidth/edit.tpl');
         } else {
             r2(getUrl('bandwidth/list'), 'e', Lang::T('Account Not Found'));
@@ -73,6 +85,11 @@ switch ($action) {
         if (!in_array($admin['user_type'], ['SuperAdmin', 'Admin'])) {
             _alert(Lang::T('You do not have permission to access this page'), 'danger', "dashboard");
         }
+        $csrf_token = _post('csrf_token');
+        if (!Csrf::check($csrf_token)) {
+            r2($_SERVER['HTTP_REFERER'], 'e', Lang::T('Invalid or Expired CSRF Token') . '.');
+        }
+        Csrf::generateAndStoreToken();
         $name = _post('name');
         $rate_down = _post('rate_down');
         $rate_down_unit = _post('rate_down_unit');
@@ -102,9 +119,9 @@ switch ($action) {
             $unit_rate_down = $rate_down * 1048576;
         }
         if ($rate_up_unit == 'Kbps') {
-            $unit_rate_up = $min_up * 1024;
+            $unit_rate_up = $rate_up * 1024;
         } else {
-            $unit_rate_up = $min_up * 1048576;
+            $unit_rate_up = $rate_up * 1048576;
         }
 
         $d = ORM::for_table('tbl_bandwidth')->where('name_bw', $name)->find_one();
@@ -132,6 +149,11 @@ switch ($action) {
         if (!in_array($admin['user_type'], ['SuperAdmin', 'Admin'])) {
             _alert(Lang::T('You do not have permission to access this page'), 'danger', "dashboard");
         }
+        $csrf_token = _post('csrf_token');
+        if (!Csrf::check($csrf_token)) {
+            r2($_SERVER['HTTP_REFERER'], 'e', Lang::T('Invalid or Expired CSRF Token') . '.');
+        }
+        Csrf::generateAndStoreToken();
         $name = _post('name');
         $rate_down = _post('rate_down');
         $rate_down_unit = _post('rate_down_unit');

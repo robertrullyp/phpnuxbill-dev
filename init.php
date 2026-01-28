@@ -60,6 +60,21 @@ $WIDGET_PATH = $root_path . File::pathFixer('system/widgets');
 $PAYMENTGATEWAY_PATH = $root_path . File::pathFixer('system/paymentgateway');
 $UI_PATH = 'ui';
 
+if (function_exists('imagecreatetruecolor') && function_exists('imagejpeg')) {
+    $defaultAvatarFiles = [
+        'admin.default.png',
+        'user.default.jpg',
+    ];
+
+    foreach ($defaultAvatarFiles as $avatarFile) {
+        $sourceFile = $UPLOAD_PATH . File::pathFixer('/' . ltrim($avatarFile, '/'));
+        $thumbFile = $UPLOAD_PATH . File::pathFixer('/' . ltrim($avatarFile, '/') . '.thumb.jpg');
+        if (file_exists($sourceFile) && !file_exists($thumbFile)) {
+            File::makeThumb($sourceFile, $thumbFile, 200);
+        }
+    }
+}
+
 if (!file_exists($UPLOAD_PATH . File::pathFixer('/notifications.default.json'))) {
     echo $UPLOAD_PATH . File::pathFixer("/notifications.default.json file not found");
     die();
@@ -334,6 +349,9 @@ function sendWhatsapp($phone, $txt)
 function r2($to, $ntype = 'e', $msg = '')
 {
     global $isApi;
+    // Generate a fresh CSRF token for subsequent requests
+    // so that each POST action will require a new token.
+    Csrf::generateAndStoreToken();
     if ($isApi) {
         showResult(
             ($ntype == 's') ? true : false,

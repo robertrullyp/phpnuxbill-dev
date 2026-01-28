@@ -84,12 +84,17 @@ switch ($action) {
         }
         $ui->assign('usings', $usings);
         run_hook('view_recharge'); #HOOK
+        $ui->assign('csrf_token', Csrf::generateAndStoreToken());
         $ui->display('admin/plan/recharge.tpl');
         break;
 
     case 'recharge-confirm':
         if (!in_array($admin['user_type'], ['SuperAdmin', 'Admin', 'Agent', 'Sales'])) {
             _alert(Lang::T('You do not have permission to access this page'), 'danger', "dashboard");
+        }
+        $csrf_token = _post('csrf_token');
+        if (!Csrf::check($csrf_token)) {
+            r2(getUrl('plan/recharge'), 'e', Lang::T('Invalid or Expired CSRF Token'));
         }
         $id_customer = _post('id_customer');
         $server = _post('server');
@@ -165,6 +170,7 @@ switch ($action) {
             $ui->assign('using', $using);
             $ui->assign('plan', $plan);
             $ui->assign('add_inv', $add_inv);
+            $ui->assign('csrf_token', Csrf::generateAndStoreToken());
             $ui->display('admin/plan/recharge-confirm.tpl');
         } else {
             r2(getUrl('plan/recharge'), 'e', $msg);
@@ -174,6 +180,10 @@ switch ($action) {
     case 'recharge-post':
         if (!in_array($admin['user_type'], ['SuperAdmin', 'Admin', 'Agent', 'Sales'])) {
             _alert(Lang::T('You do not have permission to access this page'), 'danger', "dashboard");
+        }
+        $csrf_token = _post('csrf_token');
+        if (!Csrf::check($csrf_token)) {
+            r2(getUrl('plan/recharge'), 'e', Lang::T('Invalid or Expired CSRF Token'));
         }
         $id_customer = _post('id_customer');
         $server = _post('server');
@@ -187,6 +197,7 @@ switch ($action) {
             $username = App::getVoucherValue($svoucher);
             $in = ORM::for_table('tbl_transactions')->where('username', $username)->order_by_desc('id')->find_one();
             Package::createInvoice($in);
+            $ui->assign('csrf_token', Csrf::generateAndStoreToken());
             $ui->display('admin/plan/invoice.tpl');
             die();
         }
@@ -246,6 +257,7 @@ switch ($action) {
                 $in = ORM::for_table('tbl_transactions')->where('username', $cust['username'])->order_by_desc('id')->find_one();
                 Package::createInvoice($in);
                 App::setVoucher($svoucher, $cust['username']);
+                $ui->assign('csrf_token', Csrf::generateAndStoreToken());
                 $ui->display('admin/plan/invoice.tpl');
                 _log('[' . $admin['username'] . ']: ' . 'Recharge ' . $cust['username'] . ' [' . $in['plan_name'] . '][' . Lang::moneyFormat($in['price']) . ']', $admin['user_type'], $admin['id']);
             } else {
@@ -269,6 +281,7 @@ switch ($action) {
             r2(getUrl('plan/view/') . $id, 'd', "Customer not found");
         }
         Package::createInvoice($in);
+        $ui->assign('csrf_token', Csrf::generateAndStoreToken());
         $UPLOAD_URL_PATH = str_replace($root_path, '', $UPLOAD_PATH);
         $logo = '';
         if (file_exists($UPLOAD_PATH . DIRECTORY_SEPARATOR . 'logo.png')) {
@@ -288,6 +301,10 @@ switch ($action) {
 
 
     case 'print':
+        $csrf_token = _post('csrf_token');
+        if ($_SERVER['REQUEST_METHOD'] === 'POST' && !Csrf::check($csrf_token)) {
+            _alert(Lang::T('Invalid CSRF token'), 'danger', 'dashboard');
+        }
         $content = $_POST['content'];
         if (!empty($content)) {
             if ($_POST['nux'] == 'print') {
@@ -332,6 +349,7 @@ switch ($action) {
             $ui->assign('p', $ps);
             run_hook('view_edit_customer_plan'); #HOOK
             $ui->assign('_title', 'Edit Plan');
+            $ui->assign('csrf_token', Csrf::generateAndStoreToken());
             $ui->display('admin/plan/edit.tpl');
         } else {
             r2(getUrl('plan/list'), 'e', Lang::T('Account Not Found'));
@@ -374,7 +392,10 @@ switch ($action) {
         $expiration = _post('expiration');
         $time = _post('time');
         $id = _post('id');
-
+        $csrf_token = _post('csrf_token');
+        if (!Csrf::check($csrf_token)) {
+            r2(getUrl('plan/edit/') . $id, 'e', Lang::T('Invalid or Expired CSRF Token'));
+        }
         $d = ORM::for_table('tbl_user_recharges')->find_one($id);
         if (!$d) {
             $msg .= Lang::T('Data Not Found') . '<br>';
@@ -1054,6 +1075,7 @@ switch ($action) {
         $ui->assign('xfooter', $select2_customer);
         $ui->assign('_title', Lang::T('Refill Account'));
         run_hook('view_refill'); #HOOK
+        $ui->assign('csrf_token', Csrf::generateAndStoreToken());
         $ui->display('admin/plan/refill.tpl');
 
         break;
@@ -1061,6 +1083,10 @@ switch ($action) {
     case 'refill-post':
         if (!in_array($admin['user_type'], ['SuperAdmin', 'Admin', 'Agent', 'Sales'])) {
             _alert(Lang::T('You do not have permission to access this page'), 'danger', "dashboard");
+        }
+        $csrf_token = _post('csrf_token');
+        if (!Csrf::check($csrf_token)) {
+            r2(getUrl('plan/refill'), 'e', Lang::T('Invalid or Expired CSRF Token'));
         }
         $code = Text::alphanumeric(_post('code'), "-_.,");
         $user = ORM::for_table('tbl_customers')->where('id', _post('id_customer'))->find_one();
@@ -1074,6 +1100,7 @@ switch ($action) {
                 $v1->save();
                 $in = ORM::for_table('tbl_transactions')->where('username', $user['username'])->order_by_desc('id')->find_one();
                 Package::createInvoice($in);
+                $ui->assign('csrf_token', Csrf::generateAndStoreToken());
                 $ui->display('admin/plan/invoice.tpl');
             } else {
                 r2(getUrl('plan/refill'), 'e', "Failed to refill account");
@@ -1094,11 +1121,16 @@ switch ($action) {
             $ui->assign('p', ORM::for_table('tbl_plans')->where('enabled', '1')->where('type', 'Balance')->find_many());
         }
         run_hook('view_deposit'); #HOOK
+        $ui->assign('csrf_token', Csrf::generateAndStoreToken());
         $ui->display('admin/plan/deposit.tpl');
         break;
     case 'deposit-post':
         if (!in_array($admin['user_type'], ['SuperAdmin', 'Admin', 'Agent', 'Sales'])) {
             _alert(Lang::T('You do not have permission to access this page'), 'danger', "dashboard");
+        }
+        $csrf_token = _post('csrf_token');
+        if (!Csrf::check($csrf_token)) {
+            r2(getUrl('plan/deposit'), 'e', Lang::T('Invalid or Expired CSRF Token'));
         }
         $user = _post('id_customer');
         $amount = _post('amount');
@@ -1109,6 +1141,7 @@ switch ($action) {
         if (App::getVoucherValue($svoucher)) {
             $in = ORM::for_table('tbl_transactions')->find_one(App::getVoucherValue($svoucher));
             Package::createInvoice($in);
+            $ui->assign('csrf_token', Csrf::generateAndStoreToken());
             $ui->display('admin/plan/invoice.tpl');
             die();
         }
@@ -1125,6 +1158,7 @@ switch ($action) {
                 if (!empty($svoucher)) {
                     App::setVoucher($svoucher, $trxId);
                 }
+                $ui->assign('csrf_token', Csrf::generateAndStoreToken());
                 $ui->display('admin/plan/invoice.tpl');
             } else {
                 r2(getUrl('plan/refill'), 'e', "Failed to refill account");
@@ -1138,6 +1172,7 @@ switch ($action) {
                 if (!empty($svoucher)) {
                     App::setVoucher($svoucher, $trxId);
                 }
+                $ui->assign('csrf_token', Csrf::generateAndStoreToken());
                 $ui->display('admin/plan/invoice.tpl');
             } else {
                 r2(getUrl('plan/refill'), 'e', "Failed to refill account");
@@ -1200,45 +1235,122 @@ switch ($action) {
         break;
     default:
         $ui->assign('_title', Lang::T('Customer'));
-        $search = _post('search');
-        $status = _req('status');
+
+        $search = _req('search');
+        $status = _req('status', '-');
         $router = _req('router');
         $plan = _req('plan');
-        $append_url = "&search=" . urlencode($search)
-            . "&status=" . urlencode($status)
-            . "&router=" . urlencode($type3)
-            . "&plan=" . urlencode($plan);
+
+        $buildFilters = static function ($searchValue, $statusValue, $routerValue, $planValue) {
+            $filters = [];
+
+            if ($searchValue !== '') {
+                $filters['search'] = $searchValue;
+            }
+
+            if ($routerValue !== '') {
+                $filters['router'] = $routerValue;
+            }
+
+            if ($planValue !== '') {
+                $filters['plan'] = $planValue;
+            }
+
+            if ($statusValue !== '-' && $statusValue !== '' && in_array($statusValue, ['on', 'off'], true)) {
+                $filters['status'] = $statusValue;
+            }
+
+            return $filters;
+        };
+
+        if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+            $csrf_token = Csrf::getTokenFromRequest();
+            if ($csrf_token !== '' && !Csrf::check($csrf_token)) {
+                _msglog('e', Lang::T('Invalid CSRF token'));
+            }
+
+            $search = _post('search', $search);
+            $status = _post('status', $status);
+            $router = _post('router', $router);
+            $plan = _post('plan', $plan);
+
+            $queryParams = $buildFilters($search, $status, $router, $plan);
+
+            $redirectUrl = getUrl('plan/list');
+            if (!empty($queryParams)) {
+                $redirectUrl .= (strpos($redirectUrl, '?') === false ? '?' : '&')
+                    . http_build_query($queryParams, '', '&', PHP_QUERY_RFC3986);
+            }
+
+            header('Location: ' . $redirectUrl);
+            exit;
+        }
+
+        $filters = $buildFilters($search, $status, $router, $plan);
+
+        $filterQueryString = http_build_query($filters, '', '&', PHP_QUERY_RFC3986);
+        $append_url = $filterQueryString !== '' ? '&' . $filterQueryString : '';
         $ui->assign('append_url', $append_url);
         $ui->assign('plan', $plan);
         $ui->assign('status', $status);
         $ui->assign('router', $router);
-        $ui->assign('search', $search);
-        $ui->assign('routers', array_column(ORM::for_table('tbl_user_recharges')->distinct()->select("routers")->whereNotEqual('routers', '')->findArray(), 'routers'));
+        $ui->assign('routers', array_column(
+            ORM::for_table('tbl_user_recharges')
+                ->distinct()
+                ->select('tbl_user_recharges.routers', 'routers')
+                ->whereNotEqual('tbl_user_recharges.routers', '')
+                ->findArray(),
+            'routers'
+        ));
 
-        $plns = ORM::for_table('tbl_user_recharges')->distinct()->select("plan_id")->findArray();
+        $plns = ORM::for_table('tbl_user_recharges')
+            ->distinct()
+            ->select('tbl_user_recharges.plan_id', 'plan_id')
+            ->findArray();
         $ids = array_column($plns, 'plan_id');
         if (count($ids)) {
-            $ui->assign('plans', ORM::for_table('tbl_plans')->select("id")->select('name_plan')->where_id_in($ids)->findArray());
+            $ui->assign('plans', ORM::for_table('tbl_plans')->select('id')->select('name_plan')->where_id_in($ids)->findArray());
         } else {
             $ui->assign('plans', []);
         }
-        $query = ORM::for_table('tbl_user_recharges')->order_by_desc('id');
+        $query = ORM::for_table('tbl_user_recharges')
+            ->select('tbl_user_recharges.*')
+            ->select('tbl_customers.fullname', 'customer_fullname')
+            ->left_outer_join('tbl_customers', ['tbl_user_recharges.customer_id', '=', 'tbl_customers.id'])
+            ->order_by_desc('tbl_user_recharges.id');
 
-        if ($search != '') {
-            $query->where_like("username", "%$search%");
+        if (isset($filters['search'])) {
+            $searchTerm = $filters['search'];
+            $query->where_raw(
+                '(
+                    tbl_user_recharges.username LIKE ?
+                    OR tbl_customers.fullname LIKE ?
+                    OR tbl_customers.address LIKE ?
+                    OR tbl_customers.phonenumber LIKE ?
+                    OR tbl_customers.email LIKE ?
+                )',
+                [
+                    "%$searchTerm%",
+                    "%$searchTerm%",
+                    "%$searchTerm%",
+                    "%$searchTerm%",
+                    "%$searchTerm%",
+                ]
+            );
         }
-        if (!empty($router)) {
-            $query->where('routers', $router);
+        if (isset($filters['router'])) {
+            $query->where('tbl_user_recharges.routers', $filters['router']);
         }
-        if (!empty($plan)) {
-            $query->where('plan_id', $plan);
+        if (isset($filters['plan'])) {
+            $query->where('tbl_user_recharges.plan_id', $filters['plan']);
         }
-        if (!empty($status) && $status != '-') {
-            $query->where('status', $status);
+        if (isset($filters['status'])) {
+            $query->where('tbl_user_recharges.status', $filters['status']);
         }
-        $d = Paginator::findMany($query, ['search' => $search], 25, $append_url);
+        $d = Paginator::findMany($query, $filters, 25);
         run_hook('view_list_billing'); #HOOK
         $ui->assign('d', $d);
+        $ui->assign('search', htmlspecialchars($search, ENT_QUOTES, 'UTF-8'));
         $ui->display('admin/plan/active.tpl');
         break;
 }

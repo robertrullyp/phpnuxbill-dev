@@ -49,6 +49,7 @@ body {
 .sidebar-menu li>a {
     position: relative;
     background-color: rgb(28 36 52);
+    padding-right: 10px;
 }
 
 .sidebar-menu li:focus,

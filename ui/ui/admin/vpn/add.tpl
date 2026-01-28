@@ -40,6 +40,54 @@
                         </div>
                     </div>
                     <div class="form-group">
+                        <label class="col-md-2 control-label">{Lang::T('Visibility')}</label>
+                        <div class="col-md-10">
+                            <label class="radio-inline"><input type="radio" name="visibility" value="all" {if $last_visibility == 'all'}checked{/if}> {Lang::T('All')}</label>
+                            <label class="radio-inline"><input type="radio" name="visibility" value="exclude" {if $last_visibility == 'exclude'}checked{/if}> {Lang::T('Exclude')}</label>
+                            <label class="radio-inline"><input type="radio" name="visibility" value="custom" {if $last_visibility == 'custom'}checked{/if}> {Lang::T('Include')}</label>
+                        </div>
+                    </div>
+                    <div class="form-group" id="visibility_customers" style="display:none;">
+                        <label class="col-md-2 control-label">{Lang::T('Allowed/Excluded Customers')}</label>
+                        <div class="col-md-6">
+                            <select id="visible_customers" name="visible_customers[]" class="form-control select2" multiple></select>
+                            <p class="help-block">{Lang::T('Search by Full Name, Username, Phone or Email')}</p>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label class="col-md-2 control-label">{Lang::T('Reminder Notification')}</label>
+                        <div class="col-md-10">
+                            <input type="hidden" name="reminder_enabled" value="0">
+                            <label class="checkbox-inline">
+                                <input type="checkbox" name="reminder_enabled" value="1" checked>
+                                {Lang::T('Send reminder notifications for this plan')}
+                            </label>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label class="col-md-2 control-label">{Lang::T('Invoice Notification')}</label>
+                        <div class="col-md-10">
+                            <input type="hidden" name="invoice_notification" value="0">
+                            <label class="checkbox-inline">
+                                <input type="checkbox" name="invoice_notification" value="1" checked>
+                                {Lang::T('Send invoice notifications for this plan')}
+                            </label>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label class="col-md-2 control-label">{Lang::T('Linked Plans')}</label>
+                        <div class="col-md-6">
+                            <select name="linked_plans[]" class="form-control select2" multiple>
+                                {foreach $plan_options as $plan}
+                                    <option value="{$plan.id}" {if isset($selected_linked_plans) && in_array($plan.id, $selected_linked_plans)}selected{/if}>
+                                        {$plan.name_plan} ({$plan.type})
+                                    </option>
+                                {/foreach}
+                            </select>
+                            <p class="help-block">{Lang::T('Linked Plans Help')}</p>
+                        </div>
+                    </div>
+                    <div class="form-group">
                         <label class="col-md-2 control-label">{Lang::T('Device')}
                             <a tabindex="0" class="btn btn-link btn-xs" role="button" data-toggle="popover"
                                 data-trigger="focus" data-container="body"
@@ -161,5 +209,28 @@
     document.addEventListener("DOMContentLoaded", function(event) {
         prePaid()
     })
+</script>
+<script>
+    function toggleVisibilitySelector() {
+        var val = document.querySelector('input[name="visibility"]:checked').value;
+        document.getElementById('visibility_customers').style.display = (val === 'custom' || val === 'exclude') ? 'block' : 'none';
+    }
+    document.addEventListener('DOMContentLoaded', function(){
+        toggleVisibilitySelector();
+        document.querySelectorAll('input[name="visibility"]').forEach(function(el){ el.addEventListener('change', toggleVisibilitySelector); });
+        $('#visible_customers').select2({
+            theme: 'bootstrap',
+            ajax: {
+                url: function (params) {
+                    if (params.term != undefined) {
+                        return '{Text::url('autoload/customer_select2')}&s=' + params.term;
+                    } else {
+                        return '{Text::url('autoload/customer_select2')}';
+                    }
+                },
+                dataType: 'json', delay: 250, processResults: function (data) { return data; }, cache: true
+            }
+        });
+    });
 </script>
 {include file="sections/footer.tpl"}

@@ -25,10 +25,11 @@ switch ($action) {
         if (!in_array($admin['user_type'], ['SuperAdmin', 'Admin'])) {
             _alert(Lang::T('You do not have permission to access this page'), 'danger', "dashboard");
         }
-        $csrf_token = _req('token');
+        $csrf_token = _post('csrf_token');
         if (!Csrf::check($csrf_token)) {
             r2(getUrl('customers'), 'e', Lang::T('Invalid or Expired CSRF Token') . ".");
         }
+        Csrf::generateAndStoreToken();
 
         $cs = ORM::for_table('tbl_customers')
             ->select('tbl_customers.id', 'id')
@@ -166,10 +167,14 @@ switch ($action) {
         }
         $id_customer = $routes['2'];
         $plan_id = $routes['3'];
-        $csrf_token = _req('token');
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+            r2(getUrl('customers/view/') . $id_customer, 'e', Lang::T('Invalid request method'));
+        }
+        $csrf_token = _post('csrf_token');
         if (!Csrf::check($csrf_token)) {
             r2(getUrl('customers/view/') . $id_customer, 'e', Lang::T('Invalid or Expired CSRF Token') . ".");
         }
+        Csrf::generateAndStoreToken();
         $b = ORM::for_table('tbl_user_recharges')->where('customer_id', $id_customer)->where('plan_id', $plan_id)->find_one();
         if ($b) {
             $gateway = 'Recharge';
@@ -241,10 +246,14 @@ switch ($action) {
         }
         $id_customer = $routes['2'];
         $plan_id = $routes['3'];
-        $csrf_token = _req('token');
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+            r2(getUrl('customers/view/') . $id_customer, 'e', Lang::T('Invalid request method'));
+        }
+        $csrf_token = _post('csrf_token');
         if (!Csrf::check($csrf_token)) {
             r2(getUrl('customers/view/') . $id_customer, 'e', Lang::T('Invalid or Expired CSRF Token') . ".");
         }
+        Csrf::generateAndStoreToken();
         $b = ORM::for_table('tbl_user_recharges')->where('customer_id', $id_customer)->where('plan_id', $plan_id)->find_one();
         if ($b) {
             $p = ORM::for_table('tbl_plans')->where('id', $b['plan_id'])->find_one();
@@ -273,10 +282,14 @@ switch ($action) {
         break;
     case 'sync':
         $id_customer = $routes['2'];
-        $csrf_token = _req('token');
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+            r2(getUrl('customers/view/') . $id_customer, 'e', Lang::T('Invalid request method'));
+        }
+        $csrf_token = _post('csrf_token');
         if (!Csrf::check($csrf_token)) {
             r2(getUrl('customers/view/') . $id_customer, 'e', Lang::T('Invalid or Expired CSRF Token') . ".");
         }
+        Csrf::generateAndStoreToken();
         $bs = ORM::for_table('tbl_user_recharges')->where('customer_id', $id_customer)->where('status', 'on')->findMany();
         if ($bs) {
             $routers = [];
@@ -309,10 +322,14 @@ switch ($action) {
             _alert(Lang::T('You do not have permission to access this page'), 'danger', "dashboard");
         }
         $id = $routes['2'];
-        $csrf_token = _req('token');
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+            r2(getUrl('customers/view/') . $id, 'e', Lang::T('Invalid request method'));
+        }
+        $csrf_token = _post('csrf_token');
         if (!Csrf::check($csrf_token)) {
             r2(getUrl('customers/view/') . $id, 'e', Lang::T('Invalid or Expired CSRF Token') . ".");
         }
+        Csrf::generateAndStoreToken();
         $customer = ORM::for_table('tbl_customers')->find_one($id);
         if ($customer) {
             $_SESSION['uid'] = $id;
@@ -379,6 +396,14 @@ switch ($action) {
             _alert(Lang::T('You do not have permission to access this page'), 'danger', "dashboard");
         }
         $id = $routes['2'];
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+            r2(getUrl('customers/view/') . $id, 'e', Lang::T('Invalid request method'));
+        }
+        $csrf_token = _post('csrf_token');
+        if (!Csrf::check($csrf_token)) {
+            r2(getUrl('customers/view/') . $id, 'e', Lang::T('Invalid or Expired CSRF Token') . ".");
+        }
+        Csrf::generateAndStoreToken();
         run_hook('edit_customer'); #HOOK
         $d = ORM::for_table('tbl_customers')->find_one($id);
         // Fetch the Customers Attributes values from the tbl_customers_fields table
@@ -407,7 +432,7 @@ switch ($action) {
             $ui->assign('statuses', ORM::for_table('tbl_customers')->getEnum("status"));
             $ui->assign('customFields', $customFields);
             $ui->assign('xheader', $leafletpickerHeader);
-            $ui->assign('csrf_token',  Csrf::generateAndStoreToken());
+            $ui->assign('csrf_token', Csrf::generateAndStoreToken());
             $ui->display('admin/customers/edit.tpl');
         } else {
             r2(getUrl('customers/list'), 'e', Lang::T('Account Not Found'));
@@ -419,10 +444,14 @@ switch ($action) {
             _alert(Lang::T('You do not have permission to access this page'), 'danger', "dashboard");
         }
         $id = $routes['2'];
-        $csrf_token = _req('token');
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+            r2(getUrl('customers/view/') . $id, 'e', Lang::T('Invalid request method'));
+        }
+        $csrf_token = _post('csrf_token');
         if (!Csrf::check($csrf_token)) {
             r2(getUrl('customers/view/') . $id, 'e', Lang::T('Invalid or Expired CSRF Token') . ".");
         }
+        Csrf::generateAndStoreToken();
         run_hook('delete_customer'); #HOOK
         $c = ORM::for_table('tbl_customers')->find_one($id);
         if ($c) {
@@ -463,6 +492,7 @@ switch ($action) {
         if (!Csrf::check($csrf_token)) {
             r2(getUrl('customers/add'), 'e', Lang::T('Invalid or Expired CSRF Token') . ".");
         }
+        Csrf::generateAndStoreToken();
         $username = alphanumeric(_post('username'), ":+_.@-");
         $fullname = _post('fullname');
         $password = trim(_post('password'));
@@ -603,6 +633,7 @@ switch ($action) {
         if (!Csrf::check($csrf_token)) {
             r2(getUrl('customers/edit/') . $id, 'e', Lang::T('Invalid or Expired CSRF Token') . ".");
         }
+        Csrf::generateAndStoreToken();
         $username = alphanumeric(_post('username'), ":+_.@-");
         $fullname = _post('fullname');
         $account_type = _post('account_type');
@@ -865,8 +896,17 @@ switch ($action) {
 
         if ($search != '') {
             $query = ORM::for_table('tbl_customers')
-                ->whereRaw("username LIKE '%$search%' OR fullname LIKE '%$search%' OR address LIKE '%$search%' " .
-                    "OR phonenumber LIKE '%$search%' OR email LIKE '%$search%' AND status='$filter'");
+                ->where('status', $filter)
+                ->where_raw(
+                    '(username LIKE ? OR fullname LIKE ? OR address LIKE ? OR phonenumber LIKE ? OR email LIKE ?)',
+                    [
+                        "%$search%",
+                        "%$search%",
+                        "%$search%",
+                        "%$search%",
+                        "%$search%"
+                    ]
+                );
         } else {
             $query = ORM::for_table('tbl_customers');
             $query->where("status", $filter);
@@ -885,6 +925,7 @@ switch ($action) {
             if (!Csrf::check($csrf_token)) {
                 r2(getUrl('customers'), 'e', Lang::T('Invalid or Expired CSRF Token') . ".");
             }
+            Csrf::generateAndStoreToken();
             $d = $query->findMany();
             $h = false;
             set_time_limit(-1);
@@ -952,7 +993,7 @@ switch ($action) {
         $ui->assign('d', $d);
         $ui->assign('statuses', ORM::for_table('tbl_customers')->getEnum("status"));
         $ui->assign('filter', $filter);
-        $ui->assign('search', $search);
+        $ui->assign('search', htmlspecialchars($search, ENT_QUOTES, 'UTF-8'));
         $ui->assign('order', $order);
         $ui->assign('order_pos', $order_pos[$order]);
         $ui->assign('orderby', $orderby);

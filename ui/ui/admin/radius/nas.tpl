@@ -10,6 +10,7 @@
                 <div class="md-whiteframe-z1 mb20 text-center" style="padding: 15px">
                     <div class="col-md-8">
                         <form id="site-search" method="post" action="{Text::url('')}radius/nas-list">
+                            <input type="hidden" name="csrf_token" value="{$csrf_token}">
                             <div class="input-group">
                                 <div class="input-group-addon">
                                     <span class="fa fa-search"></span>
@@ -55,9 +56,10 @@
                                     <td align="center">
                                         <a href="{Text::url('')}radius/nas-edit/{$ds['id']}"
                                             class="btn btn-info btn-xs">{Lang::T('Edit')}</a>
-                                        <a href="{Text::url('')}radius/nas-delete/{$ds['id']}" id="{$ds['id']}"
-                                            onclick="return ask(this, '{Lang::T('Delete')}?')"
-                                            class="btn btn-danger btn-xs"><i class="glyphicon glyphicon-trash"></i></a>
+                                        <form method="post" action="{Text::url('')}radius/nas-delete/{$ds['id']}" style="display:inline;">
+                                            <input type="hidden" name="csrf_token" value="{$csrf_token}">
+                                            <button type="submit" onclick="return ask(this, '{Lang::T('Delete')}?')" class="btn btn-danger btn-xs"><i class="glyphicon glyphicon-trash"></i></button>
+                                        </form>
                                     </td>
                                     <td align="center">{$ds['id']}</td>
                                 </tr>

@@ -4,7 +4,7 @@
 {function showWidget pos=0}
     {foreach $widgets as $w}
         {if $w['position'] == $pos}
-            {$w['content']}
+            {$w['content'] nofilter}
         {/if}
     {/foreach}
 {/function}

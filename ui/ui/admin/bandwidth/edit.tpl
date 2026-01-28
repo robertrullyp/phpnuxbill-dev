@@ -6,8 +6,9 @@
 			<div class="panel-heading">{Lang::T('Edit Bandwidth')}</div>
 			<div class="panel-body">
 
-				<form class="form-horizontal" method="post" role="form" action="{Text::url('bandwidth/edit-post')}">
-					<input type="hidden" name="id" value="{$d['id']}">
+                                <form class="form-horizontal" method="post" role="form" action="{Text::url('bandwidth/edit-post')}">
+                                        <input type="hidden" name="csrf_token" value="{$csrf_token}">
+                                        <input type="hidden" name="id" value="{$d['id']}">
 					<div class="form-group">
 						<label class="col-md-3 control-label">{Lang::T('Bandwidth Name')}</label>
 						<div class="col-md-9">

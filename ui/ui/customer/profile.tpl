@@ -11,8 +11,16 @@
                     <input type="hidden" name="csrf_token" value="{$csrf_token}">
                     <input type="hidden" name="id" value="{$_user['id']}">
                     <center>
-                        <img src="{$app_url}/{$UPLOAD_PATH}{$_user['photo']}.thumb.jpg" width="200"
-                            onerror="this.src='{$app_url}/{$UPLOAD_PATH}/user.default.jpg'"
+                        {assign var='profilePhotoPath' value=$_user['photo']}
+                        {assign var='profileFallback' value=$app_url|cat:'/'|cat:$UPLOAD_PATH|cat:'/user.default.jpg'}
+                        {if !$profilePhotoPath || strstr($profilePhotoPath, 'default')}
+                            {assign var='profileImgSrc' value=$profileFallback}
+                        {else}
+                            {assign var='cleanProfilePhoto' value=$profilePhotoPath|trim:'/'}
+                            {assign var='profileImgSrc' value=$app_url|cat:'/'|cat:$UPLOAD_PATH|cat:'/'|cat:$cleanProfilePhoto|cat:'.thumb.jpg'}
+                        {/if}
+                        <img src="{$profileImgSrc}" width="200"
+                            onerror="this.src='{$profileFallback}'"
                             class="img-circle img-responsive" alt="Foto" onclick="return deletePhoto({$d['id']})">
                     </center><br>
                     <div class="form-group">

@@ -1,5 +1,9 @@
 {include file="sections/header.tpl"}
 
+{if isset($repoError) && $repoError}
+    <div class="alert alert-danger">{$repoError}</div>
+{/if}
+
 {if empty($_c['github_token'])}
     <p class="help-block">{Lang::T('To download from private/paid repository')}, <a
             href="{Text::url('')}settings/app#GithubAuthentication">

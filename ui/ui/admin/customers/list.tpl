@@ -159,7 +159,14 @@
                                     style="cursor:pointer;">{$ds['username']}</td>
                                 <td>
                                     <a href="{$app_url}/{$UPLOAD_PATH}{$ds['photo']}" target="photo">
-                                        <img src="{$app_url}/{$UPLOAD_PATH}{$ds['photo']}.thumb.jpg" width="32" alt="">
+                                        {assign var='rowPhotoPath' value=$ds['photo']}
+                                        {if !$rowPhotoPath || strstr($rowPhotoPath, 'default')}
+                                            {assign var='rowPhotoSrc' value=$app_url|cat:'/'|cat:$UPLOAD_PATH|cat:'/user.default.jpg'}
+                                        {else}
+                                            {assign var='cleanRowPhoto' value=$rowPhotoPath|trim:'/'}
+                                            {assign var='rowPhotoSrc' value=$app_url|cat:'/'|cat:$UPLOAD_PATH|cat:'/'|cat:$cleanRowPhoto|cat:'.thumb.jpg'}
+                                        {/if}
+                                        <img src="{$rowPhotoSrc}" width="32" alt="">
                                     </a>
                                 </td>
                                 <td>{$ds['account_type']}</td>
@@ -196,14 +203,16 @@
                                     <a href="{Text::url('customers/view/')}{$ds['id']}" id="{$ds['id']}"
                                         style="margin: 0px; color:black"
                                         class="btn btn-success btn-xs">&nbsp;&nbsp;{Lang::T('View')}&nbsp;&nbsp;</a>
-                                    <a href="{Text::url('customers/edit/', $ds['id'], '&token=', $csrf_token)}"
+                                    <a href="{Text::url('customers/edit/', $ds['id'])}"
                                         id="{$ds['id']}" style="margin: 0px; color:black"
                                         class="btn btn-info btn-xs">&nbsp;&nbsp;{Lang::T('Edit')}&nbsp;&nbsp;</a>
-                                    <a href="{Text::url('customers/sync/', $ds['id'], '&token=', $csrf_token)}"
-                                        id="{$ds['id']}" style="margin: 5px; color:black"
-                                        class="btn btn-success btn-xs">&nbsp;&nbsp;{Lang::T('Sync')}&nbsp;&nbsp;</a>
-                                    <a href="{Text::url('plan/recharge/', $ds['id'], '&token=', $csrf_token)}"
-                                        id="{$ds['id']}" style="margin: 0px;"
+                                    <form method="post" action="{Text::url('customers/sync/', $ds['id'])}"
+                                        style="display:inline;">
+                                        <input type="hidden" name="csrf_token" value="{$csrf_token}">
+                                        <button type="submit" id="{$ds['id']}" style="margin: 5px; color:black"
+                                            class="btn btn-success btn-xs">&nbsp;&nbsp;{Lang::T('Sync')}&nbsp;&nbsp;</button>
+                                    </form>
+                                    <a href="{Text::url('plan/recharge/', $ds['id'])}" id="{$ds['id']}" style="margin: 0px;"
                                         class="btn btn-primary btn-xs">{Lang::T('Recharge')}</a>
                                 </td>
                             </tr>

@@ -22,9 +22,15 @@ switch ($action) {
         $ui->assign('_system_menu', 'radius');
         $ui->assign('_title', "Network Access Server");
         $ui->assign('routers', ORM::for_table('tbl_routers')->find_many());
+        $ui->assign('csrf_token', Csrf::generateAndStoreToken());
         $ui->display('admin/radius/nas-add.tpl');
         break;
     case 'nas-add-post':
+        $csrf_token = _post('csrf_token');
+        if (!Csrf::check($csrf_token)) {
+            r2(getUrl('radius/nas-add'), 'e', Lang::T('Invalid or Expired CSRF Token') . '.');
+        }
+        Csrf::generateAndStoreToken();
         $shortname = _post('shortname');
         $nasname = _post('nasname');
         $secret = _post('secret');
@@ -78,6 +84,7 @@ switch ($action) {
         if ($d) {
             $ui->assign('routers', ORM::for_table('tbl_routers')->find_many());
             $ui->assign('d', $d);
+            $ui->assign('csrf_token', Csrf::generateAndStoreToken());
             $ui->display('admin/radius/nas-edit.tpl');
         } else {
             r2(getUrl('radius/list'), 'e', Lang::T('Account Not Found'));
@@ -86,6 +93,11 @@ switch ($action) {
         break;
     case 'nas-edit-post':
         $id  = $routes['2'];
+        $csrf_token = _post('csrf_token');
+        if (!Csrf::check($csrf_token)) {
+            r2(getUrl('radius/nas-edit/') . $id, 'e', Lang::T('Invalid or Expired CSRF Token') . '.');
+        }
+        Csrf::generateAndStoreToken();
         $shortname = _post('shortname');
         $nasname = _post('nasname');
         $secret = _post('secret');
@@ -124,16 +136,32 @@ switch ($action) {
         }
         break;
     case 'nas-delete':
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+            r2(getUrl('radius/nas-list'), 'e', Lang::T('Invalid Request'));
+        }
+        $csrf_token = _post('csrf_token');
+        if (!Csrf::check($csrf_token)) {
+            r2(getUrl('radius/nas-list'), 'e', Lang::T('Invalid or Expired CSRF Token') . '.');
+        }
+        Csrf::generateAndStoreToken();
         $id  = $routes['2'];
         $d = ORM::for_table('nas', 'radius')->find_one($id);
         if ($d) {
             $d->delete();
+            r2(getUrl('radius/nas-list'), 's', Lang::T('NAS Deleted'));
         } else {
             r2(getUrl('radius/nas-list'), 'e', 'NAS Not found');
         }
+        break;
     default:
         $ui->assign('_system_menu', 'radius');
         $ui->assign('_title', "Network Access Server");
+        if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+            $csrf_token = _post('csrf_token');
+            if (!Csrf::check($csrf_token)) {
+                r2($_SERVER['HTTP_REFERER'], 'e', Lang::T('Invalid or Expired CSRF Token') . '.');
+            }
+        }
         $name = _post('name');
         if (empty($name)) {
             $query = ORM::for_table('nas', 'radius');
@@ -147,5 +175,6 @@ switch ($action) {
         }
         $ui->assign('name', $name);
         $ui->assign('nas', $nas);
+        $ui->assign('csrf_token', Csrf::generateAndStoreToken());
         $ui->display('admin/radius/nas.tpl');
 }

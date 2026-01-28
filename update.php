@@ -8,23 +8,20 @@
 session_start();
 include "config.php";
 
+if (!isset($GLOBALS['update_replace_registered'])) {
+    register_shutdown_function('finalizeDeferredReplacements');
+    $GLOBALS['update_replace_registered'] = true;
+}
+
+processDeferredReplacements();
+
 if($db_password != null && ($db_pass == null || empty($db_pass))){
     // compability for old version
     $db_pass = $db_password;
 }
 
-if (empty($update_url)) {
-    $update_url = 'https://github.com/hotspotbilling/phpnuxbill/archive/refs/heads/master.zip';
-}
-
-if(isset($_REQUEST['update_url']) && !empty($_REQUEST['update_url'])){
-    $update_url = $_REQUEST['update_url'];
-    $_SESSION['update_url'] = $update_url;
-}
-
-if(isset($_SESSION['update_url']) && !empty($_SESSION['update_url']) && $_SESSION['update_url'] != $update_url){
-    $update_url = $_SESSION['update_url'];
-}
+// Always use the default, secure update URL. Do not allow override from user input.
+$update_url = 'https://github.com/robertrullyp/phpnuxbill-dev/archive/refs/heads/main.zip';
 
 if (!isset($_SESSION['aid']) || empty($_SESSION['aid'])) {
     r2("./?_route=login&You_are_not_admin", 'e', 'You are not admin');
@@ -39,7 +36,10 @@ if (!is_writeable(pathFixer('.'))) {
     r2("./?_route=community", 'e', 'Folder web is not writable');
 }
 
-$step = $_GET['step'];
+$step = isset($_GET['step']) ? (int)$_GET['step'] : 0;
+if ($step <= 1) {
+    unset($_SESSION['update_extract_dir']);
+}
 $continue = true;
 if (!extension_loaded('zip')) {
     $msg = "No PHP ZIP extension is available";
@@ -48,11 +48,34 @@ if (!extension_loaded('zip')) {
 }
 
 
+$currentStep = $step;
+$displayStep = $step > 0 ? $step : 1;
+$nextStep = $step <= 0 ? 1 : $step;
+
+
 $file = pathFixer('system/cache/phpnuxbill.zip');
-$folder = pathFixer('system/cache/phpnuxbill-' . basename($update_url, ".zip") . '/');
+// Detect repo name from update_url (supports both upstream and fork)
+$repo = 'phpnuxbill';
+$urlPath = parse_url($update_url, PHP_URL_PATH);
+if (!empty($urlPath)) {
+    $parts = explode('/', trim($urlPath, '/'));
+    if (count($parts) >= 2 && !empty($parts[1])) {
+        $repo = $parts[1]; // e.g. phpnuxbill or phpnuxbill-dev
+    }
+}
+$zipBase = basename($update_url, ".zip"); // e.g. main, master, or commit SHA
+$folder = normalizeDir('system/cache/' . $repo . '-' . $zipBase);
+if (!empty($_SESSION['update_extract_dir'])) {
+    $sessionFolder = normalizeDir($_SESSION['update_extract_dir']);
+    if (is_dir($sessionFolder)) {
+        $folder = $sessionFolder;
+    } else {
+        unset($_SESSION['update_extract_dir']);
+    }
+}
 
 if (empty($step)) {
-    $step++;
+    $displayStep = 1;
 } else if ($step == 1) {
     if (file_exists($file)) unlink($file);
 
@@ -69,7 +92,7 @@ if (empty($step)) {
     curl_close($ch);
     fclose($fp);
     if (file_exists($file)) {
-        $step++;
+        $nextStep = 2;
     } else {
         $msg = "Failed to download Update file";
         $msgType = "danger";
@@ -80,9 +103,13 @@ if (empty($step)) {
     $zip->open($file);
     $zip->extractTo(pathFixer('system/cache/'));
     $zip->close();
-    if (file_exists($folder)) {
-        $step++;
+
+    $folder = resolveExtractedFolder($repo, $zipBase, $folder);
+
+    if (is_dir($folder)) {
+        $nextStep = 3;
     } else {
+        unset($_SESSION['update_extract_dir']);
         $msg = "Failed to extract update file";
         $msgType = "danger";
         $continue = false;
@@ -90,63 +117,374 @@ if (empty($step)) {
     // remove downloaded zip
     if (file_exists($file)) unlink($file);
 } else if ($step == 3) {
-    deleteFolder('system/autoload/');
-    deleteFolder('system/vendor/');
-    deleteFolder('ui/ui/');
-    copyFolder($folder, pathFixer('./'));
-    deleteFolder('install/');
-    deleteFolder($folder);
-    if (!file_exists($folder . pathFixer('/system/'))) {
-        $step++;
-    } else {
-        $msg = "Failed to install update file.";
+    // Step 3: Create Backup
+    $backupDir = pathFixer('system/backup/');
+    if (!is_dir($backupDir)) {
+        mkdir($backupDir, 0755, true);
+    }
+    $backupFile = $backupDir . 'pre_update_backup_' . time() . '.zip';
+    $_SESSION['backup_file'] = $backupFile;
+
+    try {
+        $zip = new ZipArchive();
+        if ($zip->open($backupFile, ZipArchive::CREATE | ZipArchive::OVERWRITE) !== TRUE) {
+            throw new Exception("Cannot open zip archive for writing: " . $backupFile);
+        }
+
+        zipFolder(pathFixer('.'), $zip, strlen(pathFixer('.')));
+
+        $zip->close();
+        $nextStep = 4;
+    } catch (Exception $e) {
+        $msg = "Failed to create backup: " . $e->getMessage();
         $msgType = "danger";
         $continue = false;
     }
-} else if ($step == 4) {
-    if (file_exists("system/updates.json")) {
-        $db = new pdo(
-            "mysql:host=$db_host;dbname=$db_name",
-            $db_user,
-            $db_pass,
-            array(PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION)
-        );
 
-        $updates = json_decode(file_get_contents("system/updates.json"), true);
-        $dones = [];
-        if (file_exists("system/cache/updates.done.json")) {
-            $dones = json_decode(file_get_contents("system/cache/updates.done.json"), true);
+} else if ($step == 4) {
+    // Step 4: Install (previously step 3)
+    $preservePaths = [
+        'config.php',
+        'config.local.php',
+        '.env',
+        '.env.local',
+        'system/cache',
+        'system/backup',
+        'system/uploads',
+        'system/logs',
+        'system/tmp',
+        'ui/cache',
+        'ui/compiled',
+        'ui/ui_custom',
+        'ui/uploads',
+    ];
+    $replaceDirs = [
+        'system/autoload',
+        'system/vendor',
+        'ui/ui',
+    ];
+    $preparedBackups = [];
+    $folder = resolveExtractedFolder($repo, $zipBase, $folder);
+    try {
+        if (!is_dir($folder)) {
+            throw new Exception('Source path does not exist: ' . $folder);
         }
-        foreach ($updates as $version => $queries) {
-            if (!in_array($version, $dones)) {
-                foreach ($queries as $q) {
-                    try {
-                        $db->exec($q);
-                    } catch (PDOException $e) {
-                        //ignore, it exists already
-                    }
-                }
-                $dones[] = $version;
+        foreach ($replaceDirs as $dir) {
+            $original = rtrim(pathFixer($dir), DIRECTORY_SEPARATOR);
+            if (!is_dir($original)) {
+                continue;
+            }
+            $backup = $original . '.update-backup';
+            if (is_dir($backup)) {
+                deleteFolder(rtrim($backup, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR);
+            }
+            if (!@rename($original, $backup)) {
+                throw new Exception('Unable to prepare directory for update: ' . $dir);
+            }
+            $preparedBackups[$backup] = $original;
+        }
+
+        copyFolder($folder, pathFixer('./'), $preservePaths);
+
+        if (is_dir(pathFixer('install/'))) {
+            deleteFolder(pathFixer('install/'));
+        }
+
+        foreach ($replaceDirs as $dir) {
+            $expected = rtrim(pathFixer($dir), DIRECTORY_SEPARATOR);
+            if (!is_dir($expected)) {
+                throw new Exception('Missing required directory after update: ' . $dir);
             }
         }
-        file_put_contents("system/cache/updates.done.json", json_encode($dones));
+
+        foreach ($preparedBackups as $backup => $original) {
+            if (is_dir($backup)) {
+                deleteFolder(rtrim($backup, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR);
+            }
+        }
+
+        if (file_exists($folder)) {
+            deleteFolder($folder);
+        }
+
+        unset($_SESSION['update_extract_dir']);
+
+        if (!file_exists($folder)) {
+            $nextStep = 5;
+        } else {
+            throw new Exception('Failed to remove temporary update directory.');
+        }
+    } catch (Exception $e) {
+        foreach ($preparedBackups as $backup => $original) {
+            if (is_dir($backup) && !is_dir($original)) {
+                @rename($backup, $original);
+            } else if (is_dir($backup)) {
+                deleteFolder(rtrim($backup, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR);
+            }
+        }
+
+        if (file_exists($folder)) {
+            deleteFolder($folder);
+        }
+
+        unset($_SESSION['update_extract_dir']);
+
+        $msg = 'Failed to install update files: ' . $e->getMessage() . ' A backup has been created at: ' . htmlspecialchars($_SESSION['backup_file']);
+        $msgType = 'danger';
+        $continue = false;
     }
-    $step++;
-} else {
-    $path = 'ui/compiled/';
-    $files = scandir($path);
-    foreach ($files as $file) {
-        if (is_file($path . $file)) {
-            unlink($path . $file);
+} else if ($step == 5) {
+    // Step 5: Database Update (previously step 4)
+    if (file_exists("system/updates.json")) {
+        try {
+            $db = new pdo(
+                "mysql:host=$db_host;dbname=$db_name",
+                $db_user,
+                $db_pass,
+                array(PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION)
+            );
+
+            $updates = json_decode(file_get_contents("system/updates.json"), true);
+            $dones = [];
+            if (file_exists("system/cache/updates.done.json")) {
+                $dones = json_decode(file_get_contents("system/cache/updates.done.json"), true);
+            }
+            foreach ($updates as $version => $queries) {
+                if (!in_array($version, $dones)) {
+                    foreach ($queries as $q) {
+                        try {
+                            $db->exec($q);
+                        } catch (PDOException $e) {
+                            // Log or handle more gracefully in the future
+                            // For now, ignoring "already exists" is the original behavior
+                        }
+                    }
+                    $dones[] = $version;
+                }
+            }
+            file_put_contents("system/cache/updates.done.json", json_encode($dones));
+        } catch (Exception $e) {
+            $msg = "Failed to update database: " . $e->getMessage() . ". A backup has been created at: " . htmlspecialchars($_SESSION['backup_file']);
+            $msgType = "danger";
+            $continue = false;
         }
     }
-    $version = json_decode(file_get_contents('version.json'), true)['version'];
-    $continue = false;
+    if ($continue) {
+        $nextStep = 6;
+    }
+} else if ($step == 6) {
+    // Step 6: Finish (previously step 5)
+    // Clear compiled cache
+    $path = 'ui/compiled/';
+    if (is_dir($path)) {
+        $files = scandir($path);
+        foreach ($files as $file) {
+            if (is_file($path . $file)) {
+                unlink($path . $file);
+            }
+        }
+    }
+
+    // Delete the successful backup file
+    if (!empty($_SESSION['backup_file']) && file_exists($_SESSION['backup_file'])) {
+        unlink($_SESSION['backup_file']);
+        unset($_SESSION['backup_file']);
+    }
+
+    $versionLabel = null;
+    if (is_file('version.json')) {
+        $versionData = json_decode(file_get_contents('version.json'), true);
+        if (json_last_error() === JSON_ERROR_NONE && is_array($versionData) && !empty($versionData['version'])) {
+            $versionLabel = $versionData['version'];
+        }
+    }
+
+    $message = 'PHPNuxBill has been updated successfully.';
+    if (!empty($versionLabel)) {
+        $message = 'PHPNuxBill has been updated to Version ' . $versionLabel;
+    }
+
+    $redirectTargets = [
+        'dashboard' => './?_route=dashboard',
+        'community' => './?_route=community',
+    ];
+    $requestedRedirect = isset($_GET['redirect_to']) ? strtolower($_GET['redirect_to']) : '';
+    $target = $redirectTargets['dashboard'];
+    if (!empty($requestedRedirect) && isset($redirectTargets[$requestedRedirect])) {
+        $target = $redirectTargets[$requestedRedirect];
+    }
+
+    r2($target, 's', $message);
 }
 
 function pathFixer($path)
 {
     return str_replace("/", DIRECTORY_SEPARATOR, $path);
+}
+
+function normalizeDir($path)
+{
+    $normalized = pathFixer($path);
+    return rtrim($normalized, '\/') . DIRECTORY_SEPARATOR;
+}
+
+function resolveExtractedFolder($repo, $zipBase, $preferred)
+{
+    $preferred = normalizeDir($preferred);
+    if (is_dir($preferred)) {
+        $_SESSION['update_extract_dir'] = $preferred;
+        return $preferred;
+    }
+
+    if (!empty($_SESSION['update_extract_dir'])) {
+        $sessionFolder = normalizeDir($_SESSION['update_extract_dir']);
+        if (is_dir($sessionFolder)) {
+            return $sessionFolder;
+        }
+        unset($_SESSION['update_extract_dir']);
+    }
+
+    $cacheBase = normalizeDir('system/cache/');
+    $candidates = [
+        normalizeDir($cacheBase . $repo . '-' . $zipBase),
+        normalizeDir($cacheBase . $repo . '-main'),
+        normalizeDir($cacheBase . $repo . '-master'),
+    ];
+
+    foreach ($candidates as $candidate) {
+        if (is_dir($candidate)) {
+            $_SESSION['update_extract_dir'] = $candidate;
+            return $candidate;
+        }
+    }
+
+    $latestFolder = '';
+    $latestTime = 0;
+    if (is_dir($cacheBase)) {
+        $entries = scandir($cacheBase);
+        if ($entries !== false) {
+            foreach ($entries as $entry) {
+                if ($entry === '.' || $entry === '..') {
+                    continue;
+                }
+                if (strpos($entry, $repo . '-') !== 0) {
+                    continue;
+                }
+                $fullPath = normalizeDir($cacheBase . $entry);
+                if (is_dir($fullPath)) {
+                    $modified = filemtime($fullPath);
+                    if ($modified > $latestTime) {
+                        $latestTime = $modified;
+                        $latestFolder = $fullPath;
+                    }
+                }
+            }
+        }
+    }
+
+    if (!empty($latestFolder)) {
+        $_SESSION['update_extract_dir'] = $latestFolder;
+        return $latestFolder;
+    }
+
+    return $preferred;
+}
+
+function scheduleDeferredReplacement($source, $target)
+{
+    $job = [
+        'source' => pathFixer($source),
+        'target' => pathFixer($target),
+    ];
+
+    if (!isset($_SESSION['update_pending_replace']) || !is_array($_SESSION['update_pending_replace'])) {
+        $_SESSION['update_pending_replace'] = [];
+    }
+
+    $_SESSION['update_pending_replace'] = array_values(array_filter(
+        $_SESSION['update_pending_replace'],
+        function ($existing) use ($job) {
+            return !isset($existing['target']) || $existing['target'] !== $job['target'];
+        }
+    ));
+
+    $_SESSION['update_pending_replace'][] = $job;
+}
+
+function processDeferredReplacements()
+{
+    if (empty($_SESSION['update_pending_replace']) || !is_array($_SESSION['update_pending_replace'])) {
+        return;
+    }
+
+    $remaining = [];
+
+    foreach ($_SESSION['update_pending_replace'] as $job) {
+        if (empty($job['source']) || empty($job['target'])) {
+            continue;
+        }
+
+        $source = pathFixer($job['source']);
+        $target = pathFixer($job['target']);
+
+        if (!file_exists($source)) {
+            continue;
+        }
+
+        $targetDir = dirname($target);
+        if ($targetDir !== '' && !is_dir($targetDir)) {
+            if (!mkdir($targetDir, 0755, true) && !is_dir($targetDir)) {
+                $remaining[] = $job;
+                continue;
+            }
+        }
+
+        $backup = $target . '.update-backup';
+        $replaced = false;
+
+        if (file_exists($target)) {
+            if (!@rename($target, $backup)) {
+                $remaining[] = $job;
+                if (file_exists($backup) && !file_exists($target)) {
+                    @rename($backup, $target);
+                }
+                continue;
+            }
+        }
+
+        if (@rename($source, $target)) {
+            $replaced = true;
+        } else {
+            if (@copy($source, $target)) {
+                $replaced = true;
+            }
+        }
+
+        if ($replaced) {
+            if (file_exists($backup)) {
+                @unlink($backup);
+            }
+            if (file_exists($source)) {
+                @unlink($source);
+            }
+        } else {
+            if (file_exists($backup)) {
+                @rename($backup, $target);
+            }
+            $remaining[] = $job;
+        }
+    }
+
+    if (!empty($remaining)) {
+        $_SESSION['update_pending_replace'] = $remaining;
+    } else {
+        unset($_SESSION['update_pending_replace']);
+    }
+}
+
+function finalizeDeferredReplacements()
+{
+    processDeferredReplacements();
 }
 
 function r2($to, $ntype = 'e', $msg = '')
@@ -162,23 +500,90 @@ function r2($to, $ntype = 'e', $msg = '')
     die();
 }
 
-function copyFolder($from, $to, $exclude = [])
+function shouldSkipCopy($relativePath, $exclude)
 {
-    $files = scandir($from);
-    foreach ($files as $file) {
-        if (is_file($from . $file) && !in_array($file, $exclude)) {
-            if (file_exists($to . $file)) unlink($to . $file);
-            rename($from . $file, $to . $file);
-        } else if (is_dir($from . $file) && !in_array($file, ['.', '..'])) {
-            if (!file_exists($to . $file)) {
-                mkdir($to . $file);
+    $relativePath = trim(str_replace('\\', '/', $relativePath), '/');
+    if ($relativePath === '') {
+        return false;
+    }
+    foreach ($exclude as $item) {
+        $normalized = trim(str_replace('\\', '/', $item), '/');
+        if ($normalized === '') {
+            continue;
+        }
+        if ($relativePath === $normalized || strpos($relativePath, $normalized . '/') === 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
+function copyFolder($from, $to, $exclude = [], $base = null)
+{
+    if (!is_dir($from)) {
+        throw new Exception('Source path does not exist: ' . $from);
+    }
+
+    if ($base === null) {
+        $base = rtrim($from, DIRECTORY_SEPARATOR);
+        if (substr($base, -1) !== DIRECTORY_SEPARATOR) {
+            $base .= DIRECTORY_SEPARATOR;
+        } else {
+            $base .= '';
+        }
+    }
+
+    $items = scandir($from);
+    if ($items === false) {
+        throw new Exception('Unable to read directory: ' . $from);
+    }
+
+    foreach ($items as $item) {
+        if ($item === '.' || $item === '..') {
+            continue;
+        }
+
+        $sourcePath = $from . $item;
+        $targetPath = $to . $item;
+        $relativePath = ltrim(str_replace('\\', '/', substr($sourcePath, strlen($base))), '/');
+
+        if (shouldSkipCopy($relativePath, $exclude)) {
+            continue;
+        }
+
+        if (is_dir($sourcePath)) {
+            if (!is_dir($targetPath) && !mkdir($targetPath, 0755, true) && !is_dir($targetPath)) {
+                throw new Exception('Failed to create directory: ' . $relativePath);
             }
-            copyFolder($from . $file . DIRECTORY_SEPARATOR, $to . $file . DIRECTORY_SEPARATOR);
+            copyFolder($sourcePath . DIRECTORY_SEPARATOR, $targetPath . DIRECTORY_SEPARATOR, $exclude, $base);
+        } elseif (is_file($sourcePath)) {
+            $parent = dirname($targetPath);
+            if (!is_dir($parent) && !mkdir($parent, 0755, true) && !is_dir($parent)) {
+                throw new Exception('Failed to create directory for file: ' . $relativePath);
+            }
+            if ($relativePath === 'update.php') {
+                $staged = pathFixer('system/cache/update.php.pending');
+                if (file_exists($staged) && !unlink($staged)) {
+                    throw new Exception('Failed to stage update.php for replacement.');
+                }
+                if (!copy($sourcePath, $staged)) {
+                    throw new Exception('Failed to stage update.php for replacement.');
+                }
+                scheduleDeferredReplacement($staged, pathFixer(__DIR__ . DIRECTORY_SEPARATOR . 'update.php'));
+                continue;
+            }
+            if (file_exists($targetPath) && !unlink($targetPath)) {
+                throw new Exception('Failed to overwrite file: ' . $relativePath);
+            }
+            if (!copy($sourcePath, $targetPath)) {
+                throw new Exception('Failed to copy file: ' . $relativePath);
+            }
         }
     }
 }
 function deleteFolder($path)
 {
+    if (!is_dir($path)) return;
     $files = scandir($path);
     foreach ($files as $file) {
         if (is_file($path . $file)) {
@@ -189,6 +594,47 @@ function deleteFolder($path)
         }
     }
     rmdir($path);
+}
+
+function zipFolder($source, &$zip, $stripPath)
+{
+    $source = pathFixer($source);
+    $files = new RecursiveIteratorIterator(
+        new RecursiveDirectoryIterator($source, RecursiveDirectoryIterator::SKIP_DOTS),
+        RecursiveIteratorIterator::SELF_FIRST
+    );
+
+    $exclude = [
+        pathFixer('system/cache'),
+        pathFixer('system/backup')
+    ];
+
+    foreach ($files as $file) {
+        $file = pathFixer($file);
+
+        // Exclude backup and cache directories
+        $excluded = false;
+        foreach($exclude as $ex) {
+            if (strpos($file, $ex) === 0) {
+                $excluded = true;
+                break;
+            }
+        }
+        if ($excluded) continue;
+
+
+        $filePath = $file;
+        $localPath = substr($filePath, $stripPath);
+        if(empty($localPath)) continue;
+        $localPath = ltrim($localPath, DIRECTORY_SEPARATOR);
+
+
+        if (is_dir($file)) {
+            $zip->addEmptyDir($localPath);
+        } else if (is_file($file)) {
+            $zip->addFile($filePath, $localPath);
+        }
+    }
 }
 
 ?>
@@ -208,8 +654,8 @@ function deleteFolder($path)
 
     <link rel="stylesheet" href="ui/ui/styles/modern-AdminLTE.min.css">
 
-    <?php if ($continue) { ?>
-        <meta http-equiv="refresh" content="3; ./update.php?step=<?= $step ?>">
+    <?php if ($continue && $nextStep !== $currentStep) { ?>
+        <meta http-equiv="refresh" content="3; ./update.php?step=<?= $nextStep ?>">
     <?php } ?>
     <style>
         ::-moz-selection {
@@ -243,8 +689,8 @@ function deleteFolder($path)
                             <?= $msg ?>
                         </div>
                     <?php } ?>
-                    <?php if ($continue || $step == 5) { ?>
-                        <?php if ($step == 1) { ?>
+                    <?php if ($displayStep > 0) { ?>
+                        <?php if ($displayStep == 1) { ?>
                             <div class="panel panel-primary">
                                 <div class="panel-heading">Step 1</div>
                                 <div class="panel-body">
@@ -252,44 +698,49 @@ function deleteFolder($path)
                                     Please wait....
                                 </div>
                             </div>
-                        <?php } else if ($step == 2) { ?>
+                        <?php } else if ($displayStep == 2) { ?>
                             <div class="panel panel-primary">
                                 <div class="panel-heading">Step 2</div>
                                 <div class="panel-body">
-                                    extracting<br>
+                                    Extracting update<br>
                                     Please wait....
                                 </div>
                             </div>
-                        <?php } else if ($step == 3) { ?>
+                        <?php } else if ($displayStep == 3) { ?>
                             <div class="panel panel-primary">
                                 <div class="panel-heading">Step 3</div>
                                 <div class="panel-body">
-                                    Installing<br>
+                                    Creating backup<br>
                                     Please wait....
                                 </div>
                             </div>
-                        <?php } else if ($step == 4) { ?>
+                        <?php } else if ($displayStep == 4) { ?>
                             <div class="panel panel-primary">
                                 <div class="panel-heading">Step 4</div>
                                 <div class="panel-body">
-                                    Updating database...
+                                    Installing update files<br>
+                                    Please wait....
                                 </div>
                             </div>
-                        <?php } else if ($step == 5) { ?>
-                            <div class="panel panel-success">
-                                <div class="panel-heading">Update Finished</div>
+                        <?php } else if ($displayStep == 5) { ?>
+                            <div class="panel panel-primary">
+                                <div class="panel-heading">Step 5</div>
                                 <div class="panel-body">
-                                    PHPNuxBill has been updated to Version <b><?= $version ?></b>
+                                    Running database migrations<br>
+                                    Please wait....
                                 </div>
                             </div>
-                            <meta http-equiv="refresh" content="5; ./?_route=dashboard">
                         <?php } ?>
                     <?php } ?>
                 </div>
             </div>
         </section>
         <footer class="footer text-center">
-            PHPNuxBill by <a href="https://github.com/hotspotbilling/phpnuxbill" rel="nofollow noreferrer noopener" target="_blank">iBNuX</a>
+            <a  href="https://github.com/robertrullyp/phpnuxbill-dev" rel="nofollow noreferrer noopener"
+                target="_blank">PHPNuxBill-Dev</a> Modified by <a href="https://github.com/robertrullyp" rel="nofollow noreferrer noopener"
+                target="_blank">Mr. Free</a> from PHPNuxBill by <a href="https://github.com/hotspotbilling/phpnuxbill" rel="nofollow noreferrer noopener"
+                target="_blank">iBNuX</a>, Theme by <a href="https://adminlte.io/" rel="nofollow noreferrer noopener"
+                target="_blank">AdminLTE</a>
         </footer>
     </div>
 </body>

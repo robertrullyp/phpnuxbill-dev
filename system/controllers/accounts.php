@@ -29,6 +29,7 @@ switch ($action) {
         if (!Csrf::check($csrf_token)) {
             r2(getUrl('accounts/change-password'), 'e', Lang::T('Invalid or Expired CSRF Token') . ".");
         }
+        Csrf::generateAndStoreToken();
         run_hook('customer_change_password'); #HOOK
         if ($password != '') {
             $d_pass = $user['password'];
@@ -83,6 +84,7 @@ switch ($action) {
         if (!Csrf::check($csrf_token)) {
             r2(getUrl('accounts/profile'), 'e', Lang::T('Invalid or Expired CSRF Token') . ".");
         }
+        Csrf::generateAndStoreToken();
         $fullname = _post('fullname');
         $address = _post('address');
         $email = _post('email');
@@ -181,6 +183,7 @@ switch ($action) {
             r2(getUrl('accounts/phone-update'), 'e', Lang::T('Invalid or Expired CSRF Token') . ".");
             return;
         }
+        Csrf::generateAndStoreToken();
         $phone = Lang::phoneFormat(_post('phone'));
         $username = $user['username'];
         $otpPath = $CACHE_PATH . '/sms/';
@@ -249,6 +252,7 @@ switch ($action) {
         if (!Csrf::check($csrf_token)) {
             r2(getUrl('accounts/phone-update'), 'e', Lang::T('Invalid or Expired CSRF Token') . ".");
         }
+        Csrf::generateAndStoreToken();
         $phone = Lang::phoneFormat(_post('phone'));
         $otp_code = _post('otp');
         $username = $user['username'];
@@ -321,6 +325,7 @@ switch ($action) {
             r2(getUrl('accounts/email-update'), 'e', Lang::T('Invalid or Expired CSRF Token') . ".");
             return;
         }
+        Csrf::generateAndStoreToken();
         $email = trim(_post('email'));
         $username = $user['username'];
         $otpPath = $CACHE_PATH . '/email/';
@@ -371,6 +376,7 @@ switch ($action) {
         if (!Csrf::check($csrf_token)) {
             r2(getUrl('accounts/email-update'), 'e', Lang::T('Invalid or Expired CSRF Token') . ".");
         }
+        Csrf::generateAndStoreToken();
         $email = trim(_post('email'));
         $otp_code = _post('otp');
         $username = $user['username'];

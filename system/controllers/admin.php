@@ -28,6 +28,7 @@ switch ($do) {
         if (!Csrf::check($csrf_token)) {
             _alert(Lang::T('Invalid or Expired CSRF Token') . ".", 'danger', "admin");
         }
+        Csrf::generateAndStoreToken();
         run_hook('admin_login'); #HOOK
         $tsEnabled = (!empty($_c['turnstile_admin_enabled']) && $_c['turnstile_admin_enabled'] == '1');
         $secret = $_c['turnstile_secret_key'] ?? '';

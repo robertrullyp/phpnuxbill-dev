@@ -8,12 +8,10 @@ class html_php
         global $ui;
         $ui->assign('card_header', $data['title']);
         ob_start();
-        try{
-        eval('?>'. $data['content']);
-        }catch(Exception $e){
+        try {
+            echo $data['content'];
+        } catch (Throwable $e) {
             echo $e->getMessage();
-            echo "<br>";
-            echo $e->getTraceAsString();
         }
         $content = ob_get_clean();
         return $content;

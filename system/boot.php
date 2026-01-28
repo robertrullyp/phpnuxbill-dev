@@ -20,6 +20,7 @@ function _notify($msg, $type = 'e')
 }
 
 $ui = new Smarty();
+
 $ui->assign('_kolaps', $_COOKIE['kolaps']);
 if (!empty($config['theme']) && $config['theme'] != 'default') {
     $_theme = APP_URL . '/' . $UI_PATH . '/themes/' . $config['theme'];
@@ -42,15 +43,33 @@ $ui->setCompileDir(File::pathFixer($UI_PATH . '/compiled/'));
 $ui->setConfigDir(File::pathFixer($UI_PATH . '/conf/'));
 $ui->setCacheDir(File::pathFixer($UI_PATH . '/cache/'));
 $ui->assign('app_url', APP_URL);
+
+$resolveAssetVersion = function ($relativePath) use ($root_path) {
+    $fullPath = $root_path . File::pathFixer('/' . ltrim($relativePath, '/'));
+    if (is_file($fullPath)) {
+        $mtime = @filemtime($fullPath);
+        if ($mtime !== false) {
+            return (string) $mtime;
+        }
+    }
+    return (string) time();
+};
+$ui->assign('asset_version_phpnuxbill', $resolveAssetVersion('ui/ui/styles/phpnuxbill.css'));
+$ui->assign('asset_version_phpnuxbill_customer', $resolveAssetVersion('ui/ui/styles/phpnuxbill.customer.css'));
 $ui->assign('_domain', str_replace('www.', '', parse_url(APP_URL, PHP_URL_HOST)));
 $ui->assign('_url', APP_URL . '/?_route=');
 $ui->assign('_path', __DIR__);
 $ui->assign('_c', $config);
 $ui->assign('user_language', $_SESSION['user_language']);
-$ui->assign('UPLOAD_PATH', str_replace($root_path, '',  $UPLOAD_PATH));
+$ui->assign('UPLOAD_PATH', str_replace('\\', '/', str_replace($root_path, '',  $UPLOAD_PATH)));
 $ui->assign('CACHE_PATH', str_replace($root_path, '',  $CACHE_PATH));
 $ui->assign('PAGES_PATH', str_replace($root_path, '',  $PAGES_PATH));
 $ui->assign('_system_menu', 'dashboard');
+
+// CSRF token for logout form
+$csrf_token_logout = Csrf::generateAndStoreToken();
+$ui->assign('csrf_token_logout', $csrf_token_logout);
+$ui->assign('csrf_token', Csrf::generateAndStoreToken());
 
 function _msglog($type, $msg)
 {

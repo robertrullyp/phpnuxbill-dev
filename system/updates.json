@@ -210,5 +210,28 @@
   ],
   "2025.4.18": [
     "ALTER TABLE `tbl_voucher` ADD `batch_name` VARCHAR(40) AFTER `id_plan`;"
-  ]
+  ],
+  "2025.8.28": [
+    "ALTER TABLE `tbl_plans` ADD `visibility` ENUM('all','custom') NOT NULL DEFAULT 'all' COMMENT 'plan visibility for customers' AFTER `prepaid`;",
+    "CREATE TABLE IF NOT EXISTS `tbl_plan_customers` ( `id` int NOT NULL AUTO_INCREMENT, `plan_id` int NOT NULL, `customer_id` int NOT NULL, PRIMARY KEY (`id`), UNIQUE KEY `plan_customer_unique` (`plan_id`,`customer_id`), KEY `idx_plan_id` (`plan_id`), KEY `idx_customer_id` (`customer_id`) ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;",
+    "ALTER TABLE `tbl_plans` MODIFY `visibility` ENUM('all','custom','exclude') NOT NULL DEFAULT 'all' COMMENT 'plan visibility for customers';"
+  ],
+  "2025.9.20": [],
+  "2025.10.3": [],
+  "2025.10.4": [],
+  "2025.10.6": [
+    "ALTER TABLE `tbl_plans` ADD `reminder_enabled` TINYINT(1) NOT NULL DEFAULT '1' COMMENT '0 disabled reminders' AFTER `enabled`;",
+    "ALTER TABLE `tbl_plans` MODIFY `reminder_enabled` TINYINT(1) NOT NULL DEFAULT '1' COMMENT '0 disabled reminders';",
+    "CREATE TABLE IF NOT EXISTS `tbl_plan_links` (`id` int NOT NULL AUTO_INCREMENT, `plan_id` int NOT NULL, `linked_plan_id` int NOT NULL, PRIMARY KEY (`id`), UNIQUE KEY `unique_plan_link` (`plan_id`,`linked_plan_id`), KEY `idx_plan_links_linked` (`linked_plan_id`)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;",
+    "ALTER TABLE `tbl_plan_links` ADD PRIMARY KEY (`id`);",
+    "ALTER TABLE `tbl_plan_links` ADD UNIQUE KEY `unique_plan_link` (`plan_id`,`linked_plan_id`);",
+    "ALTER TABLE `tbl_plan_links` ADD KEY `idx_plan_links_linked` (`linked_plan_id`);",
+    "ALTER TABLE `tbl_plan_links` MODIFY `id` int NOT NULL AUTO_INCREMENT;"
+  ],
+  "2025.10.8": [],
+  "2025.10.9": [
+    "ALTER TABLE `tbl_plans` ADD `invoice_notification` TINYINT(1) NOT NULL DEFAULT '1' COMMENT '0 disable invoice notifications' AFTER `reminder_enabled`;"
+  ],
+  "2025.10.13": [],
+  "2025.10.27": []
 }
