@@ -1000,5 +1000,18 @@
     "Info": "Info",
     "Success": "Success",
     "DRNet_Kapul_Test": "DRNet-Kapul-Test",
-    "Invalid_logout_request_": "Invalid logout request."
+    "Invalid_logout_request_": "Invalid logout request.",
+    "Installed_Devices": "Installed Devices",
+    "Refill_Account": "Refill Account",
+    "Continue_the_Refill_process": "Continue the Refill process",
+    "Add_Vouchers": "Add Vouchers",
+    "Batch_Name": "Batch Name",
+    "Batch_1": "Batch 1",
+    "Number_of_Vouchers": "Number of Vouchers",
+    "Voucher_Prefix": "Voucher Prefix",
+    "Length_Code": "Length Code",
+    "Print_Now": "Print Now",
+    "Vouchers_Per_Page": "Vouchers Per Page",
+    "Continue_the_Voucher_creation_process_": "Continue the Voucher creation process?",
+    "Generate": "Generate"
 }
