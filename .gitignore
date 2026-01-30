@@ -1,7 +1,5 @@
 config.php
-.venv-playwright
-.deps
-.playwright
+*.code-workspace
 .DS_Store
 .vscode/
 ui/ui/compiled
