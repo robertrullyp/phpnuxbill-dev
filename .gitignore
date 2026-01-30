@@ -1,4 +1,7 @@
 config.php
+.venv-playwright
+.deps
+.playwright
 .DS_Store
 .vscode/
 ui/ui/compiled
@@ -8,17 +11,19 @@ test.php
 sms.php
 pages/
 system/cache/**
-system/plugin/*
 !system/cache/index.html
-!system/plugin/index.html
 system/paymentgateway/ui/**
 system/paymentgateway/**
 !system/paymentgateway/ui/
 !system/paymentgateway/ui/index.html
 !system/paymentgateway/index.html
-!system/plugin/ui/
+system/plugin/*
 system/plugin/ui/*
+# !system/plugin/ai_chat*
+# !system/plugin/ui/ai_chat*
+!system/plugin/ui/
 !system/plugin/ui/index.html
+!system/plugin/index.html
 ui/ui_custom/**
 !ui/ui_custom/index.html
 !ui/ui_custom/README.md

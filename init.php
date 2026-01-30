@@ -246,7 +246,7 @@ function _admin($login = true)
         return true;
     } else {
         if ($login) {
-            r2(getUrl('login'));
+            r2(getUrl('admin/'));
         } else {
             return false;
         }

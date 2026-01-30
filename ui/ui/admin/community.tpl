@@ -54,8 +54,8 @@
                 {Lang::T('Connect your PHPNuxBill to WhatsApp efficiently using WhatsApp Gateway. Also, create Telegram bots easily and practically.')}
             </div>
             <div class="box-footer">
-                <a href="https://wa.nux.my.id/login" target="_blank"
-                    class="btn btn-primary btn-sm btn-block">wa.nux.my.id</a>
+                <a href="https://gateway.drnet.biz.id/" target="_blank"
+                    class="btn btn-primary btn-sm btn-block">DRNet Gateway</a>
             </div>
         </div>
         <div class="box box-hovered mb20 box-primary">
