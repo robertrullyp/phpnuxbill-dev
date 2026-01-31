@@ -330,6 +330,48 @@ CREATE TABLE tbl_message_logs (
     `sent_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
+CREATE TABLE IF NOT EXISTS `tbl_wa_queue` (
+    `id` INT AUTO_INCREMENT PRIMARY KEY,
+    `status` VARCHAR(20) NOT NULL DEFAULT 'pending',
+    `recipient` VARCHAR(255) NOT NULL,
+    `message_content` TEXT NULL,
+    `payload` LONGTEXT NOT NULL,
+    `attempts` INT NOT NULL DEFAULT 0,
+    `max_retries` INT NOT NULL DEFAULT 3,
+    `retry_interval` INT NOT NULL DEFAULT 60,
+    `next_retry_at` DATETIME NOT NULL,
+    `last_error` TEXT NULL,
+    `context` VARCHAR(50) NULL,
+    `created_at` DATETIME NOT NULL,
+    `updated_at` DATETIME NOT NULL,
+    `sent_at` DATETIME NULL,
+    KEY `idx_wa_queue_status_next` (`status`, `next_retry_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+CREATE TABLE IF NOT EXISTS `tbl_wa_media_tmp` (
+    `id` INT AUTO_INCREMENT PRIMARY KEY,
+    `media_id` VARCHAR(64) UNIQUE NOT NULL,
+    `file_path` TEXT NOT NULL,
+    `public_url` TEXT NOT NULL,
+    `mime_type` VARCHAR(100),
+    `size` INT DEFAULT 0,
+    `status` ENUM('active','cleaned','expired') DEFAULT 'active',
+    `created_at` DATETIME NOT NULL,
+    `expires_at` DATETIME NOT NULL,
+    `last_used_at` DATETIME NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+CREATE TABLE IF NOT EXISTS `tbl_wa_media_usage` (
+    `id` INT AUTO_INCREMENT PRIMARY KEY,
+    `media_id` VARCHAR(64) NOT NULL,
+    `recipient` VARCHAR(100) NULL,
+    `status` ENUM('pending','success','failed') DEFAULT 'pending',
+    `created_at` DATETIME NOT NULL,
+    `updated_at` DATETIME NULL,
+    INDEX `media_id_idx` (`media_id`),
+    INDEX `recipient_idx` (`recipient`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
 ALTER TABLE `rad_acct`
   ADD PRIMARY KEY (`id`),
   ADD KEY `username` (`username`),
