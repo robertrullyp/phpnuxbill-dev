@@ -4,10 +4,10 @@ config.php
 .vscode/
 .playwright/
 node_modules/
-docs/API WA Gateway.md
-docs/API Chatbot.md
 # !system/plugin/ai_chat*
 # !system/plugin/ui/ai_chat*
+*Gateway.md
+*Chatbot.md
 ui/ui/compiled
 ui/compiled/*.php
 ui/cache/*.php
