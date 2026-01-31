@@ -1,7 +1,5 @@
 # Dokumentasi API PHPNuxBill (internal)
 
-> Last updated: 31 Jan 2026 (release 2026.01.31). Untuk integrasi WhatsApp Gateway eksternal, lihat `docs/API WA Gateway.md`.
-
 Dokumen ini merangkum endpoint API yang tersedia berdasarkan isi `system/api.php` dan seluruh `system/controllers/*.php`.
 API ini bukan REST murni; ia memanggil controller yang sama dengan UI web, tetapi mengembalikan JSON (melalui `showResult`) ketika berjalan dalam mode API.
 
