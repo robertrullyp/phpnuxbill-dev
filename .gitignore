@@ -6,8 +6,6 @@ config.php
 node_modules/
 # !system/plugin/ai_chat*
 # !system/plugin/ui/ai_chat*
-*Gateway.md
-*Chatbot.md
 ui/ui/compiled
 ui/compiled/*.php
 ui/cache/*.php
