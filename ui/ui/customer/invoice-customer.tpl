@@ -10,7 +10,7 @@
             <div class="panel-heading">{$in['invoice']}</div>
             <div class="panel-body">
                 {if !empty($logo)}
-                    <center><img src="{$app_url}/{$logo}" class="img-responsive"></center>
+                    <center><img src="{$app_url}/{$logo|replace:'\\':'/'}" class="img-responsive"></center>
                 {/if}
                 <form class="form-horizontal" method="post" action="{Text::url('plan/print')}" target="_blank">
                     <pre id="content"
@@ -34,36 +34,52 @@
 <script>
     const canvas = document.createElement("canvas");
     const ctx = canvas.getContext('2d');
-    ctx.font = '16px Courier';
-    var text = document.getElementById("content").innerHTML;
-    var lines = text.split(/\r\n|\r|\n/).length;
-    var meas = ctx.measureText("A");
-    let width = Math.round({$_c['printer_cols']} * 9.6);
-    var height = Math.round((14 * lines));
-    console.log(width, height, lines);
+    var fontSize = 16;
+    var lineHeight = Math.round(fontSize * 1.25);
+    var marginX = 20;
+    var marginY = 20;
+    ctx.font = fontSize + 'px Courier';
+    var text = document.getElementById("content").textContent;
+    var lines = text.split(/\r\n|\r|\n/);
+    var cols = parseInt('{$_c.printer_cols|default:30}', 10) || 30;
+    var maxLineChars = lines.reduce(function (max, line) {
+        return Math.max(max, line.length);
+    }, 0);
+    var effectiveCols = Math.max(cols, maxLineChars);
+    var charWidth = ctx.measureText("A").width || 9.6;
+    var textWidth = Math.ceil(effectiveCols * charWidth);
+    let width = Math.max(textWidth + (marginX * 2), 220);
+    var height = Math.ceil((lineHeight * lines.length) + (marginY * 2));
     var paid = new Image();
     paid.src = '{$app_url}/system/uploads/paid.png';
     {if !empty($logo)}
         var img = new Image();
-        img.src = '{$app_url}/{$logo}?{time()}';
-        var new_width = (width / 4) * 2;
+        img.src = '{$app_url}/{$logo|replace:'\\':'/'}?{time()}';
+        var maxLogoWidth = Math.min(Math.round(width * 0.45), 240);
+        var new_width = Math.min(textWidth, maxLogoWidth);
         var new_height = Math.ceil({$hlogo} * (new_width/{$wlogo}));
-        height = height + new_height;
+        height = height + new_height + 6;
     {/if}
 
     function download() {
         var doc = new jsPDF('p', 'px', [width, height]);
         {if !empty($logo)}
             try {
-                doc.addImage(img, 'PNG', (width - new_width) / 2, 10, new_width, new_height);
+                doc.addImage(img, 'PNG', (width - new_width) / 2, marginY, new_width, new_height);
             } catch (err) {}
         {/if}
         try {
             doc.addImage(paid, 'PNG', (width - 200) / 2, (height - 145) / 2, 200, 145);
         } catch (err) {}
         doc.setFont("Courier");
-        doc.setFontSize(16);
-        doc.text($('#content').html(), width / 2, new_height + 30, 'center');
+        doc.setFontSize(fontSize);
+        var textY = marginY + fontSize;
+        {if !empty($logo)}
+            textY = marginY + new_height + 6 + fontSize;
+        {/if}
+        for (var i = 0; i < lines.length; i++) {
+            doc.text(lines[i], width / 2, textY + (i * lineHeight), 'center');
+        }
         doc.save('{$in['invoice']}.pdf');
     }
 </script>

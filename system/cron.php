@@ -43,6 +43,10 @@ $textExpired = Lang::getNotifText('expired');
 $d = ORM::for_table('tbl_user_recharges')->where('status', 'on')->where_lte('expiration', date("Y-m-d"))->find_many();
 echo "Found " . count($d) . " user(s)\n";
 run_hook('cronjob'); #HOOK
+// Cleanup temporary WA media files (max 7 days retention)
+Message::cleanupExpiredWhatsappMedia();
+// Process WhatsApp queue
+Message::processWhatsappQueue();
 
 foreach ($d as $ds) {
     try {

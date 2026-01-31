@@ -198,9 +198,19 @@ switch ($action) {
             r2(getUrl('accounts/phone-update'), 'e', Lang::T('SMS server not Available, Please try again later'));
             return;
         }
-        if (in_array($_c['phone_otp_type'], ['whatsapp', 'both']) && empty($config['wa_url'])) {
-            r2(getUrl('accounts/phone-update'), 'e', Lang::T('WhatsApp gateway not Available, Please try again later'));
-            return;
+        if (in_array($_c['phone_otp_type'], ['whatsapp', 'both'])) {
+            $waMethod = strtolower(trim((string)($config['wa_gateway_method'] ?? '')));
+            if ($waMethod === 'get') {
+                $waAvailable = !empty($config['wa_url']);
+            } elseif ($waMethod === 'post') {
+                $waAvailable = !empty($config['wa_gateway_url']);
+            } else {
+                $waAvailable = !empty($config['wa_url']) || !empty($config['wa_gateway_url']) || !empty($config['wa_gateway_secret']);
+            }
+            if (!$waAvailable) {
+                r2(getUrl('accounts/phone-update'), 'e', Lang::T('WhatsApp gateway not Available, Please try again later'));
+                return;
+            }
         }
 
         $d = ORM::for_table('tbl_customers')->whereNotEqual('username', $username)->where('phonenumber', $phone)->find_one();
@@ -266,8 +276,18 @@ switch ($action) {
         if (in_array($_c['phone_otp_type'], ['sms', 'both']) && empty($config['sms_url'])) {
             r2(getUrl('accounts/phone-update'), 'e', Lang::T('SMS server not Available, Please try again later'));
         }
-        if (in_array($_c['phone_otp_type'], ['whatsapp', 'both']) && empty($config['wa_url'])) {
-            r2(getUrl('accounts/phone-update'), 'e', Lang::T('WhatsApp gateway not Available, Please try again later'));
+        if (in_array($_c['phone_otp_type'], ['whatsapp', 'both'])) {
+            $waMethod = strtolower(trim((string)($config['wa_gateway_method'] ?? '')));
+            if ($waMethod === 'get') {
+                $waAvailable = !empty($config['wa_url']);
+            } elseif ($waMethod === 'post') {
+                $waAvailable = !empty($config['wa_gateway_url']);
+            } else {
+                $waAvailable = !empty($config['wa_url']) || !empty($config['wa_gateway_url']) || !empty($config['wa_gateway_secret']);
+            }
+            if (!$waAvailable) {
+                r2(getUrl('accounts/phone-update'), 'e', Lang::T('WhatsApp gateway not Available, Please try again later'));
+            }
         }
 
         $otpFile = $otpPath . sha1($username . $db_pass) . ".txt";

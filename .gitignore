@@ -2,6 +2,12 @@ config.php
 *.code-workspace
 .DS_Store
 .vscode/
+.playwright/
+node_modules/
+docs/API WA Gateway.md
+docs/API Chatbot.md
+# !system/plugin/ai_chat*
+# !system/plugin/ui/ai_chat*
 ui/ui/compiled
 ui/compiled/*.php
 ui/cache/*.php
@@ -17,8 +23,6 @@ system/paymentgateway/**
 !system/paymentgateway/index.html
 system/plugin/*
 system/plugin/ui/*
-# !system/plugin/ai_chat*
-# !system/plugin/ui/ai_chat*
 !system/plugin/ui/
 !system/plugin/ui/index.html
 !system/plugin/index.html

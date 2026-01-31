@@ -74,6 +74,12 @@
                                 </select>
                             </span>
                         </li>
+                        <li class="list-group-item">
+                            <b>{Lang::T('Note')}</b>
+                            <span class="pull-right" style="width: 70%;">
+                                <input type="text" name="note" class="form-control input-sm" value="{$note|escape}" placeholder="{Lang::T('Optional note')}">
+                            </span>
+                        </li>
                     </ul>
                     <center><b>{Lang::T('Total')}</b></center>
                     <ul class="list-group list-group-unbordered">

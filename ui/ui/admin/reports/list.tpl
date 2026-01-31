@@ -94,7 +94,7 @@
                                     <a href="{Text::url('export/pdf-by-date&')}{$filter}" class="btn btn-default"><i
                                             class="fa fa-file-pdf-o"></i></a>
                                 </th>
-                                <th colspan="8"></th>
+                                <th colspan="{if $_c['show_invoice_note']=='yes'}9{else}8{/if}"></th>
                             </tr>
                             <tr>
                                 <th>{Lang::T('Username')}</th>
@@ -105,6 +105,9 @@
                                 <th>{Lang::T('Created On')}</th>
                                 <th>{Lang::T('Expires On')}</th>
                                 <th>{Lang::T('Method')}</th>
+                                {if $_c['show_invoice_note']=='yes'}
+                                    <th>{Lang::T('Note')}</th>
+                                {/if}
                                 <th>{Lang::T('Routers')}</th>
                             </tr>
                         </thead>
@@ -119,13 +122,16 @@
                                     <td>{Lang::dateAndTimeFormat($ds['recharged_on'],$ds['recharged_time'])}</td>
                                     <td>{Lang::dateAndTimeFormat($ds['expiration'],$ds['time'])}</td>
                                     <td>{$ds['method']}</td>
+                                    {if $_c['show_invoice_note']=='yes'}
+                                        <td>{$ds['note']|escape}</td>
+                                    {/if}
                                     <td>{$ds['routers']}</td>
                                 </tr>
                             {/foreach}
                             <tr>
                                 <th>{Lang::T('Total')}</th>
                                 <th class="text-right">{Lang::moneyFormat($dr)}</th>
-                                <td colspan="7"></td>
+                                <td colspan="{if $_c['show_invoice_note']=='yes'}8{else}7{/if}"></td>
                             </tr>
                         </tbody>
                     </table>

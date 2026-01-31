@@ -70,6 +70,16 @@
                     </div>
                 </div>
                 <div class="form-group">
+                    <label class="col-md-3 control-label">{Lang::T('Show Invoice/Transaction Note')}</label>
+                    <div class="col-md-5">
+                        <select name="show_invoice_note" class="form-control">
+                            <option value="no">{Lang::T('No')}</option>
+                            <option value="yes" {if $_c['show_invoice_note']=='yes'}selected="selected"{/if}>{Lang::T('Yes')}</option>
+                        </select>
+                    </div>
+                    <span class="help-block col-md-4">{Lang::T('Show note on invoice view and transaction reports')}</span>
+                </div>
+                <div class="form-group">
                     <label class="col-md-3 control-label"><i class="glyphicon glyphicon-print"></i>
                         {Lang::T('Print Max Char')}</label>
                     <div class="col-md-5">
@@ -555,26 +565,7 @@
             </div>
         </div>
 
-        <script>
-            (function ($) {
-                function toggleTimeoutInput() {
-                var isChecked = $('#enable_session_timeout').is(':checked');
-                $('#timeout_duration_input').toggle(isChecked);
-                $('#session_timeout_duration').prop('required', isChecked);
-                }
-                function requireTurnstileSiteKey() {
-                var anyEnabled = $('#turnstile_admin_enabled').val() === '1' ||
-                                $('#turnstile_client_enabled').val() === '1';
-                $('input[name="turnstile_site_key"]').prop('required', anyEnabled);
-                }
-                $(function(){
-                toggleTimeoutInput();
-                requireTurnstileSiteKey();
-                $('#enable_session_timeout').on('change', toggleTimeoutInput);
-                $('#turnstile_admin_enabled, #turnstile_client_enabled').on('change', requireTurnstileSiteKey);
-                });
-            })(jQuery);
-        </script>
+        
     </div>
 
     <div class="panel">
@@ -875,7 +866,7 @@
                     </div>
                 </div>
                 <small id="emailHelp" class="form-text text-muted">{Lang::T('You can use')} WhatsApp
-                    {Lang::T('in here too.')} <a href="https://wa.nux.my.id/login" target="_blank">{Lang::T('Free
+                    {Lang::T('in here too.')} <a href="https://gateway.drnet.biz.id" target="_blank">{Lang::T('Free
                         Server')}</a></small>
 
                 <button class="btn btn-success btn-block" type="submit">
@@ -900,17 +891,112 @@
         </div>
         <div id="collapseWhatsappNotification" class="panel-collapse collapse" role="tabpanel">
             <div class="panel-body">
+                {assign var=wa_method value=$_c['wa_gateway_method']}
+                {if $wa_method==''}
+                    {if $_c['wa_gateway_url']!=''}
+                        {assign var=wa_method value='post'}
+                    {elseif $_c['wa_url']!=''}
+                        {assign var=wa_method value='get'}
+                    {else}
+                        {assign var=wa_method value='post'}
+                    {/if}
+                {/if}
                 <div class="form-group">
-                    <label class="col-md-3 control-label">{Lang::T('WhatsApp Server URL')}</label>
+                    <label class="col-md-3 control-label">{Lang::T('Method')}</label>
                     <div class="col-md-5">
-                        <input type="text" class="form-control" id="wa_url" name="wa_url" value="{$_c['wa_url']}"
-                            placeholder="https://domain/?param_number=[number]&param_text=[text]&secret=">
+                        <select name="wa_gateway_method" id="wa_gateway_method" class="form-control">
+                            <option value="post" {if $wa_method=='post'}selected="selected" {/if}>POST</option>
+                            <option value="get" {if $wa_method=='get'}selected="selected" {/if}>GET</option>
+                        </select>
                     </div>
-                    <p class="help-block col-md-4">{Lang::T('Must include')} <b>[text]</b> &amp; <b>[number]</b>,
-                        {Lang::T('it will be replaced.')}</p>
+                    <p class="help-block col-md-4">{Lang::T('Choose POST to use WA Gateway or GET for legacy URL')}</p>
+                </div>
+                <div id="wa_gateway_post_fields" {if $wa_method=='get'}style="display:none"{/if}>
+                    <div class="form-group">
+                        <label class="col-md-3 control-label">{Lang::T('WhatsApp Gateway URL')}</label>
+                        <div class="col-md-5">
+                            <input type="text" class="form-control" id="wa_gateway_url" name="wa_gateway_url"
+                                value="{$_c['wa_gateway_url']}" placeholder="https://your-host/ext/SECRET/wa">
+                        </div>
+                        <p class="help-block col-md-4">{Lang::T('POST will be sent to')} <b>/ext/:secret/wa</b></p>
+                    </div>
+                    <div class="form-group">
+                        <label class="col-md-3 control-label">{Lang::T('WhatsApp Auth Type')}</label>
+                        <div class="col-md-5">
+                            <select name="wa_gateway_auth_type" id="wa_gateway_auth_type" class="form-control">
+                                <option value="none" {if $_c['wa_gateway_auth_type']=='' || $_c['wa_gateway_auth_type']=='none'}selected="selected" {/if}>None</option>
+                                <option value="basic" {if $_c['wa_gateway_auth_type']=='basic'}selected="selected" {/if}>Basic</option>
+                                <option value="header" {if $_c['wa_gateway_auth_type']=='header'}selected="selected" {/if}>Header</option>
+                                <option value="jwt" {if $_c['wa_gateway_auth_type']=='jwt'}selected="selected" {/if}>JWT</option>
+                            </select>
+                        </div>
+                        <p class="help-block col-md-4">{Lang::T('Authentication method for POST')}</p>
+                    </div>
+                    <div class="form-group wa-auth-field" data-auth="basic">
+                        <label class="col-md-3 control-label">{Lang::T('Auth Username')}</label>
+                        <div class="col-md-5">
+                            <input type="text" class="form-control" id="wa_gateway_auth_username" name="wa_gateway_auth_username"
+                                value="{$_c['wa_gateway_auth_username']}" placeholder="username">
+                        </div>
+                        <p class="help-block col-md-4">{Lang::T('Required for Basic auth')}</p>
+                    </div>
+                    <div class="form-group wa-auth-field" data-auth="basic">
+                        <label class="col-md-3 control-label">{Lang::T('Auth Password')}</label>
+                        <div class="col-md-5">
+                            <input type="password" class="form-control" id="wa_gateway_auth_password" name="wa_gateway_auth_password"
+                                value="{$_c['wa_gateway_auth_password']}" onmouseleave="this.type = 'password'"
+                                onmouseenter="this.type = 'text'" placeholder="password">
+                        </div>
+                        <p class="help-block col-md-4">{Lang::T('Required for Basic auth')}</p>
+                    </div>
+                    <div class="form-group wa-auth-field" data-auth="header">
+                        <label class="col-md-3 control-label">{Lang::T('Auth Header Name')}</label>
+                        <div class="col-md-5">
+                            <input type="text" class="form-control" id="wa_gateway_auth_header_name" name="wa_gateway_auth_header_name"
+                                value="{$_c['wa_gateway_auth_header_name']}" placeholder="X-Api-Key">
+                        </div>
+                        <p class="help-block col-md-4">{Lang::T('Required for Header auth')}</p>
+                    </div>
+                    <div class="form-group wa-auth-field" data-auth="header jwt">
+                        <label class="col-md-3 control-label">{Lang::T('Auth Token')}</label>
+                        <div class="col-md-5">
+                            <input type="password" class="form-control" id="wa_gateway_auth_token" name="wa_gateway_auth_token"
+                                value="{$_c['wa_gateway_auth_token']}" onmouseleave="this.type = 'password'"
+                                onmouseenter="this.type = 'text'" placeholder="token">
+                        </div>
+                        <p class="help-block col-md-4">{Lang::T('Required for Header or JWT auth')}</p>
+                    </div>
+                </div>
+                <div id="wa_gateway_get_fields" {if $wa_method!='get'}style="display:none"{/if}>
+                    <div class="form-group">
+                        <label class="col-md-3 control-label">{Lang::T('WhatsApp Gateway URL')}</label>
+                        <div class="col-md-5">
+                            <input type="text" class="form-control" id="wa_url" name="wa_url" value="{$_c['wa_url']}"
+                                placeholder="https://domain/?param_number=[number]&param_text=[text]&secret=">
+                        </div>
+                        <p class="help-block col-md-4">{Lang::T('Must include')} <b>[text]</b> &amp; <b>[number]</b>,
+                            {Lang::T('it will be replaced.')}</p>
+                    </div>
+                </div>
+                <hr>
+                <div class="form-group">
+                    <label class="col-md-3 control-label">{Lang::T('WA Queue Max Retries')}</label>
+                    <div class="col-md-5">
+                        <input type="number" class="form-control" id="wa_queue_max_retries" name="wa_queue_max_retries"
+                            value="{if $_c['wa_queue_max_retries']!=''}{$_c['wa_queue_max_retries']}{else}3{/if}" min="1" max="20">
+                    </div>
+                    <p class="help-block col-md-4">Jumlah retry otomatis saat queue aktif.</p>
+                </div>
+                <div class="form-group">
+                    <label class="col-md-3 control-label">{Lang::T('WA Queue Retry Interval (seconds)')}</label>
+                    <div class="col-md-5">
+                        <input type="number" class="form-control" id="wa_queue_retry_interval" name="wa_queue_retry_interval"
+                            value="{if $_c['wa_queue_retry_interval']!=''}{$_c['wa_queue_retry_interval']}{else}60{/if}" min="10" max="86400">
+                    </div>
+                    <p class="help-block col-md-4">Jeda waktu antar retry (detik). Diproses via cron.</p>
                 </div>
                 <small id="emailHelp" class="form-text text-muted">{Lang::T('You can use')} WhatsApp
-                    {Lang::T('in here too.')} <a href="https://wa.nux.my.id/login" target="_blank">{Lang::T('Free
+                    {Lang::T('in here too.')} <a href="https://gateway.drnet.biz.id" target="_blank">{Lang::T('Free
                         Server')}</a></small>
                 <button class="btn btn-success btn-block" type="submit">
                     {Lang::T('Save Changes')}
@@ -1344,38 +1430,113 @@
     function testTg() {
         window.location.href = '{Text::url('settings/app&testTg=test')}';
     }
+
+    function toggleWhatsappAuthFields() {
+        var authSelect = document.getElementById('wa_gateway_auth_type');
+        if (!authSelect) {
+            return;
+        }
+        var authType = (authSelect.value || 'none').toLowerCase();
+        var authFields = document.querySelectorAll('#wa_gateway_post_fields .wa-auth-field');
+        authFields.forEach(function(field) {
+            var allowed = (field.getAttribute('data-auth') || '').toLowerCase().split(' ');
+            var show = authType !== 'none' && allowed.indexOf(authType) !== -1;
+            field.style.display = show ? '' : 'none';
+            field.querySelectorAll('input,select,textarea').forEach(function(input) {
+                input.disabled = !show;
+            });
+        });
+    }
+
+    function toggleWhatsappGatewayFields() {
+        var methodSelect = document.getElementById('wa_gateway_method');
+        var postFields = document.getElementById('wa_gateway_post_fields');
+        var getFields = document.getElementById('wa_gateway_get_fields');
+        if (!methodSelect || !postFields || !getFields) {
+            return;
+        }
+        var method = (methodSelect.value || 'post').toLowerCase();
+        var showPost = method !== 'get';
+        postFields.style.display = showPost ? '' : 'none';
+        getFields.style.display = showPost ? 'none' : '';
+
+        postFields.querySelectorAll('input,select,textarea').forEach(function(input) {
+            input.disabled = !showPost;
+        });
+        getFields.querySelectorAll('input,select,textarea').forEach(function(input) {
+            input.disabled = showPost;
+        });
+
+        if (showPost) {
+            toggleWhatsappAuthFields();
+        }
+    }
 </script>
 
 
 <script>
     document.addEventListener('DOMContentLoaded', function() {
+        var methodSelect = document.getElementById('wa_gateway_method');
+        var authSelect = document.getElementById('wa_gateway_auth_type');
+        if (methodSelect) {
+            methodSelect.addEventListener('change', toggleWhatsappGatewayFields);
+        }
+        if (authSelect) {
+            authSelect.addEventListener('change', toggleWhatsappAuthFields);
+        }
+        toggleWhatsappGatewayFields();
+
         var sectionTimeoutCheckbox = document.getElementById('enable_session_timeout');
         var timeoutDurationInput = document.getElementById('timeout_duration_input');
         var timeoutDurationField = document.getElementById('session_timeout_duration');
+        var turnstileAdmin = document.getElementById('turnstile_admin_enabled');
+        var turnstileClient = document.getElementById('turnstile_client_enabled');
+        var turnstileSiteKey = document.querySelector('input[name="turnstile_site_key"]');
 
-        if (sectionTimeoutCheckbox.checked) {
-            timeoutDurationInput.style.display = 'block';
-            timeoutDurationField.required = true;
+        function requireTurnstileSiteKey() {
+            if (!turnstileSiteKey || !turnstileAdmin || !turnstileClient) {
+                return;
+            }
+            var anyEnabled = turnstileAdmin.value === '1' || turnstileClient.value === '1';
+            turnstileSiteKey.required = anyEnabled;
         }
 
-        sectionTimeoutCheckbox.addEventListener('change', function() {
-            if (this.checked) {
+        requireTurnstileSiteKey();
+        if (turnstileAdmin) {
+            turnstileAdmin.addEventListener('change', requireTurnstileSiteKey);
+        }
+        if (turnstileClient) {
+            turnstileClient.addEventListener('change', requireTurnstileSiteKey);
+        }
+
+        if (sectionTimeoutCheckbox && timeoutDurationInput && timeoutDurationField) {
+            if (sectionTimeoutCheckbox.checked) {
                 timeoutDurationInput.style.display = 'block';
                 timeoutDurationField.required = true;
-            } else {
-                timeoutDurationInput.style.display = 'none';
-                timeoutDurationField.required = false;
             }
-        });
 
-        document.querySelector('form').addEventListener('submit', function(event) {
-            if (sectionTimeoutCheckbox.checked && (!timeoutDurationField.value || isNaN(
-                    timeoutDurationField.value))) {
-                event.preventDefault();
-                alert('Please enter a valid session timeout duration.');
-                timeoutDurationField.focus();
+            sectionTimeoutCheckbox.addEventListener('change', function() {
+                if (this.checked) {
+                    timeoutDurationInput.style.display = 'block';
+                    timeoutDurationField.required = true;
+                } else {
+                    timeoutDurationInput.style.display = 'none';
+                    timeoutDurationField.required = false;
+                }
+            });
+
+            var form = document.querySelector('form');
+            if (form) {
+                form.addEventListener('submit', function(event) {
+                    if (sectionTimeoutCheckbox.checked && (!timeoutDurationField.value || isNaN(
+                            timeoutDurationField.value))) {
+                        event.preventDefault();
+                        alert('Please enter a valid session timeout duration.');
+                        timeoutDurationField.focus();
+                    }
+                });
             }
-        });
+        }
     });
 </script>
 

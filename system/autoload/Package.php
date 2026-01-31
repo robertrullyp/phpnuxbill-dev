@@ -797,7 +797,6 @@ class Package
             } else {
                 if ($p['validity_unit'] == 'Period') {
                     // Postpaid price always zero for first time
-                    $note = '';
                     $bills = [];
                     $t->price = 0;
                 } else {
@@ -921,7 +920,8 @@ class Package
         if ($config['user_notification_payment'] == 'sms') {
             Message::sendSMS($customer['phonenumber'], $textInvoice);
         } else if ($config['user_notification_payment'] == 'wa') {
-            Message::sendWhatsapp($customer['phonenumber'], $textInvoice);
+            $options = Message::isWhatsappQueueEnabledForNotifications() ? ['queue' => true, 'queue_context' => 'invoice'] : [];
+            Message::sendWhatsapp($customer['phonenumber'], $textInvoice, $options);
         } else if ($config['user_notification_payment'] == 'email') {
             Message::sendEmail($customer['email'], '[' . $config['CompanyName'] . '] ' . Lang::T("Invoice") . ' ' . $inv, $textInvoice);
         }
@@ -987,7 +987,8 @@ class Package
         if ($config['user_notification_payment'] == 'sms') {
             Message::sendSMS($customer['phonenumber'], $textInvoice);
         } else if ($config['user_notification_payment'] == 'wa') {
-            Message::sendWhatsapp($customer['phonenumber'], $textInvoice);
+            $options = Message::isWhatsappQueueEnabledForNotifications() ? ['queue' => true, 'queue_context' => 'invoice'] : [];
+            Message::sendWhatsapp($customer['phonenumber'], $textInvoice, $options);
         } else if ($config['user_notification_payment'] == 'email') {
             Message::sendEmail($customer['email'], '[' . $config['CompanyName'] . '] ' . Lang::T("Invoice") . ' ' . $inv, $textInvoice);
         }
@@ -1021,9 +1022,20 @@ class Package
         $cust = ORM::for_table('tbl_customers')->where('username', $in['username'])->findOne();
 
         $note = '';
+        $noteLines = [];
+        $showInvoiceNote = isset($config['show_invoice_note']) && $config['show_invoice_note'] == 'yes';
         //print
+        $address = trim((string) $config['address']);
+        if ($address !== '') {
+            $addressLines = preg_split("/\r\n|\r|\n/", $address);
+            $addressLines = array_values(array_filter($addressLines, static function ($line) {
+                return trim($line) !== '';
+            }));
+            $address = implode("\n", $addressLines);
+        }
         $invoice = Lang::pad($config['CompanyName'], ' ', 2) . "\n";
-        $invoice .= Lang::pad($config['address'], ' ', 2) . "\n";
+        $addressPadded = rtrim(Lang::pad($address, ' ', 2), "\n");
+        $invoice .= $addressPadded . "\n";
         $invoice .= Lang::pad($config['phone'], ' ', 2) . "\n";
         $invoice .= Lang::pad("", '=') . "\n";
         $invoice .= Lang::pads("Invoice", $in['invoice'], ' ') . "\n";
@@ -1032,10 +1044,10 @@ class Package
         $invoice .= Lang::pad("", '=') . "\n";
         $invoice .= Lang::pads(Lang::T('Type'), $in['type'], ' ') . "\n";
         $invoice .= Lang::pads(Lang::T('Plan Name'), $in['plan_name'], ' ') . "\n";
-        if (!empty($in['note'])) {
+        if ($showInvoiceNote && !empty($in['note'])) {
             $in['note'] = str_replace("\r", "", $in['note']);
-            $tmp = explode("\n", $in['note']);
-            foreach ($tmp as $t) {
+            $noteLines = explode("\n", $in['note']);
+            foreach ($noteLines as $t) {
                 if (strpos($t, " : ") === false) {
                     if (!empty($t)) {
                         $note .= "$t\n";
@@ -1069,7 +1081,8 @@ class Package
         $config['printer_cols'] = 30;
         //whatsapp
         $invoice = Lang::pad($config['CompanyName'], ' ', 2) . "\n";
-        $invoice .= Lang::pad($config['address'], ' ', 2) . "\n";
+        $addressPadded = rtrim(Lang::pad($address, ' ', 2), "\n");
+        $invoice .= $addressPadded . "\n";
         $invoice .= Lang::pad($config['phone'], ' ', 2) . "\n";
         $invoice .= Lang::pad("", '=') . "\n";
         $invoice .= Lang::pads("Invoice", $in['invoice'], ' ') . "\n";
@@ -1078,9 +1091,9 @@ class Package
         $invoice .= Lang::pad("", '=') . "\n";
         $invoice .= Lang::pads(Lang::T('Type'), $in['type'], ' ') . "\n";
         $invoice .= Lang::pads(Lang::T('Plan Name'), $in['plan_name'], ' ') . "\n";
-        if (!empty($in['note'])) {
+        if ($showInvoiceNote && !empty($noteLines)) {
             $invoice .= Lang::pad("", '=') . "\n";
-            foreach ($tmp as $t) {
+            foreach ($noteLines as $t) {
                 if (strpos($t, " : ") === false) {
                     if (!empty($t)) {
                         $invoice .= Lang::pad($t, ' ', 2) . "\n";

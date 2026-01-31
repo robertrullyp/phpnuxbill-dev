@@ -237,6 +237,7 @@ switch ($action) {
             $_POST['man_fields_fname'] = isset($_POST['man_fields_fname']) ? 'yes' : 'no';
             $_POST['man_fields_address'] = isset($_POST['man_fields_address']) ? 'yes' : 'no';
             $_POST['man_fields_custom'] = isset($_POST['man_fields_custom']) ? 'yes' : 'no';
+            $_POST['show_invoice_note'] = _post('show_invoice_note', 'no');
             $enable_session_timeout = isset($_POST['enable_session_timeout']) ? 1 : 0;
             $_POST['enable_session_timeout'] = $enable_session_timeout;
             $_POST['notification_reminder_1day'] = isset($_POST['notification_reminder_1day']) ? 'yes' : 'no';

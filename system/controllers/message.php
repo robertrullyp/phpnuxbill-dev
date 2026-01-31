@@ -121,7 +121,9 @@ EOT;
         }
 
         if (isset($_POST['wa'])) {
-            $waSent = Message::sendWhatsapp($customer['phonenumber'], $currentMessage);
+            $queueWa = !empty($_POST['wa_queue']);
+            $waOptions = $queueWa ? ['queue' => true, 'queue_context' => 'manual'] : [];
+            $waSent = Message::sendWhatsapp($customer['phonenumber'], $currentMessage, $waOptions);
         }
 
         if (isset($_POST['email'])) {
@@ -140,6 +142,234 @@ EOT;
         }
 
         break;
+
+    case 'wa_media_upload':
+        if (!in_array($admin['user_type'], ['SuperAdmin', 'Admin', 'Agent', 'Sales'])) {
+            _alert(Lang::T('You do not have permission to access this page'), 'danger', "dashboard");
+        }
+        global $UPLOAD_PATH;
+        header('Content-Type: application/json');
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+            echo json_encode(['ok' => false, 'message' => 'Invalid request method']);
+            exit;
+        }
+        if (empty($_FILES['media'])) {
+            echo json_encode(['ok' => false, 'message' => 'No file uploaded']);
+            exit;
+        }
+        $file = $_FILES['media'];
+        if (!empty($file['error'])) {
+            echo json_encode(['ok' => false, 'message' => 'Upload failed']);
+            exit;
+        }
+        $maxSize = 16 * 1024 * 1024;
+        if ($file['size'] > $maxSize) {
+            echo json_encode(['ok' => false, 'message' => 'File too large (max 16MB)']);
+            exit;
+        }
+        $tmpName = $file['tmp_name'];
+        $mime = function_exists('mime_content_type') ? mime_content_type($tmpName) : ($file['type'] ?? '');
+        $allowed = [
+            'image/jpeg', 'image/png', 'image/gif', 'image/webp',
+            'video/mp4', 'video/3gpp',
+            'application/pdf'
+        ];
+        if (!in_array($mime, $allowed, true)) {
+            echo json_encode(['ok' => false, 'message' => 'Unsupported file type']);
+            exit;
+        }
+        $mediaId = bin2hex(random_bytes(8));
+        $extMap = [
+            'image/jpeg' => 'jpg',
+            'image/png' => 'png',
+            'image/gif' => 'gif',
+            'image/webp' => 'webp',
+            'video/mp4' => 'mp4',
+            'video/3gpp' => '3gp',
+            'application/pdf' => 'pdf'
+        ];
+        $baseName = pathinfo($file['name'], PATHINFO_FILENAME);
+        $baseName = preg_replace('/[^A-Za-z0-9_-]/', '_', $baseName);
+        if ($baseName === '') {
+            $baseName = 'media';
+        }
+        $ext = $extMap[$mime] ?? pathinfo($file['name'], PATHINFO_EXTENSION);
+        $ext = preg_replace('/[^A-Za-z0-9]/', '', $ext);
+        if ($ext === '') {
+            $ext = 'bin';
+        }
+        $safeName = $baseName . '.' . $ext;
+        $destDir = rtrim($UPLOAD_PATH, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . 'wa_tmp' . DIRECTORY_SEPARATOR . $mediaId;
+        if (!is_dir($destDir) && !mkdir($destDir, 0755, true)) {
+            echo json_encode(['ok' => false, 'message' => 'Failed to create upload folder']);
+            exit;
+        }
+        $destPath = $destDir . DIRECTORY_SEPARATOR . $safeName;
+        if (!move_uploaded_file($tmpName, $destPath)) {
+            echo json_encode(['ok' => false, 'message' => 'Failed to store upload']);
+            exit;
+        }
+        $publicUrl = rtrim(APP_URL, '/') . '/system/uploads/wa_tmp/' . $mediaId . '/' . $safeName;
+        $expiresAt = date('Y-m-d H:i:s', time() + 7 * 24 * 60 * 60);
+        Message::cleanupExpiredWhatsappMedia();
+        try {
+            $db = ORM::get_db();
+            $db->exec("
+                CREATE TABLE IF NOT EXISTS tbl_wa_media_tmp (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    media_id VARCHAR(64) UNIQUE NOT NULL,
+                    file_path TEXT NOT NULL,
+                    public_url TEXT NOT NULL,
+                    mime_type VARCHAR(100),
+                    size INT DEFAULT 0,
+                    status ENUM('active','cleaned','expired') DEFAULT 'active',
+                    created_at DATETIME NOT NULL,
+                    expires_at DATETIME NOT NULL,
+                    last_used_at DATETIME NULL
+                );
+            ");
+        } catch (Throwable $e) {
+            // ignore
+        }
+        $media = ORM::for_table('tbl_wa_media_tmp')->create();
+        $media->media_id = $mediaId;
+        $media->file_path = $destPath;
+        $media->public_url = $publicUrl;
+        $media->mime_type = $mime;
+        $media->size = (int) $file['size'];
+        $media->status = 'active';
+        $media->created_at = date('Y-m-d H:i:s');
+        $media->expires_at = $expiresAt;
+        $media->save();
+        echo json_encode([
+            'ok' => true,
+            'media_id' => $mediaId,
+            'url' => $publicUrl,
+            'mime' => $mime,
+            'expires_at' => $expiresAt
+        ]);
+        exit;
+
+    case 'resend':
+        if (!in_array($admin['user_type'], ['SuperAdmin', 'Admin', 'Agent', 'Sales'])) {
+            _alert(Lang::T('You do not have permission to access this page'), 'danger', "dashboard");
+        }
+        $logId = $routes['2'] ?? _get('id');
+        $log = ORM::for_table('tbl_message_logs')->find_one($logId);
+        if (!$log) {
+            r2(getUrl('logs/message'), 'e', Lang::T('Log not found'));
+        }
+        $type = strtolower((string) $log['message_type']);
+        $channel = 'wa';
+        if (strpos($type, 'sms') !== false) {
+            $channel = 'sms';
+        } elseif (strpos($type, 'email') !== false || strpos($type, 'inbox') !== false) {
+            $channel = 'other';
+        }
+        $payloadUsed = false;
+        if ($channel === 'wa') {
+            $content = trim((string) $log['message_content']);
+            $looksInteractive = false;
+            if ($content !== '') {
+                $firstChar = $content[0];
+                $looksInteractive = ($firstChar === '{' || $firstChar === '[' || stripos($content, '[[wa]]') !== false);
+            }
+            if (!$looksInteractive && strpos($type, 'response') !== false) {
+                $sentAt = $log['sent_at'] ?? '';
+                $baseTime = $sentAt ? strtotime($sentAt) : time();
+                if ($baseTime !== false) {
+                    $start = date('Y-m-d H:i:s', $baseTime - 600);
+                    $end = date('Y-m-d H:i:s', $baseTime + 600);
+                    $payloadLog = ORM::for_table('tbl_message_logs')
+                        ->where('message_type', 'WhatsApp Gateway Payload')
+                        ->where('recipient', $log['recipient'])
+                        ->where_gte('sent_at', $start)
+                        ->where_lte('sent_at', $end)
+                        ->order_by_desc('id')
+                        ->find_one();
+                    if ($payloadLog && !empty($payloadLog['message_content'])) {
+                        $payloadContent = trim((string) $payloadLog['message_content']);
+                        $decoded = null;
+                        $hasContent = false;
+                        if ($payloadContent !== '' && ($payloadContent[0] === '{' || $payloadContent[0] === '[')) {
+                            $decoded = json_decode($payloadContent, true);
+                            if (is_array($decoded) && array_keys($decoded) !== range(0, count($decoded) - 1)) {
+                                if (!empty($decoded['interactive'])) {
+                                    $hasContent = true;
+                                } elseif (!empty($decoded['text']) || !empty($decoded['body'])) {
+                                    $hasContent = true;
+                                } elseif (!empty($decoded['message'])) {
+                                    $hasContent = true;
+                                } elseif (!empty($decoded['requestPhoneNumber'])) {
+                                    $hasContent = true;
+                                } elseif (!empty($decoded['contacts'])) {
+                                    $hasContent = true;
+                                }
+                            }
+                        }
+                        if ($hasContent) {
+                            $log['message_content'] = $payloadLog['message_content'];
+                            $payloadUsed = true;
+                        }
+                    }
+                }
+            }
+        }
+        $ui->assign('log', $log);
+        $ui->assign('channel', $channel);
+        $ui->assign('payload_used', $payloadUsed);
+        $ui->display('admin/message/resend.tpl');
+        break;
+
+    case 'resend-post':
+        if (!in_array($admin['user_type'], ['SuperAdmin', 'Admin', 'Agent', 'Sales'])) {
+            _alert(Lang::T('You do not have permission to access this page'), 'danger', "dashboard");
+        }
+        $logId = _post('log_id');
+        $recipient = trim((string) _post('recipient'));
+        $message = trim((string) _post('message'));
+        $channel = trim((string) _post('channel'));
+        if ($recipient === '' || $message === '') {
+            r2(getUrl('message/resend/' . $logId), 'e', Lang::T('Recipient and message are required'));
+        }
+        $sent = false;
+        if ($channel === 'wa') {
+            $payload = null;
+            $trimmed = ltrim($message);
+            if ($trimmed !== '' && ($trimmed[0] === '{' || $trimmed[0] === '[')) {
+                $decoded = json_decode($trimmed, true);
+                if (is_array($decoded)) {
+                    $isAssoc = array_keys($decoded) !== range(0, count($decoded) - 1);
+                    if ($isAssoc) {
+                        $payloadKeys = ['action', 'to', 'text', 'body', 'message', 'interactive', 'requestPhoneNumber', 'contacts'];
+                        foreach ($payloadKeys as $payloadKey) {
+                            if (array_key_exists($payloadKey, $decoded)) {
+                                $payload = $decoded;
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+            if (is_array($payload)) {
+                unset($payload['idempotency_key'], $payload['idempotencyKey']);
+                if (!isset($payload['action'])) {
+                    $payload['action'] = 'send';
+                }
+                $payload['to'] = Lang::phoneFormat($recipient);
+                $sent = Message::sendWhatsapp($payload, '', ['queue_context' => 'resend']);
+            } else {
+                $sent = Message::sendWhatsapp($recipient, $message, ['queue_context' => 'resend']);
+            }
+        } elseif ($channel === 'sms') {
+            $sent = Message::sendSMS($recipient, $message);
+        } else {
+            r2(getUrl('message/resend/' . $logId), 'e', Lang::T('Unsupported channel for resend'));
+        }
+        if ($sent) {
+            r2(getUrl('logs/message'), 's', Lang::T('Message resent successfully'));
+        }
+        r2(getUrl('message/resend/' . $logId), 'e', Lang::T('Failed to resend message'));
 
     case 'send_bulk':
         if (!in_array($admin['user_type'], ['SuperAdmin', 'Admin', 'Agent', 'Sales'])) {
@@ -169,6 +399,7 @@ EOT;
         $subject = $_REQUEST['subject'] ?? '';
         $channels = ['email', 'sms', 'wa', 'inbox'];
         $selectedChannels = [];
+        $queueWa = !empty($_REQUEST['wa_queue']) && $_REQUEST['wa_queue'] == '1';
 
         foreach ($channels as $channel) {
             if (isset($_REQUEST[$channel]) && $_REQUEST[$channel] == '1') {
@@ -408,13 +639,14 @@ EOT;
                 }
 
                 if (isset($_REQUEST['wa']) && $_REQUEST['wa'] == '1') {
-                    if (Message::sendWhatsapp($customer['phonenumber'], $currentMessage)) {
+                    $waOptions = $queueWa ? ['queue' => true, 'queue_context' => 'bulk'] : [];
+                    if (Message::sendWhatsapp($customer['phonenumber'], $currentMessage, $waOptions)) {
                         $totalWhatsappSent++;
                         $batchStatus[] = [
                             'name' => $customer['fullname'],
                             'sent' => $customer['phonenumber'],
                             'channel' => 'WhatsApp',
-                            'status' => 'WhatsApp Sent',
+                            'status' => $queueWa ? 'WhatsApp Queued' : 'WhatsApp Sent',
                             'message' => $currentMessage,
                             'service' => $service,
                             'router' => $routerName,
@@ -513,6 +745,7 @@ EOT;
             $via = $_POST['message_type'] ?? '';
             $subject = $_POST['subject'] ?? '';
             $message = isset($_POST['message']) ? trim($_POST['message']) : '';
+            $queueWa = !empty($_POST['wa_queue']);
             if (empty($customerIds) || empty($message) || empty($via)) {
                 echo json_encode(['status' => 'error', 'message' => Lang::T('Invalid customer IDs, Message, or Message Type.')]);
                 exit;
@@ -538,7 +771,8 @@ EOT;
                             $messageSent = Message::sendSMS($customer['phonenumber'], $message);
                         }
                         if (!$messageSent && ($via === 'wa' || $via === 'all')) {
-                            $messageSent = Message::sendWhatsapp($customer['phonenumber'], $message);
+                            $waOptions = $queueWa ? ['queue' => true, 'queue_context' => 'bulk_selected'] : [];
+                            $messageSent = Message::sendWhatsapp($customer['phonenumber'], $message, $waOptions);
                         }
                         if (!$messageSent && ($via === 'inbox' || $via === 'all')) {
                             Message::addToInbox($customer['id'], $subject, $message, $from);

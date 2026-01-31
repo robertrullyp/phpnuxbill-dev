@@ -100,6 +100,10 @@ switch ($action) {
         $server = _post('server');
         $planId = _post('plan');
         $using = _post('using');
+        $note = trim((string) _post('note'));
+        if (strlen($note) > 256) {
+            $note = substr($note, 0, 256);
+        }
 
         $msg = '';
         if ($id_customer == '' or $server == '' or $planId == '' or $using == '') {
@@ -170,6 +174,7 @@ switch ($action) {
             $ui->assign('using', $using);
             $ui->assign('plan', $plan);
             $ui->assign('add_inv', $add_inv);
+            $ui->assign('note', $note);
             $ui->assign('csrf_token', Csrf::generateAndStoreToken());
             $ui->display('admin/plan/recharge-confirm.tpl');
         } else {
@@ -190,6 +195,10 @@ switch ($action) {
         $planId = _post('plan');
         $using = _post('using');
         $svoucher = _post('svoucher');
+        $note = trim((string) _post('note'));
+        if (strlen($note) > 256) {
+            $note = substr($note, 0, 256);
+        }
 
         $plan = ORM::for_table('tbl_plans')->find_one($planId);
 
@@ -250,7 +259,7 @@ switch ($action) {
                 $zero = 1;
                 $gateway = 'Recharge Zero';
             }
-            if (Package::rechargeUser($id_customer, $server, $planId, $gateway, $channel)) {
+            if (Package::rechargeUser($id_customer, $server, $planId, $gateway, $channel, $note)) {
                 if ($using == 'balance') {
                     Balance::min($cust['id'], $total_cost);
                 }

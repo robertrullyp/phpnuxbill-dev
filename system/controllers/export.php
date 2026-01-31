@@ -92,6 +92,7 @@ switch ($action) {
         $methods = array_column(ORM::for_table('tbl_transactions')->rawQuery("SELECT DISTINCT SUBSTRING_INDEX(`method`, ' - ', 1) as method FROM tbl_transactions;")->findArray(), 'method');
         $routers = array_column(ORM::for_table('tbl_transactions')->select('routers')->distinct('routers')->find_array(), 'routers');
         $plans = array_column(ORM::for_table('tbl_transactions')->select('plan_name')->distinct('plan_name')->find_array(), 'plan_name');
+        $showInvoiceNote = isset($config['show_invoice_note']) && $config['show_invoice_note'] == 'yes';
         $reset_day = $config['reset_day'];
         if (empty($reset_day)) {
             $reset_day = 1;
@@ -148,6 +149,7 @@ switch ($action) {
         }
 
         if ($x) {
+            $noteHeader = $showInvoiceNote ? '<th>' . Lang::T('Note') . '</th>' : '';
             $html = '
 			<div id="page-wrap">
 				<div id="address">
@@ -168,6 +170,7 @@ switch ($action) {
 				<th>' . Lang::T('Created On') . '</th>
 				<th>' . Lang::T('Expires On') . '</th>
 				<th>' . Lang::T('Method') . '</th>
+                ' . $noteHeader . '
 				<th>' . Lang::T('Routers') . '</th>
 				</tr>';
             $c = true;
@@ -184,6 +187,10 @@ switch ($action) {
                 $method = $value['method'];
                 $routers = $value['routers'];
 
+                $noteCell = '';
+                if ($showInvoiceNote) {
+                    $noteCell = '<td>' . nl2br(htmlspecialchars((string) $value['note'], ENT_QUOTES, 'UTF-8')) . '</td>';
+                }
                 $html .= "<tr" . (($c = !$c) ? ' class="alt"' : ' class=""') . ">" . "
 				<td>$username</td>
                 <td>$fullname</td>
@@ -193,6 +200,7 @@ switch ($action) {
 				<td>$recharged_on</td>
 				<td>$expiration</td>
 				<td>$method</td>
+                $noteCell
 				<td>$routers</td>
 				</tr>";
             }
@@ -299,6 +307,7 @@ EOF;
         $fdate = _post('fdate');
         $tdate = _post('tdate');
         $stype = _post('stype');
+        $showInvoiceNote = isset($config['show_invoice_note']) && $config['show_invoice_note'] == 'yes';
         $d = ORM::for_table('tbl_transactions');
         $d->left_outer_join('tbl_customers', 'tbl_transactions.username = tbl_customers.username')
             ->select('tbl_transactions.*')
@@ -333,6 +342,7 @@ EOF;
         }
 
         if ($x) {
+            $noteHeader = $showInvoiceNote ? '<th>' . Lang::T('Note') . '</th>' : '';
             $html = '
 			<div id="page-wrap">
 				<div id="address">
@@ -353,6 +363,7 @@ EOF;
 				<th>' . Lang::T('Created On') . '</th>
 				<th>' . Lang::T('Expires On') . '</th>
 				<th>' . Lang::T('Method') . '</th>
+                ' . $noteHeader . '
 				<th>' . Lang::T('Routers') . '</th>
 				</tr>';
             $c = true;
@@ -369,6 +380,10 @@ EOF;
                 $method = $value['method'];
                 $routers = $value['routers'];
 
+                $noteCell = '';
+                if ($showInvoiceNote) {
+                    $noteCell = '<td>' . nl2br(htmlspecialchars((string) $value['note'], ENT_QUOTES, 'UTF-8')) . '</td>';
+                }
                 $html .= "<tr" . (($c = !$c) ? ' class="alt"' : ' class=""') . ">" . "
 				<td>$username</td>
                 <td>$fullname</td>
@@ -378,6 +393,7 @@ EOF;
 				<td>$recharged_on </td>
 				<td>$expiration $time </td>
 				<td>$method</td>
+                $noteCell
 				<td>$routers</td>
 				</tr>";
             }

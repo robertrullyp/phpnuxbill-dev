@@ -66,6 +66,13 @@
                             {$_c['currency_code']} 0</p>
                     </div>
                     <div class="form-group">
+                        <label class="col-md-2 control-label">{Lang::T('Note')}</label>
+                        <div class="col-md-6">
+                            <input type="text" name="note" class="form-control" placeholder="{Lang::T('Optional note')}">
+                        </div>
+                        <p class="help-block col-md-4">{Lang::T('Optional')}</p>
+                    </div>
+                    <div class="form-group">
                         <div class="col-lg-offset-2 col-lg-10">
                             <button class="btn btn-success"
                                 onclick="return ask(this, '{Lang::T('Continue the Recharge process')}?')"

@@ -260,6 +260,11 @@
                     <option value="sms">{Lang::T('SMS')}</option>
                     <option value="wa">{Lang::T('WhatsApp')}</option>
                 </select>
+                <div style="margin-bottom: 10px;">
+                    <label class="checkbox-inline">
+                        <input type="checkbox" id="wa_queue_modal" value="1"> Aktifkan antrian/auto-retry WhatsApp
+                    </label>
+                </div>
                 <input type="text" style="margin-bottom: 10px;" class="form-control" id="subject-content" value=""
                     placeholder="{Lang::T('Enter message subject here')}">
                 <textarea id="messageContent" class="form-control" rows="4"
@@ -341,7 +346,8 @@
                 data: {
                     customer_ids: selectedCustomerIds,
                     message_type: messageType,
-                    message: message
+                    message: message,
+                    wa_queue: $('#wa_queue_modal').is(':checked') ? '1' : '0'
                 },
                 dataType: 'json',
                 success: function (response) {

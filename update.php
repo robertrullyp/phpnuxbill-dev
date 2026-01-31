@@ -134,6 +134,10 @@ if (empty($step)) {
         zipFolder(pathFixer('.'), $zip, strlen(pathFixer('.')));
 
         $zip->close();
+        $dbBackupFile = createDatabaseBackup($backupDir);
+        if (!empty($dbBackupFile)) {
+            $_SESSION['db_backup_file'] = $dbBackupFile;
+        }
         $nextStep = 4;
     } catch (Exception $e) {
         $msg = "Failed to create backup: " . $e->getMessage();
@@ -285,11 +289,16 @@ if (empty($step)) {
         }
     }
 
-    // Delete the successful backup file
+    // Keep backup files for safety (clean manually if needed)
+    $backupFile = '';
     if (!empty($_SESSION['backup_file']) && file_exists($_SESSION['backup_file'])) {
-        unlink($_SESSION['backup_file']);
-        unset($_SESSION['backup_file']);
+        $backupFile = $_SESSION['backup_file'];
     }
+    $dbBackupFile = '';
+    if (!empty($_SESSION['db_backup_file']) && file_exists($_SESSION['db_backup_file'])) {
+        $dbBackupFile = $_SESSION['db_backup_file'];
+    }
+    unset($_SESSION['backup_file'], $_SESSION['db_backup_file']);
 
     $versionLabel = null;
     if (is_file('version.json')) {
@@ -302,6 +311,16 @@ if (empty($step)) {
     $message = 'PHPNuxBill has been updated successfully.';
     if (!empty($versionLabel)) {
         $message = 'PHPNuxBill has been updated to Version ' . $versionLabel;
+    }
+    if ($backupFile !== '' || $dbBackupFile !== '') {
+        $details = [];
+        if ($backupFile !== '') {
+            $details[] = 'Files: ' . basename($backupFile);
+        }
+        if ($dbBackupFile !== '') {
+            $details[] = 'DB: ' . basename($dbBackupFile);
+        }
+        $message .= ' (Backups kept in system/backup/ — ' . implode(', ', $details) . ')';
     }
 
     $redirectTargets = [
@@ -635,6 +654,114 @@ function zipFolder($source, &$zip, $stripPath)
             $zip->addFile($filePath, $localPath);
         }
     }
+}
+
+function createDatabaseBackup($backupDir)
+{
+    global $db_host, $db_name, $db_user, $db_pass;
+
+    if (empty($db_host) || empty($db_name) || empty($db_user)) {
+        throw new Exception('Database configuration missing');
+    }
+
+    $timestamp = time();
+    $useGzip = function_exists('gzopen');
+    $ext = $useGzip ? '.sql.gz' : '.sql';
+    $dbBackupFile = $backupDir . 'pre_update_db_' . $timestamp . $ext;
+
+    $handle = $useGzip ? gzopen($dbBackupFile, 'wb9') : fopen($dbBackupFile, 'wb');
+    if ($handle === false) {
+        throw new Exception('Unable to create database backup file');
+    }
+
+    $writer = function ($line) use ($handle, $useGzip) {
+        if ($useGzip) {
+            gzwrite($handle, $line);
+        } else {
+            fwrite($handle, $line);
+        }
+    };
+
+    $options = [
+        PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+    ];
+    if (defined('PDO::MYSQL_ATTR_USE_BUFFERED_QUERY')) {
+        $options[PDO::MYSQL_ATTR_USE_BUFFERED_QUERY] = false;
+    }
+    $dsn = "mysql:host=$db_host;dbname=$db_name;charset=utf8mb4";
+    $pdo = new PDO($dsn, $db_user, $db_pass, $options);
+
+    $writer("-- PHPNuxBill Database Backup\n");
+    $writer("-- Generated at " . date('Y-m-d H:i:s') . "\n\n");
+    $writer("SET NAMES utf8mb4;\n");
+    $writer("SET FOREIGN_KEY_CHECKS=0;\n\n");
+
+    $tables = $pdo->query('SHOW TABLES')->fetchAll(PDO::FETCH_NUM);
+    foreach ($tables as $row) {
+        $table = $row[0];
+        if ($table === '') {
+            continue;
+        }
+        $createStmt = $pdo->query("SHOW CREATE TABLE `{$table}`")->fetch(PDO::FETCH_ASSOC);
+        $createSql = $createStmt['Create Table'] ?? '';
+        if ($createSql === '') {
+            continue;
+        }
+
+        $writer("\n-- Table: `{$table}`\n");
+        $writer("DROP TABLE IF EXISTS `{$table}`;\n");
+        $writer($createSql . ";\n\n");
+
+        $colStmt = $pdo->query("SHOW COLUMNS FROM `{$table}`");
+        $columns = [];
+        while ($col = $colStmt->fetch(PDO::FETCH_ASSOC)) {
+            $columns[] = $col['Field'];
+        }
+        if (empty($columns)) {
+            continue;
+        }
+
+        $columnList = '`' . implode('`,`', array_map(function ($col) {
+            return str_replace('`', '``', $col);
+        }, $columns)) . '`';
+
+        $stmt = $pdo->query("SELECT * FROM `{$table}`");
+        $stmt->setFetchMode(PDO::FETCH_ASSOC);
+        $batch = [];
+        $batchSize = 200;
+
+        while ($rowData = $stmt->fetch()) {
+            $values = [];
+            foreach ($columns as $col) {
+                $val = $rowData[$col] ?? null;
+                if ($val === null) {
+                    $values[] = 'NULL';
+                } elseif (is_bool($val)) {
+                    $values[] = $val ? '1' : '0';
+                } else {
+                    $values[] = $pdo->quote((string) $val);
+                }
+            }
+            $batch[] = '(' . implode(',', $values) . ')';
+            if (count($batch) >= $batchSize) {
+                $writer("INSERT INTO `{$table}` ({$columnList}) VALUES\n" . implode(",\n", $batch) . ";\n");
+                $batch = [];
+            }
+        }
+        if (!empty($batch)) {
+            $writer("INSERT INTO `{$table}` ({$columnList}) VALUES\n" . implode(",\n", $batch) . ";\n");
+        }
+    }
+
+    $writer("\nSET FOREIGN_KEY_CHECKS=1;\n");
+
+    if ($useGzip) {
+        gzclose($handle);
+    } else {
+        fclose($handle);
+    }
+
+    return $dbBackupFile;
 }
 
 ?>

@@ -13,7 +13,9 @@ if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 
-$redirectRoute = !empty($_SESSION['aid']) ? 'dashboard' : (!empty($_SESSION['uid']) ? 'home' : 'login');
+$isAdminSession = !empty($_SESSION['aid']);
+$redirectRoute = $isAdminSession ? 'dashboard' : (!empty($_SESSION['uid']) ? 'home' : 'login');
+$logoutRedirectRoute = $isAdminSession ? 'admin' : 'login';
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     error_log('Logout attempted with invalid request method from IP ' . ($_SERVER['REMOTE_ADDR'] ?? ''));
@@ -40,4 +42,4 @@ run_hook('customer_logout'); #HOOK
 Admin::removeCookie();
 User::removeCookie();
 session_destroy();
-_alert(Lang::T('Logout Successful'), 'warning', 'login');
+_alert(Lang::T('Logout Successful'), 'warning', $logoutRedirectRoute);

@@ -2,6 +2,17 @@
 
 # CHANGELOG
 
+## 2026.01.31
+
+- **WhatsApp Gateway:** Added POST/GET method selection, auth headers, idempotency keys, and richer response handling for external WA servers.
+- **Interactive Builder:** Human-friendly `[[wa]]` blocks, multi-section list support, template buttons, and auto-fill on resend flows.
+- **Media Uploads:** Temporary header media upload with progress/preview, usage tracking, and automatic cleanup (max 7 days).
+- **Queue & Retry:** Configurable WA queue (max retries & interval) with cron processing and optional toggles for notifications and manual send flows.
+- **Billing Notes:** Optional recharge notes stored in `tbl_transactions.note` and configurable display on invoice views and transaction reports.
+- **Database:** Added WA queue/media tables (`tbl_wa_queue`, `tbl_wa_media_tmp`, `tbl_wa_media_usage`) via updater migration.
+- **Updater:** Added pre-update SQL database backup alongside the existing file backup for safer releases.
+- **Maintenance:** Updated documentation and release metadata (`version.json`, `README.md`, `system/updates.json`).
+
 ## 2025.10.27
 
 - **Security:** Refreshed CSRF logout tokens alongside the standard form tokens so long-running admin/customer sessions can still submit valid POST logouts after the 1-hour expiry window.
