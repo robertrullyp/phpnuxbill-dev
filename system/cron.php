@@ -92,7 +92,8 @@ foreach ($d as $ds) {
                     $u['namebp'],
                     $p['price'],
                     Message::getMessageType($p['type'], $textExpired),
-                    $config['user_notification_expired']
+                    $config['user_notification_expired'],
+                    'expired'
                 ) . "\n";
                 $u->status = 'off';
                 $u->save();

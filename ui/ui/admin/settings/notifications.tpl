@@ -181,6 +181,14 @@
                     <div class="form-group">
                         <label class="col-md-2 control-label">{Lang::T('Expired Notification Message')}</label>
                         <div class="col-md-6">
+                            <div class="checkbox">
+                                <input type="hidden" name="wa_queue_expired" value="0">
+                                <label>
+                                    <input type="checkbox" name="wa_queue_expired" value="1"
+                                        {if isset($_json['wa_queue_expired']) && ($_json['wa_queue_expired']=='1' || $_json['wa_queue_expired']=='yes' || $_json['wa_queue_expired']=='true' || $_json['wa_queue_expired']=='on')}checked{/if}>
+                                    WA Queue
+                                </label>
+                            </div>
                             <textarea class="form-control" id="expired" name="expired"
                                 placeholder="{Lang::T('Hello')} [[name]], {Lang::T('your internet package')} [[package]] {Lang::T('has been expired')}"
                                 rows="4">{if $_json['expired']!=''}{Lang::htmlspecialchars($_json['expired'])}{else}{Lang::T('Hello')} [[name]], {Lang::T('your internet package')} [[package]] {Lang::T('has been expired')}.{/if}</textarea>
@@ -200,6 +208,14 @@
                     <div class="form-group">
                         <label class="col-md-2 control-label">{Lang::T('Reminder 7 days')}</label>
                         <div class="col-md-6">
+                            <div class="checkbox">
+                                <input type="hidden" name="wa_queue_reminder_7_day" value="0">
+                                <label>
+                                    <input type="checkbox" name="wa_queue_reminder_7_day" value="1"
+                                        {if isset($_json['wa_queue_reminder_7_day']) && ($_json['wa_queue_reminder_7_day']=='1' || $_json['wa_queue_reminder_7_day']=='yes' || $_json['wa_queue_reminder_7_day']=='true' || $_json['wa_queue_reminder_7_day']=='on')}checked{/if}>
+                                    WA Queue
+                                </label>
+                            </div>
                             <textarea class="form-control" id="reminder_7_day" name="reminder_7_day"
                                 rows="4">{Lang::htmlspecialchars($_json['reminder_7_day'])}</textarea>
                         </div>
@@ -219,6 +235,14 @@
                     <div class="form-group">
                         <label class="col-md-2 control-label">{Lang::T('Reminder 3 days')}</label>
                         <div class="col-md-6">
+                            <div class="checkbox">
+                                <input type="hidden" name="wa_queue_reminder_3_day" value="0">
+                                <label>
+                                    <input type="checkbox" name="wa_queue_reminder_3_day" value="1"
+                                        {if isset($_json['wa_queue_reminder_3_day']) && ($_json['wa_queue_reminder_3_day']=='1' || $_json['wa_queue_reminder_3_day']=='yes' || $_json['wa_queue_reminder_3_day']=='true' || $_json['wa_queue_reminder_3_day']=='on')}checked{/if}>
+                                    WA Queue
+                                </label>
+                            </div>
                             <textarea class="form-control" id="reminder_3_day" name="reminder_3_day"
                                 rows="4">{Lang::htmlspecialchars($_json['reminder_3_day'])}</textarea>
                         </div>
@@ -238,6 +262,14 @@
                     <div class="form-group">
                         <label class="col-md-2 control-label">{Lang::T('Reminder 1 day')}</label>
                         <div class="col-md-6">
+                            <div class="checkbox">
+                                <input type="hidden" name="wa_queue_reminder_1_day" value="0">
+                                <label>
+                                    <input type="checkbox" name="wa_queue_reminder_1_day" value="1"
+                                        {if isset($_json['wa_queue_reminder_1_day']) && ($_json['wa_queue_reminder_1_day']=='1' || $_json['wa_queue_reminder_1_day']=='yes' || $_json['wa_queue_reminder_1_day']=='true' || $_json['wa_queue_reminder_1_day']=='on')}checked{/if}>
+                                    WA Queue
+                                </label>
+                            </div>
                             <textarea class="form-control" id="reminder_1_day" name="reminder_1_day"
                                 rows="4">{Lang::htmlspecialchars($_json['reminder_1_day'])}</textarea>
                         </div>
@@ -257,6 +289,14 @@
                     <div class="form-group">
                         <label class="col-md-2 control-label">{Lang::T('Invoice Notification Payment')}</label>
                         <div class="col-md-6">
+                            <div class="checkbox">
+                                <input type="hidden" name="wa_queue_invoice_paid" value="0">
+                                <label>
+                                    <input type="checkbox" name="wa_queue_invoice_paid" value="1"
+                                        {if isset($_json['wa_queue_invoice_paid']) && ($_json['wa_queue_invoice_paid']=='1' || $_json['wa_queue_invoice_paid']=='yes' || $_json['wa_queue_invoice_paid']=='true' || $_json['wa_queue_invoice_paid']=='on')}checked{/if}>
+                                    WA Queue
+                                </label>
+                            </div>
                             <textarea class="form-control" id="invoice_paid" name="invoice_paid"
                                 placeholder="{Lang::T('Hello')} [[name]], {Lang::T('your internet package')} [[package]] {Lang::T('has been expired')}"
                                 rows="20">{Lang::htmlspecialchars($_json['invoice_paid'])}</textarea>
@@ -287,6 +327,14 @@
                     <div class="form-group">
                         <label class="col-md-2 control-label">{Lang::T('Balance Notification Payment')}</label>
                         <div class="col-md-6">
+                            <div class="checkbox">
+                                <input type="hidden" name="wa_queue_invoice_balance" value="0">
+                                <label>
+                                    <input type="checkbox" name="wa_queue_invoice_balance" value="1"
+                                        {if isset($_json['wa_queue_invoice_balance']) && ($_json['wa_queue_invoice_balance']=='1' || $_json['wa_queue_invoice_balance']=='yes' || $_json['wa_queue_invoice_balance']=='true' || $_json['wa_queue_invoice_balance']=='on')}checked{/if}>
+                                    WA Queue
+                                </label>
+                            </div>
                             <textarea class="form-control" id="invoice_balance" name="invoice_balance"
                                 placeholder="{Lang::T('Hello')} [[name]], {Lang::T('your internet package')} [[package]] {Lang::T('has been expired')}"
                                 rows="20">{Lang::htmlspecialchars($_json['invoice_balance'])}</textarea>
@@ -316,6 +364,14 @@
                     <div class="form-group">
                         <label class="col-md-2 control-label">{Lang::T('Welcome Message')}</label>
                         <div class="col-md-6">
+                            <div class="checkbox">
+                                <input type="hidden" name="wa_queue_welcome_message" value="0">
+                                <label>
+                                    <input type="checkbox" name="wa_queue_welcome_message" value="1"
+                                        {if isset($_json['wa_queue_welcome_message']) && ($_json['wa_queue_welcome_message']=='1' || $_json['wa_queue_welcome_message']=='yes' || $_json['wa_queue_welcome_message']=='true' || $_json['wa_queue_welcome_message']=='on')}checked{/if}>
+                                    WA Queue
+                                </label>
+                            </div>
                             <textarea class="form-control" id="welcome_message" name="welcome_message"
                                 rows="4">{Lang::htmlspecialchars($_json['welcome_message'])}</textarea>
                         </div>
@@ -333,6 +389,14 @@
                     <div class="form-group">
                         <label class="col-md-2 control-label">{Lang::T('Plan Change Notification')}</label>
                         <div class="col-md-6">
+                            <div class="checkbox">
+                                <input type="hidden" name="wa_queue_plan_change_message" value="0">
+                                <label>
+                                    <input type="checkbox" name="wa_queue_plan_change_message" value="1"
+                                        {if isset($_json['wa_queue_plan_change_message']) && ($_json['wa_queue_plan_change_message']=='1' || $_json['wa_queue_plan_change_message']=='yes' || $_json['wa_queue_plan_change_message']=='true' || $_json['wa_queue_plan_change_message']=='on')}checked{/if}>
+                                    WA Queue
+                                </label>
+                            </div>
                             <textarea class="form-control" id="plan_change_message" name="plan_change_message"
                                 placeholder="{Lang::T('Great news')}, [[name]]! {Lang::T('Your plan has been successfully upgraded from ')} [[old_plan]] {Lang::T('to')} [[new_plan]]. {Lang::T('You can now enjoy seamless internet access until')} [[expiry]]. {Lang::T('Thank you for choosing')}  [[company]]  {Lang::T('for your internet needs')}, {Lang::T('Enjoy enhanced features and benefits starting today')}!"
                                 rows="4">{if $_json['plan_change_message']!=''}{Lang::htmlspecialchars($_json['plan_change_message'])}{else}{Lang::T('Great news')}, [[name]]! {Lang::T('Your plan has been successfully upgraded from ')} [[old_plan]] {Lang::T('to')} [[new_plan]]. {Lang::T('You can now enjoy seamless internet access until')} [[expiry]]. {Lang::T('Thank
@@ -353,6 +417,14 @@
                     <div class="form-group">
                         <label class="col-md-2 control-label">{Lang::T('Expiry Edit Notification')}</label>
                         <div class="col-md-6">
+                            <div class="checkbox">
+                                <input type="hidden" name="wa_queue_edit_expiry_message" value="0">
+                                <label>
+                                    <input type="checkbox" name="wa_queue_edit_expiry_message" value="1"
+                                        {if isset($_json['wa_queue_edit_expiry_message']) && ($_json['wa_queue_edit_expiry_message']=='1' || $_json['wa_queue_edit_expiry_message']=='yes' || $_json['wa_queue_edit_expiry_message']=='true' || $_json['wa_queue_edit_expiry_message']=='on')}checked{/if}>
+                                    WA Queue
+                                </label>
+                            </div>
                             <textarea class="form-control" id="edit_expiry_message" name="edit_expiry_message"
                                 placeholder="{Lang::T('Dear')} [[name]], {Lang::T('your')} [[plan]] {Lang::T('expiry date has been extended! You can now enjoy seamless internet access until')} [[expiry]]. {Lang::T('Thank you for choosing')}  [[company]]  {Lang::T('for your internet needs')}!"
                                 rows="4">{if $_json['edit_expiry_message']!=''}{Lang::htmlspecialchars($_json['edit_expiry_message'])}{else}{Lang::T('Dear')} [[name]], {Lang::T('your')} [[plan]] {Lang::T('expiry date has been extended! You can now enjoy
@@ -373,6 +445,14 @@
                     <div class="form-group">
                         <label class="col-md-2 control-label">{Lang::T('Send Balance')}</label>
                         <div class="col-md-6">
+                            <div class="checkbox">
+                                <input type="hidden" name="wa_queue_balance_send" value="0">
+                                <label>
+                                    <input type="checkbox" name="wa_queue_balance_send" value="1"
+                                        {if isset($_json['wa_queue_balance_send']) && ($_json['wa_queue_balance_send']=='1' || $_json['wa_queue_balance_send']=='yes' || $_json['wa_queue_balance_send']=='true' || $_json['wa_queue_balance_send']=='on')}checked{/if}>
+                                    WA Queue
+                                </label>
+                            </div>
                             <textarea class="form-control" id="balance_send" name="balance_send"
                                 rows="4">{if $_json['balance_send']}{Lang::htmlspecialchars($_json['balance_send'])}{else}{Lang::htmlspecialchars($_default['balance_send'])}{/if}</textarea>
                         </div>
@@ -387,6 +467,14 @@
                     <div class="form-group">
                         <label class="col-md-2 control-label">{Lang::T('Received Balance')}</label>
                         <div class="col-md-6">
+                            <div class="checkbox">
+                                <input type="hidden" name="wa_queue_balance_received" value="0">
+                                <label>
+                                    <input type="checkbox" name="wa_queue_balance_received" value="1"
+                                        {if isset($_json['wa_queue_balance_received']) && ($_json['wa_queue_balance_received']=='1' || $_json['wa_queue_balance_received']=='yes' || $_json['wa_queue_balance_received']=='true' || $_json['wa_queue_balance_received']=='on')}checked{/if}>
+                                    WA Queue
+                                </label>
+                            </div>
                             <textarea class="form-control" id="balance_received" name="balance_received"
                                 rows="4">{if $_json['balance_received']}{Lang::htmlspecialchars($_json['balance_received'])}{else}{Lang::htmlspecialchars($_default['balance_received'])}{/if}</textarea>
                         </div>
@@ -538,7 +626,7 @@
         xhr.send(formData);
     }
 
-    function addButtonRow() {
+    function addButtonRow(idVal, textVal) {
         var container = byId('wa_builder_buttons');
         if (!container) return;
         var row = document.createElement('div');
@@ -547,9 +635,13 @@
             '<div class="col-xs-5"><input type="text" class="form-control wa-builder-text" placeholder="text"></div>' +
             '<div class="col-xs-2"><button type="button" class="btn btn-danger btn-xs wa-builder-remove">x</button></div>';
         container.appendChild(row);
+        var idInput = row.querySelector('.wa-builder-id');
+        var textInput = row.querySelector('.wa-builder-text');
+        if (idInput && idVal !== undefined && idVal !== null) idInput.value = idVal;
+        if (textInput && textVal !== undefined && textVal !== null) textInput.value = textVal;
     }
 
-    function addRowItem() {
+    function addRowItem(sectionVal, idVal, titleVal, descVal) {
         var container = byId('wa_builder_rows');
         if (!container) return;
         var row = document.createElement('div');
@@ -560,9 +652,17 @@
             '<div class="col-xs-3"><input type="text" class="form-control wa-builder-row-desc" placeholder="description"></div>' +
             '<div class="col-xs-1"><button type="button" class="btn btn-danger btn-xs wa-builder-remove">x</button></div>';
         container.appendChild(row);
+        var sectionInput = row.querySelector('.wa-builder-row-section');
+        var idInput = row.querySelector('.wa-builder-row-id');
+        var titleInput = row.querySelector('.wa-builder-row-title');
+        var descInput = row.querySelector('.wa-builder-row-desc');
+        if (sectionInput && sectionVal !== undefined && sectionVal !== null) sectionInput.value = sectionVal;
+        if (idInput && idVal !== undefined && idVal !== null) idInput.value = idVal;
+        if (titleInput && titleVal !== undefined && titleVal !== null) titleInput.value = titleVal;
+        if (descInput && descVal !== undefined && descVal !== null) descInput.value = descVal;
     }
 
-    function addTemplateButtonRow() {
+    function addTemplateButtonRow(typeVal, textVal, valueVal) {
         var container = byId('wa_builder_template_buttons');
         if (!container) return;
         var row = document.createElement('div');
@@ -576,6 +676,12 @@
             '<div class="col-xs-4"><input type="text" class="form-control wa-builder-template-value" placeholder="id/url/phone"></div>' +
             '<div class="col-xs-1"><button type="button" class="btn btn-danger btn-xs wa-builder-remove">x</button></div>';
         container.appendChild(row);
+        var typeInput = row.querySelector('.wa-builder-template-type');
+        var textInput = row.querySelector('.wa-builder-template-text');
+        var valueInput = row.querySelector('.wa-builder-template-value');
+        if (typeInput && typeVal !== undefined && typeVal !== null) typeInput.value = typeVal;
+        if (textInput && textVal !== undefined && textVal !== null) textInput.value = textVal;
+        if (valueInput && valueVal !== undefined && valueVal !== null) valueInput.value = valueVal;
     }
 
     function toggleMode() {
@@ -679,6 +785,191 @@
         return lines.join('\n');
     }
 
+    function clearBuilderRows() {
+        var btns = byId('wa_builder_buttons');
+        if (btns) btns.innerHTML = '';
+        var rows = byId('wa_builder_rows');
+        if (rows) rows.innerHTML = '';
+        var temp = byId('wa_builder_template_buttons');
+        if (temp) temp.innerHTML = '';
+    }
+
+    function normalizeHeaderType(val) {
+        var cleaned = (val || '').toString().trim().toLowerCase();
+        if (cleaned === '') return '';
+        if (cleaned === '1' || cleaned === 'text') return '1';
+        if (cleaned === '2' || cleaned === 'image') return '2';
+        if (cleaned === '3' || cleaned === 'video') return '3';
+        if (cleaned === '4' || cleaned === 'document' || cleaned === 'doc' || cleaned === 'pdf') return '4';
+        return cleaned;
+    }
+
+    function applyBuilderData(data) {
+        if (!data) return false;
+        if (byId('wa_builder_mode') && data.mode) byId('wa_builder_mode').value = data.mode;
+        if (byId('wa_builder_text')) byId('wa_builder_text').value = data.text || '';
+        if (byId('wa_builder_header_text')) byId('wa_builder_header_text').value = data.headerText || '';
+        if (byId('wa_builder_header_type')) byId('wa_builder_header_type').value = data.headerType || '';
+        if (byId('wa_builder_header_media')) byId('wa_builder_header_media').value = data.headerMedia || '';
+        if (byId('wa_builder_footer')) byId('wa_builder_footer').value = data.footer || '';
+        if (byId('wa_builder_allow_empty')) byId('wa_builder_allow_empty').checked = !!data.allowEmptyText;
+
+        clearBuilderRows();
+
+        if (data.mode === 'list') {
+            if (byId('wa_builder_list_title')) byId('wa_builder_list_title').value = data.listTitle || '';
+            if (byId('wa_builder_list_button_text')) byId('wa_builder_list_button_text').value = data.listButtonText || '';
+            if (Array.isArray(data.rows) && data.rows.length) {
+                data.rows.forEach(function (row) {
+                    addRowItem(row.section || '', row.id || '', row.title || '', row.description || '');
+                });
+            } else {
+                addRowItem();
+            }
+        } else if (data.mode === 'template') {
+            if (Array.isArray(data.templateButtons) && data.templateButtons.length) {
+                data.templateButtons.forEach(function (btn) {
+                    addTemplateButtonRow(btn.type || 'quick', btn.text || '', btn.value || '');
+                });
+            } else {
+                addTemplateButtonRow();
+            }
+        } else {
+            if (Array.isArray(data.buttons) && data.buttons.length) {
+                data.buttons.forEach(function (btn) {
+                    addButtonRow(btn.id || '', btn.text || '');
+                });
+            } else {
+                addButtonRow();
+            }
+        }
+
+        toggleMode();
+        updatePreview();
+        return true;
+    }
+
+    function parseWaBlock(text) {
+        if (!text) return null;
+        var match = text.match(/\[\[wa\]\]([\s\S]*?)\[\[\/wa\]\]/i);
+        if (!match) return null;
+        var block = match[1] || '';
+        var lines = block.split(/\r?\n/);
+        var data = {
+            mode: 'buttons',
+            text: '',
+            headerType: '',
+            headerText: '',
+            headerMedia: '',
+            footer: '',
+            allowEmptyText: false,
+            buttons: [],
+            templateButtons: [],
+            rows: [],
+            listTitle: '',
+            listButtonText: ''
+        };
+        var textLines = [];
+        var currentSection = 'Menu';
+        lines.forEach(function (rawLine) {
+            var line = rawLine.trim();
+            if (!line) {
+                textLines.push('');
+                return;
+            }
+            if (line.charAt(0) !== '[') {
+                textLines.push(rawLine);
+                return;
+            }
+            var sepIndex = line.indexOf('](');
+            if (sepIndex === -1 || line.slice(-1) !== ')') {
+                textLines.push(rawLine);
+                return;
+            }
+            var key = line.substring(1, sepIndex).toLowerCase();
+            var val = line.substring(sepIndex + 2, line.length - 1);
+            if (key === 'type') {
+                data.mode = (val || '').toLowerCase().trim() || 'buttons';
+            } else if (key === 'headertext') {
+                data.headerText = val;
+                if (!data.headerType) data.headerType = '1';
+            } else if (key === 'headertype') {
+                data.headerType = normalizeHeaderType(val);
+            } else if (key === 'headermedia') {
+                data.headerMedia = val;
+                if (!data.headerType) data.headerType = '2';
+            } else if (key === 'footer') {
+                data.footer = val;
+            } else if (key === 'allowemptytext') {
+                data.allowEmptyText = (val || '').toLowerCase() === 'true' || val === '1';
+            } else if (key === 'title') {
+                data.listTitle = val;
+            } else if (key === 'buttontext') {
+                data.listButtonText = val;
+            } else if (key === 'section') {
+                currentSection = val || 'Menu';
+            } else if (key === 'row') {
+                var parts = val.split('|');
+                var row = {
+                    section: currentSection || 'Menu',
+                    id: (parts[0] || '').trim(),
+                    title: (parts[1] || '').trim(),
+                    description: (parts[2] || '').trim()
+                };
+                if (!row.title) row.title = row.id;
+                if (!row.id) row.id = row.title;
+                data.rows.push(row);
+            } else if (key === 'button') {
+                var partsBtn = val.split('|');
+                var first = (partsBtn[0] || '').trim().toLowerCase();
+                if (data.mode === 'template' && (first === 'quick' || first === 'url' || first === 'call')) {
+                    data.templateButtons.push({
+                        type: first,
+                        text: (partsBtn[2] || partsBtn[1] || '').trim(),
+                        value: (partsBtn[1] || '').trim()
+                    });
+                } else {
+                    data.buttons.push({
+                        id: (partsBtn[0] || '').trim(),
+                        text: (partsBtn[1] || partsBtn[0] || '').trim()
+                    });
+                }
+            }
+        });
+        data.text = textLines.join('\n').trim();
+        if (data.headerText && !data.headerType) data.headerType = '1';
+        if (data.headerMedia && !data.headerType) data.headerType = '2';
+        data.headerType = normalizeHeaderType(data.headerType);
+        return data;
+    }
+
+    function autofillBuilderFromTarget() {
+        var targetSelect = byId('wa_builder_target');
+        if (!targetSelect) return;
+        var targetId = targetSelect.value || '';
+        var target = targetId ? byId(targetId) : null;
+        if (!target) return;
+        var raw = target.value || '';
+        var data = parseWaBlock(raw);
+        if (!data) {
+            data = {
+                mode: (byId('wa_builder_mode') || {}).value || 'buttons',
+                text: raw,
+                headerType: '',
+                headerText: '',
+                headerMedia: '',
+                footer: '',
+                allowEmptyText: false,
+                buttons: [],
+                templateButtons: [],
+                rows: [],
+                listTitle: '',
+                listButtonText: ''
+            };
+        }
+        applyBuilderData(data);
+    }
+
     function updatePreview() {
         var preview = byId('wa_builder_preview');
         if (!preview) return;
@@ -693,16 +984,7 @@
         var target = byId(targetId);
         if (!target) return;
         var block = preview.value;
-        var start = target.selectionStart;
-        var end = target.selectionEnd;
-        if (typeof start === 'number' && typeof end === 'number') {
-            var before = target.value.substring(0, start);
-            var after = target.value.substring(end);
-            target.value = before + block + after;
-            target.selectionStart = target.selectionEnd = start + block.length;
-        } else {
-            target.value = (target.value ? target.value + "\n" : "") + block;
-        }
+        target.value = block;
         target.focus();
     }
 
@@ -724,6 +1006,9 @@
         uploadHeaderMedia();
     });
     if (byId('wa_builder_insert')) byId('wa_builder_insert').addEventListener('click', insertToTarget);
+        if (byId('wa_builder_target')) byId('wa_builder_target').addEventListener('change', function () {
+            autofillBuilderFromTarget();
+        });
         if (byId('wa_builder_mode')) byId('wa_builder_mode').addEventListener('change', function () {
             toggleMode();
             updatePreview();
@@ -752,6 +1037,7 @@
         addTemplateButtonRow();
         toggleMode();
         updatePreview();
+        autofillBuilderFromTarget();
     }
 
     document.addEventListener('DOMContentLoaded', initBuilder);

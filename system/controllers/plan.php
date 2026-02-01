@@ -463,6 +463,7 @@ switch ($action) {
 
             // Send  Notifications
             if (isset($_POST['notify']) && $_POST['notify'] == true) {
+                $templateKey = 'plan_change_message';
                 if ($oldPlanID != $id_plan) {
                     $oldPlan = ORM::for_table('tbl_plans')->find_one($oldPlanID);
                     $oldPlanName = $oldPlan ? $oldPlan['name_plan'] : 'Old Plan';
@@ -481,6 +482,7 @@ switch ($action) {
                     $notifyMessage = str_replace('[[old_plan]]', $oldPlanName, $notifyMessage);
                     $notifyMessage = str_replace('[[new_plan]]', $planName, $notifyMessage);
                 } else {
+                    $templateKey = 'edit_expiry_message';
                     $notifyMessage = Lang::getNotifText('edit_expiry_message');
                     if (empty($notifyMessage)) {
                         $notifyMessage = Lang::T('Dear') . ' [[name]], ' .
@@ -501,6 +503,10 @@ switch ($action) {
 
                 $subject = $planName . ' ' . Lang::T('Expiry Extension Notification');
 
+                $waOptions = Message::isWhatsappQueueEnabledForNotificationTemplate($templateKey)
+                    ? ['queue' => true, 'queue_context' => 'notification']
+                    : [];
+
                 $channels = [
                     'sms' => [
                         'enabled' => isset($_POST['sms']),
@@ -510,7 +516,7 @@ switch ($action) {
                     'whatsapp' => [
                         'enabled' => isset($_POST['wa']),
                         'method' => 'sendWhatsapp',
-                        'args' => [$customer['phonenumber'], $notifyMessage]
+                        'args' => [$customer['phonenumber'], $notifyMessage, $waOptions]
                     ],
                     'email' => [
                         'enabled' => isset($_POST['mail']),

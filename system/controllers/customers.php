@@ -587,6 +587,10 @@ switch ($action) {
 
                 $subject = "Welcome to " . $config['CompanyName'];
 
+                $waOptions = Message::isWhatsappQueueEnabledForNotificationTemplate('welcome_message')
+                    ? ['queue' => true, 'queue_context' => 'notification']
+                    : [];
+
                 $channels = [
                     'sms' => [
                         'enabled' => isset($_POST['sms']),
@@ -596,7 +600,7 @@ switch ($action) {
                     'whatsapp' => [
                         'enabled' => isset($_POST['wa']),
                         'method' => 'sendWhatsapp',
-                        'args' => [$d['phonenumber'], $welcomeMessage]
+                        'args' => [$d['phonenumber'], $welcomeMessage, $waOptions]
                     ],
                     'email' => [
                         'enabled' => isset($_POST['mail']),

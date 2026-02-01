@@ -62,7 +62,8 @@ foreach ($d as $ds) {
                     $p['name_plan'],
                     $price,
                     Message::getMessageType($p['type'], Lang::getNotifText('reminder_7_day')),
-                    $config['user_notification_reminder']
+                    $config['user_notification_reminder'],
+                    'reminder_7_day'
                 ) . "\n";
 				sleep(1); // Add 1 second delay after sending notification
             } catch (Exception $e) {
@@ -75,7 +76,8 @@ foreach ($d as $ds) {
                     $p['name_plan'],
                     $price,
                     Message::getMessageType($p['type'], Lang::getNotifText('reminder_3_day')),
-                    $config['user_notification_reminder']
+                    $config['user_notification_reminder'],
+                    'reminder_3_day'
                 ) . "\n";
 				sleep(1); // Add 1 second delay after sending notification
             } catch (Exception $e) {
@@ -88,7 +90,8 @@ foreach ($d as $ds) {
                     $p['name_plan'],
                     $price,
                     Message::getMessageType($p['type'], Lang::getNotifText('reminder_1_day')),
-                    $config['user_notification_reminder']
+                    $config['user_notification_reminder'],
+                    'reminder_1_day'
                 ) . "\n";
 				sleep(1); // Add 1 second delay after sending notification
             } catch (Exception $e) {

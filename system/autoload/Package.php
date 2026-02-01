@@ -920,7 +920,7 @@ class Package
         if ($config['user_notification_payment'] == 'sms') {
             Message::sendSMS($customer['phonenumber'], $textInvoice);
         } else if ($config['user_notification_payment'] == 'wa') {
-            $options = Message::isWhatsappQueueEnabledForNotifications() ? ['queue' => true, 'queue_context' => 'invoice'] : [];
+            $options = Message::isWhatsappQueueEnabledForNotificationTemplate('invoice_balance') ? ['queue' => true, 'queue_context' => 'invoice'] : [];
             Message::sendWhatsapp($customer['phonenumber'], $textInvoice, $options);
         } else if ($config['user_notification_payment'] == 'email') {
             Message::sendEmail($customer['email'], '[' . $config['CompanyName'] . '] ' . Lang::T("Invoice") . ' ' . $inv, $textInvoice);
@@ -987,7 +987,7 @@ class Package
         if ($config['user_notification_payment'] == 'sms') {
             Message::sendSMS($customer['phonenumber'], $textInvoice);
         } else if ($config['user_notification_payment'] == 'wa') {
-            $options = Message::isWhatsappQueueEnabledForNotifications() ? ['queue' => true, 'queue_context' => 'invoice'] : [];
+            $options = Message::isWhatsappQueueEnabledForNotificationTemplate('invoice_balance') ? ['queue' => true, 'queue_context' => 'invoice'] : [];
             Message::sendWhatsapp($customer['phonenumber'], $textInvoice, $options);
         } else if ($config['user_notification_payment'] == 'email') {
             Message::sendEmail($customer['email'], '[' . $config['CompanyName'] . '] ' . Lang::T("Invoice") . ' ' . $inv, $textInvoice);

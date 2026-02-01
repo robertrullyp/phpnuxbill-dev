@@ -589,6 +589,28 @@ class Message
         return in_array($flag, ['1', 'yes', 'true', 'on'], true);
     }
 
+    public static function isWhatsappQueueEnabledForNotificationTemplate($templateKey = '')
+    {
+        global $_notifmsg;
+        if (!self::isWhatsappQueueEnabledForNotifications()) {
+            return false;
+        }
+        $templateKey = trim((string)$templateKey);
+        if ($templateKey === '') {
+            return true;
+        }
+        $key = 'wa_queue_' . $templateKey;
+        if (!array_key_exists($key, $_notifmsg)) {
+            return true;
+        }
+        $flag = $_notifmsg[$key];
+        $normalized = self::normalizeBooleanValue($flag);
+        if ($normalized === null) {
+            return true;
+        }
+        return $normalized;
+    }
+
     private static function enqueueWhatsappPayload(array $payload, $recipient, $messageContent, $context = 'whatsapp')
     {
         self::ensureWhatsappQueueTable();
@@ -1462,7 +1484,7 @@ class Message
         }
     }
 
-    public static function sendPackageNotification($customer, $package, $price, $message, $via)
+    public static function sendPackageNotification($customer, $package, $price, $message, $via, $templateKey = '')
     {
         global $ds, $config;
         if (empty($message)) {
@@ -1543,14 +1565,14 @@ class Message
             } else if ($via == 'email') {
                 self::sendEmail($customer['email'], '[' . $config['CompanyName'] . '] ' . Lang::T("Internet Plan Reminder"), $msg);
             } else if ($via == 'wa') {
-                $options = self::isWhatsappQueueEnabledForNotifications() ? ['queue' => true, 'queue_context' => 'notification'] : [];
+                $options = self::isWhatsappQueueEnabledForNotificationTemplate($templateKey) ? ['queue' => true, 'queue_context' => 'notification'] : [];
                 Message::sendWhatsapp($customer['phonenumber'], $msg, $options);
             }
         }
         return "$via: $msg";
     }
 
-    public static function sendBalanceNotification($cust, $target, $balance, $balance_now, $message, $via)
+    public static function sendBalanceNotification($cust, $target, $balance, $balance_now, $message, $via, $templateKey = '')
     {
         global $config;
         $msg = str_replace('[[name]]', $target['fullname'] . ' (' . $target['username'] . ')', $message);
@@ -1566,7 +1588,7 @@ class Message
             } else if ($via == 'email') {
                 self::sendEmail($cust['email'], '[' . $config['CompanyName'] . '] ' . Lang::T("Balance Notification"), $msg);
             } else if ($via == 'wa') {
-                $options = self::isWhatsappQueueEnabledForNotifications() ? ['queue' => true, 'queue_context' => 'notification'] : [];
+                $options = self::isWhatsappQueueEnabledForNotificationTemplate($templateKey) ? ['queue' => true, 'queue_context' => 'notification'] : [];
                 Message::sendWhatsapp($phone, $msg, $options);
             }
             self::addToInbox($cust['id'], Lang::T('Balance Notification'), $msg);
@@ -1647,7 +1669,7 @@ class Message
         } else if ($config['user_notification_payment'] == 'email') {
             self::sendEmail($cust['email'], '[' . $config['CompanyName'] . '] ' . Lang::T("Invoice") . ' #' . $trx['invoice'], $textInvoice);
         } else if ($config['user_notification_payment'] == 'wa') {
-            $options = self::isWhatsappQueueEnabledForNotifications() ? ['queue' => true, 'queue_context' => 'invoice'] : [];
+            $options = self::isWhatsappQueueEnabledForNotificationTemplate('invoice_paid') ? ['queue' => true, 'queue_context' => 'invoice'] : [];
             Message::sendWhatsapp($cust['phonenumber'], $textInvoice, $options);
         }
     }
