@@ -1028,6 +1028,9 @@
             }
             var data = null;
             try { data = JSON.parse(xhr.responseText); } catch (e) {}
+            if (data && data.csrf_token) {
+                if (csrfInput) csrfInput.value = data.csrf_token;
+            }
             if (!data || !data.ok) {
                 if (statusEl) {
                     statusEl.textContent = (data && data.message) ? data.message : 'Gagal mengirim.';

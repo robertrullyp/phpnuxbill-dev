@@ -1008,7 +1008,12 @@ switch ($action) {
         }
         $csrf_token = _post('csrf_token');
         if (!Csrf::check($csrf_token)) {
-            echo json_encode(['ok' => false, 'message' => Lang::T('Invalid or Expired CSRF Token') . "."]);
+            $newToken = Csrf::generateAndStoreToken();
+            echo json_encode([
+                'ok' => false,
+                'message' => Lang::T('Invalid or Expired CSRF Token') . ".",
+                'csrf_token' => $newToken,
+            ]);
             exit;
         }
 
@@ -1163,11 +1168,12 @@ switch ($action) {
         $message = strtr($message, $replacements);
 
         $sent = Message::sendWhatsapp($phone, $message, ['skip_queue' => true, 'queue_context' => 'test']);
+        $newToken = Csrf::generateAndStoreToken();
         if ($sent === false || $sent === 'kosong') {
-            echo json_encode(['ok' => false, 'message' => 'Gagal mengirim.']);
+            echo json_encode(['ok' => false, 'message' => 'Gagal mengirim.', 'csrf_token' => $newToken]);
             exit;
         }
-        echo json_encode(['ok' => true, 'message' => 'Test terkirim.']);
+        echo json_encode(['ok' => true, 'message' => 'Test terkirim.', 'csrf_token' => $newToken]);
         exit;
     case 'dbstatus':
         if (!in_array($admin['user_type'], ['SuperAdmin', 'Admin'])) {
