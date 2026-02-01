@@ -415,6 +415,7 @@
         if (!container) return;
         var row = document.createElement('div');
         row.className = 'row wa-builder-item';
+        row.setAttribute('draggable', 'true');
         row.innerHTML = '<div class="col-xs-5"><input type="text" class="form-control wa-builder-id" placeholder="id"></div>' +
             '<div class="col-xs-5"><input type="text" class="form-control wa-builder-text" placeholder="text"></div>' +
             '<div class="col-xs-2"><button type="button" class="btn btn-danger btn-xs wa-builder-remove">x</button></div>';
@@ -426,6 +427,7 @@
         if (!container) return;
         var row = document.createElement('div');
         row.className = 'row wa-builder-item';
+        row.setAttribute('draggable', 'true');
         row.innerHTML = '<div class="col-xs-3"><input type="text" class="form-control wa-builder-row-section" placeholder="section"></div>' +
             '<div class="col-xs-2"><input type="text" class="form-control wa-builder-row-id" placeholder="id"></div>' +
             '<div class="col-xs-3"><input type="text" class="form-control wa-builder-row-title" placeholder="title"></div>' +
@@ -439,6 +441,7 @@
         if (!container) return;
         var row = document.createElement('div');
         row.className = 'row wa-builder-item';
+        row.setAttribute('draggable', 'true');
         row.innerHTML = '<div class="col-xs-3"><select class="form-control wa-builder-template-type">' +
             '<option value="quick">quick</option>' +
             '<option value="url">url</option>' +
@@ -448,6 +451,69 @@
             '<div class="col-xs-4"><input type="text" class="form-control wa-builder-template-value" placeholder="id/url/phone"></div>' +
             '<div class="col-xs-1"><button type="button" class="btn btn-danger btn-xs wa-builder-remove">x</button></div>';
         container.appendChild(row);
+    }
+
+    var dragItem = null;
+
+    function getDragAfterElement(container, y) {
+        var items = Array.prototype.slice.call(container.querySelectorAll('.wa-builder-item:not(.dragging)'));
+        var closest = { offset: Number.NEGATIVE_INFINITY, element: null };
+        items.forEach(function (child) {
+            var box = child.getBoundingClientRect();
+            var offset = y - box.top - box.height / 2;
+            if (offset < 0 && offset > closest.offset) {
+                closest = { offset: offset, element: child };
+            }
+        });
+        return closest.element;
+    }
+
+    function enableDragSort(container) {
+        if (!container) return;
+        container.addEventListener('dragstart', function (e) {
+            var item = e.target.closest('.wa-builder-item');
+            if (!item) return;
+            dragItem = item;
+            item.classList.add('dragging');
+            if (e.dataTransfer) {
+                e.dataTransfer.effectAllowed = 'move';
+                try { e.dataTransfer.setData('text/plain', ''); } catch (err) {}
+            }
+        });
+        container.addEventListener('dragover', function (e) {
+            if (!dragItem) return;
+            e.preventDefault();
+            var afterElement = getDragAfterElement(container, e.clientY);
+            if (!afterElement) {
+                container.appendChild(dragItem);
+            } else if (afterElement !== dragItem) {
+                container.insertBefore(dragItem, afterElement);
+            }
+        });
+        container.addEventListener('drop', function (e) {
+            if (!dragItem) return;
+            e.preventDefault();
+            var targetItem = e.target.closest('.wa-builder-item');
+            if (targetItem && targetItem !== dragItem) {
+                var box = targetItem.getBoundingClientRect();
+                var insertBefore = e.clientY < (box.top + box.height / 2);
+                if (insertBefore) {
+                    container.insertBefore(dragItem, targetItem);
+                } else {
+                    container.insertBefore(dragItem, targetItem.nextSibling);
+                }
+            }
+            dragItem.classList.remove('dragging');
+            dragItem = null;
+            updatePreview();
+        });
+        container.addEventListener('dragend', function () {
+            if (dragItem) {
+                dragItem.classList.remove('dragging');
+                dragItem = null;
+                updatePreview();
+            }
+        });
     }
 
     function toggleMode() {
@@ -633,6 +699,10 @@
                 updatePreview();
             }
         });
+
+        enableDragSort(byId('wa_builder_buttons'));
+        enableDragSort(byId('wa_builder_rows'));
+        enableDragSort(byId('wa_builder_template_buttons'));
 
         addButtonRow();
         addRowItem();
