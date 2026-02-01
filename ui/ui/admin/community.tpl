@@ -10,7 +10,14 @@
                 {Lang::T('Let\'s talk and ask your needs')}
             </div>
             <div class="box-footer">
-                <a href="https://t.me/robertrullyp" target="_blank" class="btn btn-primary btn-sm btn-block">{Lang::T('Telegram')}</a>
+                <div class="btn-group btn-group-justified" role="group" aria-label="Contact buttons">
+                    <div class="btn-group" role="group">
+                        <a href="https://t.me/robertrullyp" target="_blank" class="btn btn-primary btn-sm">{Lang::T('Telegram')}</a>
+                    </div>
+                    <div class="btn-group" role="group">
+                        <a href="https://wa.me/6285379145353" target="_blank" class="btn btn-success btn-sm">WhatsApp</a>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
