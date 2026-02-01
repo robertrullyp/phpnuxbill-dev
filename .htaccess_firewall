@@ -19,7 +19,7 @@
 </Files>
 
 RewriteEngine On
-RewriteBase /phpnuxbill-dev/
+RewriteBase /
 RewriteRule ^admin(/.*)?$ index.php [QSA,L]
 RewriteCond %{REQUEST_FILENAME} !-f
 RewriteCond %{REQUEST_FILENAME} !-d
