@@ -189,6 +189,8 @@
                                     WA Queue
                                 </label>
                             </div>
+                            <button type="button" class="btn btn-default btn-xs wa-template-test" data-template="expired" data-target="expired">Test Send</button>
+                            <span class="help-block" id="wa_test_status_expired"></span>
                             <textarea class="form-control" id="expired" name="expired"
                                 placeholder="{Lang::T('Hello')} [[name]], {Lang::T('your internet package')} [[package]] {Lang::T('has been expired')}"
                                 rows="4">{if $_json['expired']!=''}{Lang::htmlspecialchars($_json['expired'])}{else}{Lang::T('Hello')} [[name]], {Lang::T('your internet package')} [[package]] {Lang::T('has been expired')}.{/if}</textarea>
@@ -216,6 +218,8 @@
                                     WA Queue
                                 </label>
                             </div>
+                            <button type="button" class="btn btn-default btn-xs wa-template-test" data-template="reminder_7_day" data-target="reminder_7_day">Test Send</button>
+                            <span class="help-block" id="wa_test_status_reminder_7_day"></span>
                             <textarea class="form-control" id="reminder_7_day" name="reminder_7_day"
                                 rows="4">{Lang::htmlspecialchars($_json['reminder_7_day'])}</textarea>
                         </div>
@@ -243,6 +247,8 @@
                                     WA Queue
                                 </label>
                             </div>
+                            <button type="button" class="btn btn-default btn-xs wa-template-test" data-template="reminder_3_day" data-target="reminder_3_day">Test Send</button>
+                            <span class="help-block" id="wa_test_status_reminder_3_day"></span>
                             <textarea class="form-control" id="reminder_3_day" name="reminder_3_day"
                                 rows="4">{Lang::htmlspecialchars($_json['reminder_3_day'])}</textarea>
                         </div>
@@ -270,6 +276,8 @@
                                     WA Queue
                                 </label>
                             </div>
+                            <button type="button" class="btn btn-default btn-xs wa-template-test" data-template="reminder_1_day" data-target="reminder_1_day">Test Send</button>
+                            <span class="help-block" id="wa_test_status_reminder_1_day"></span>
                             <textarea class="form-control" id="reminder_1_day" name="reminder_1_day"
                                 rows="4">{Lang::htmlspecialchars($_json['reminder_1_day'])}</textarea>
                         </div>
@@ -297,6 +305,8 @@
                                     WA Queue
                                 </label>
                             </div>
+                            <button type="button" class="btn btn-default btn-xs wa-template-test" data-template="invoice_paid" data-target="invoice_paid">Test Send</button>
+                            <span class="help-block" id="wa_test_status_invoice_paid"></span>
                             <textarea class="form-control" id="invoice_paid" name="invoice_paid"
                                 placeholder="{Lang::T('Hello')} [[name]], {Lang::T('your internet package')} [[package]] {Lang::T('has been expired')}"
                                 rows="20">{Lang::htmlspecialchars($_json['invoice_paid'])}</textarea>
@@ -335,6 +345,8 @@
                                     WA Queue
                                 </label>
                             </div>
+                            <button type="button" class="btn btn-default btn-xs wa-template-test" data-template="invoice_balance" data-target="invoice_balance">Test Send</button>
+                            <span class="help-block" id="wa_test_status_invoice_balance"></span>
                             <textarea class="form-control" id="invoice_balance" name="invoice_balance"
                                 placeholder="{Lang::T('Hello')} [[name]], {Lang::T('your internet package')} [[package]] {Lang::T('has been expired')}"
                                 rows="20">{Lang::htmlspecialchars($_json['invoice_balance'])}</textarea>
@@ -372,6 +384,8 @@
                                     WA Queue
                                 </label>
                             </div>
+                            <button type="button" class="btn btn-default btn-xs wa-template-test" data-template="welcome_message" data-target="welcome_message">Test Send</button>
+                            <span class="help-block" id="wa_test_status_welcome_message"></span>
                             <textarea class="form-control" id="welcome_message" name="welcome_message"
                                 rows="4">{Lang::htmlspecialchars($_json['welcome_message'])}</textarea>
                         </div>
@@ -397,6 +411,8 @@
                                     WA Queue
                                 </label>
                             </div>
+                            <button type="button" class="btn btn-default btn-xs wa-template-test" data-template="plan_change_message" data-target="plan_change_message">Test Send</button>
+                            <span class="help-block" id="wa_test_status_plan_change_message"></span>
                             <textarea class="form-control" id="plan_change_message" name="plan_change_message"
                                 placeholder="{Lang::T('Great news')}, [[name]]! {Lang::T('Your plan has been successfully upgraded from ')} [[old_plan]] {Lang::T('to')} [[new_plan]]. {Lang::T('You can now enjoy seamless internet access until')} [[expiry]]. {Lang::T('Thank you for choosing')}  [[company]]  {Lang::T('for your internet needs')}, {Lang::T('Enjoy enhanced features and benefits starting today')}!"
                                 rows="4">{if $_json['plan_change_message']!=''}{Lang::htmlspecialchars($_json['plan_change_message'])}{else}{Lang::T('Great news')}, [[name]]! {Lang::T('Your plan has been successfully upgraded from ')} [[old_plan]] {Lang::T('to')} [[new_plan]]. {Lang::T('You can now enjoy seamless internet access until')} [[expiry]]. {Lang::T('Thank
@@ -425,6 +441,8 @@
                                     WA Queue
                                 </label>
                             </div>
+                            <button type="button" class="btn btn-default btn-xs wa-template-test" data-template="edit_expiry_message" data-target="edit_expiry_message">Test Send</button>
+                            <span class="help-block" id="wa_test_status_edit_expiry_message"></span>
                             <textarea class="form-control" id="edit_expiry_message" name="edit_expiry_message"
                                 placeholder="{Lang::T('Dear')} [[name]], {Lang::T('your')} [[plan]] {Lang::T('expiry date has been extended! You can now enjoy seamless internet access until')} [[expiry]]. {Lang::T('Thank you for choosing')}  [[company]]  {Lang::T('for your internet needs')}!"
                                 rows="4">{if $_json['edit_expiry_message']!=''}{Lang::htmlspecialchars($_json['edit_expiry_message'])}{else}{Lang::T('Dear')} [[name]], {Lang::T('your')} [[plan]] {Lang::T('expiry date has been extended! You can now enjoy
@@ -453,6 +471,8 @@
                                     WA Queue
                                 </label>
                             </div>
+                            <button type="button" class="btn btn-default btn-xs wa-template-test" data-template="balance_send" data-target="balance_send">Test Send</button>
+                            <span class="help-block" id="wa_test_status_balance_send"></span>
                             <textarea class="form-control" id="balance_send" name="balance_send"
                                 rows="4">{if $_json['balance_send']}{Lang::htmlspecialchars($_json['balance_send'])}{else}{Lang::htmlspecialchars($_default['balance_send'])}{/if}</textarea>
                         </div>
@@ -475,6 +495,8 @@
                                     WA Queue
                                 </label>
                             </div>
+                            <button type="button" class="btn btn-default btn-xs wa-template-test" data-template="balance_received" data-target="balance_received">Test Send</button>
+                            <span class="help-block" id="wa_test_status_balance_received"></span>
                             <textarea class="form-control" id="balance_received" name="balance_received"
                                 rows="4">{if $_json['balance_received']}{Lang::htmlspecialchars($_json['balance_received'])}{else}{Lang::htmlspecialchars($_default['balance_received'])}{/if}</textarea>
                         </div>
@@ -970,6 +992,61 @@
         applyBuilderData(data);
     }
 
+    function sendTemplateTest(templateKey, targetId, button) {
+        if (!templateKey) return;
+        var target = targetId ? byId(targetId) : null;
+        var message = target ? target.value : '';
+        var phone = prompt('Nomor WA tujuan untuk test (contoh: 62812xxxx)', '');
+        if (!phone) return;
+        var csrfInput = document.querySelector('input[name="csrf_token"]');
+        var csrf = csrfInput ? csrfInput.value : '';
+        var statusEl = byId('wa_test_status_' + templateKey);
+        if (statusEl) {
+            statusEl.textContent = 'Mengirim...';
+            statusEl.className = 'help-block';
+        }
+        var originalText = button ? button.textContent : '';
+        if (button) {
+            button.disabled = true;
+            button.textContent = 'Sending...';
+        }
+        var xhr = new XMLHttpRequest();
+        xhr.open('POST', '{Text::url('settings/notifications-test')}', true);
+        xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
+        xhr.onreadystatechange = function () {
+            if (xhr.readyState !== 4) return;
+            if (button) {
+                button.disabled = false;
+                button.textContent = originalText || 'Test Send';
+            }
+            if (xhr.status < 200 || xhr.status >= 300) {
+                if (statusEl) {
+                    statusEl.textContent = 'Gagal mengirim.';
+                    statusEl.className = 'help-block text-danger';
+                }
+                return;
+            }
+            var data = null;
+            try { data = JSON.parse(xhr.responseText); } catch (e) {}
+            if (!data || !data.ok) {
+                if (statusEl) {
+                    statusEl.textContent = (data && data.message) ? data.message : 'Gagal mengirim.';
+                    statusEl.className = 'help-block text-danger';
+                }
+                return;
+            }
+            if (statusEl) {
+                statusEl.textContent = data.message ? data.message : 'Test terkirim.';
+                statusEl.className = 'help-block text-success';
+            }
+        };
+        var params = 'csrf_token=' + encodeURIComponent(csrf) +
+            '&template=' + encodeURIComponent(templateKey) +
+            '&phone=' + encodeURIComponent(phone) +
+            '&message=' + encodeURIComponent(message || '');
+        xhr.send(params);
+    }
+
     function updatePreview() {
         var preview = byId('wa_builder_preview');
         if (!preview) return;
@@ -1030,6 +1107,13 @@
             if (e.target.closest('#wa_builder')) {
                 updatePreview();
             }
+        });
+        document.addEventListener('click', function (e) {
+            var btn = e.target.closest('.wa-template-test');
+            if (!btn) return;
+            var templateKey = btn.getAttribute('data-template') || '';
+            var targetId = btn.getAttribute('data-target') || '';
+            sendTemplateTest(templateKey, targetId, btn);
         });
 
         addButtonRow();

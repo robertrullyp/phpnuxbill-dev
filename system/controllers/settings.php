@@ -996,6 +996,179 @@ switch ($action) {
         file_put_contents($UPLOAD_PATH . "/notifications.json", json_encode($_POST));
         r2(getUrl('settings/notifications'), 's', Lang::T('Settings Saved Successfully'));
         break;
+    case 'notifications-test':
+        header('Content-Type: application/json');
+        if ($_app_stage == 'Demo') {
+            echo json_encode(['ok' => false, 'message' => 'Demo mode']);
+            exit;
+        }
+        if (!in_array($admin['user_type'], ['SuperAdmin', 'Admin'])) {
+            echo json_encode(['ok' => false, 'message' => Lang::T('You do not have permission to access this page')]);
+            exit;
+        }
+        $csrf_token = _post('csrf_token');
+        if (!Csrf::check($csrf_token)) {
+            echo json_encode(['ok' => false, 'message' => Lang::T('Invalid or Expired CSRF Token') . "."]);
+            exit;
+        }
+
+        $templateKey = trim((string)_post('template'));
+        $phone = trim((string)_post('phone'));
+        $message = (string)_post('message');
+        if ($phone === '') {
+            echo json_encode(['ok' => false, 'message' => 'Nomor WA tidak boleh kosong.']);
+            exit;
+        }
+        if (trim($message) === '') {
+            $message = Lang::getNotifText($templateKey);
+        }
+        if (trim($message) === '') {
+            echo json_encode(['ok' => false, 'message' => 'Template kosong.']);
+            exit;
+        }
+
+        $now = date('d M Y H:i');
+        $future = date('d M Y H:i', strtotime('+30 days'));
+        $companyName = $config['CompanyName'] ?? 'Company';
+        $companyAddress = $config['address'] ?? 'Address';
+        $companyPhone = $config['phone'] ?? '+62800000000';
+        $footer = $config['note'] ?? '';
+        $samplePrice = Lang::moneyFormat(10000);
+        $sampleBalance = Lang::moneyFormat(5000);
+        $replacements = [
+            '[[company_name]]' => $companyName,
+            '[[company]]' => $companyName,
+            '[[company_address]]' => $companyAddress,
+            '[[company_phone]]' => $companyPhone,
+            '[[address]]' => $companyAddress,
+            '[[phone]]' => $companyPhone,
+            '[[name]]' => 'Dummy',
+            '[[fullname]]' => 'Dummy',
+            '[[username]]' => 'dummy',
+            '[[Username]]' => 'dummy',
+            '[[user_name]]' => 'dummy',
+            '[[user_password]]' => 'password',
+            '[[password]]' => 'password',
+            '[[Password]]' => 'password',
+            '[[package]]' => 'Paket Demo',
+            '[[plan]]' => 'Paket Demo',
+            '[[plan_name]]' => 'Paket Demo',
+            '[[plan_price]]' => $samplePrice,
+            '[[price]]' => $samplePrice,
+            '[[invoice]]' => 'INV-TEST',
+            '[[date]]' => $now,
+            '[[trx_date]]' => $now,
+            '[[payment_gateway]]' => 'Gateway',
+            '[[payment_channel]]' => 'Channel',
+            '[[type]]' => 'PPPOE',
+            '[[expired_date]]' => $future,
+            '[[expiry]]' => $future,
+            '[[footer]]' => $footer,
+            '[[note]]' => 'Testing',
+            '[[invoice_link]]' => APP_URL . '/?_route=voucher/invoice/0/test',
+            '[[balance]]' => $sampleBalance,
+            '[[balance_before]]' => Lang::moneyFormat(10000),
+            '[[current_balance]]' => Lang::moneyFormat(15000),
+            '[[bills]]' => "Tax : " . Lang::moneyFormat(1000) . "\nTotal : " . Lang::moneyFormat(11000),
+            '[[old_plan]]' => 'Paket Lama',
+            '[[new_plan]]' => 'Paket Baru',
+            '[[payment_link]]' => '?_route=home&recharge=0&uid=test',
+            '[[url]]' => APP_URL . '/?_route=login',
+        ];
+
+        $phoneFormatted = Lang::phoneFormat($phone);
+        $customer = ORM::for_table('tbl_customers')->where('phonenumber', $phoneFormatted)->find_one();
+        if (!$customer && $phoneFormatted !== $phone) {
+            $customer = ORM::for_table('tbl_customers')->where('phonenumber', $phone)->find_one();
+        }
+        if ($customer) {
+            $replacements['[[name]]'] = $customer['fullname'] ?: $replacements['[[name]]'];
+            $replacements['[[fullname]]'] = $customer['fullname'] ?: $replacements['[[fullname]]'];
+            $replacements['[[username]]'] = $customer['username'] ?: $replacements['[[username]]'];
+            $replacements['[[Username]]'] = $customer['username'] ?: $replacements['[[Username]]'];
+            $replacements['[[user_name]]'] = $customer['username'] ?: $replacements['[[user_name]]'];
+            $replacements['[[user_password]]'] = $customer['password'] ?: $replacements['[[user_password]]'];
+            $replacements['[[password]]'] = $customer['password'] ?: $replacements['[[password]]'];
+            $replacements['[[Password]]'] = $customer['password'] ?: $replacements['[[Password]]'];
+            if (isset($customer['balance'])) {
+                $replacements['[[balance]]'] = Lang::moneyFormat($customer['balance']);
+                $replacements['[[current_balance]]'] = Lang::moneyFormat($customer['balance']);
+                $replacements['[[balance_before]]'] = Lang::moneyFormat($customer['balance']);
+            }
+
+            $recharge = ORM::for_table('tbl_user_recharges')
+                ->where('customer_id', $customer['id'])
+                ->order_by_desc('id')
+                ->find_one();
+            if ($recharge) {
+                $replacements['[[package]]'] = $recharge['namebp'] ?: $replacements['[[package]]'];
+                $replacements['[[plan]]'] = $recharge['namebp'] ?: $replacements['[[plan]]'];
+                $replacements['[[plan_name]]'] = $recharge['namebp'] ?: $replacements['[[plan_name]]'];
+                if (!empty($recharge['expiration']) && !empty($recharge['time'])) {
+                    $replacements['[[expired_date]]'] = Lang::dateAndTimeFormat($recharge['expiration'], $recharge['time']);
+                    $replacements['[[expiry]]'] = $replacements['[[expired_date]]'];
+                }
+                if (!empty($recharge['type'])) {
+                    $replacements['[[type]]'] = $recharge['type'];
+                }
+                if (!empty($recharge['plan_id'])) {
+                    $plan = ORM::for_table('tbl_plans')->find_one($recharge['plan_id']);
+                    if ($plan) {
+                        $replacements['[[plan_name]]'] = $plan['name_plan'] ?: $replacements['[[plan_name]]'];
+                        if (!empty($plan['price'])) {
+                            $replacements['[[plan_price]]'] = Lang::moneyFormat($plan['price']);
+                            $replacements['[[price]]'] = $replacements['[[plan_price]]'];
+                        }
+                    }
+                }
+            }
+
+            $trx = ORM::for_table('tbl_transactions')
+                ->where('user_id', $customer['id'])
+                ->order_by_desc('id')
+                ->find_one();
+            if ($trx) {
+                $replacements['[[invoice]]'] = $trx['invoice'] ?: $replacements['[[invoice]]'];
+                if (!empty($trx['recharged_on']) && !empty($trx['recharged_time'])) {
+                    $replacements['[[date]]'] = Lang::dateAndTimeFormat($trx['recharged_on'], $trx['recharged_time']);
+                    $replacements['[[trx_date]]'] = $replacements['[[date]]'];
+                }
+                if (!empty($trx['expiration']) && !empty($trx['time'])) {
+                    $replacements['[[expired_date]]'] = Lang::dateAndTimeFormat($trx['expiration'], $trx['time']);
+                    $replacements['[[expiry]]'] = $replacements['[[expired_date]]'];
+                }
+                if (!empty($trx['plan_name'])) {
+                    $replacements['[[plan_name]]'] = $trx['plan_name'];
+                    $replacements['[[package]]'] = $trx['plan_name'];
+                    $replacements['[[plan]]'] = $trx['plan_name'];
+                }
+                if (!empty($trx['price'])) {
+                    $replacements['[[plan_price]]'] = Lang::moneyFormat($trx['price']);
+                    $replacements['[[price]]'] = $replacements['[[plan_price]]'];
+                }
+                if (!empty($trx['type'])) {
+                    $replacements['[[type]]'] = $trx['type'];
+                }
+                if (!empty($trx['method'])) {
+                    $parts = explode('-', $trx['method']);
+                    $replacements['[[payment_gateway]]'] = trim($parts[0] ?? $replacements['[[payment_gateway]]']);
+                    $replacements['[[payment_channel]]'] = trim($parts[1] ?? $replacements['[[payment_channel]]']);
+                }
+                if (!empty($trx['note'])) {
+                    $replacements['[[note]]'] = $trx['note'];
+                }
+                $replacements['[[invoice_link]]'] = '?_route=voucher/invoice/' . $trx['id'] . '/' . md5($trx['id'] . $db_pass);
+            }
+        }
+        $message = strtr($message, $replacements);
+
+        $sent = Message::sendWhatsapp($phone, $message, ['skip_queue' => true, 'queue_context' => 'test']);
+        if ($sent === false || $sent === 'kosong') {
+            echo json_encode(['ok' => false, 'message' => 'Gagal mengirim.']);
+            exit;
+        }
+        echo json_encode(['ok' => true, 'message' => 'Test terkirim.']);
+        exit;
     case 'dbstatus':
         if (!in_array($admin['user_type'], ['SuperAdmin', 'Admin'])) {
             _alert(Lang::T('You do not have permission to access this page'), 'danger', "dashboard");
