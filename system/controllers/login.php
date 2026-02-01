@@ -419,10 +419,20 @@ switch ($do) {
             $ui->display('customer/login-noreg.tpl');
         } else {
             $UPLOAD_URL_PATH = str_replace($root_path, '',  $UPLOAD_PATH);
-            if (!empty($config['login_page_logo']) && file_exists($UPLOAD_URL_PATH . DIRECTORY_SEPARATOR . $config['login_page_logo'])) {
+            $company_logo_path = $UPLOAD_PATH . DIRECTORY_SEPARATOR . 'logo.png';
+            $company_logo_url = $UPLOAD_URL_PATH . DIRECTORY_SEPARATOR . 'logo.png';
+            $company_logo_login_path = $UPLOAD_PATH . DIRECTORY_SEPARATOR . 'logo.login.png';
+            $company_logo_login_url = $UPLOAD_URL_PATH . DIRECTORY_SEPARATOR . 'logo.login.png';
+            $company_logo_favicon_path = $UPLOAD_PATH . DIRECTORY_SEPARATOR . 'logo.favicon.png';
+            $company_logo_favicon_url = $UPLOAD_URL_PATH . DIRECTORY_SEPARATOR . 'logo.favicon.png';
+            if (!empty($config['login_page_logo']) && file_exists($UPLOAD_PATH . DIRECTORY_SEPARATOR . $config['login_page_logo'])) {
                 $login_logo = $UPLOAD_URL_PATH . DIRECTORY_SEPARATOR . $config['login_page_logo'];
-            } elseif (file_exists($UPLOAD_URL_PATH . DIRECTORY_SEPARATOR . 'login-logo.png')) {
+            } elseif (file_exists($UPLOAD_PATH . DIRECTORY_SEPARATOR . 'login-logo.png')) {
                 $login_logo = $UPLOAD_URL_PATH . DIRECTORY_SEPARATOR . 'login-logo.png';
+            } elseif (file_exists($company_logo_login_path)) {
+                $login_logo = $company_logo_login_url;
+            } elseif (file_exists($company_logo_path)) {
+                $login_logo = $company_logo_url;
             } else {
                 $login_logo = $UPLOAD_URL_PATH . DIRECTORY_SEPARATOR . 'login-logo.default.png';
             }
@@ -435,10 +445,14 @@ switch ($do) {
                 $wallpaper = $UPLOAD_URL_PATH . DIRECTORY_SEPARATOR . 'wallpaper.default.png';
             }
 
-            if (!empty($config['login_page_favicon']) && file_exists($UPLOAD_URL_PATH . DIRECTORY_SEPARATOR . $config['login_page_favicon'])) {
+            if (!empty($config['login_page_favicon']) && file_exists($UPLOAD_PATH . DIRECTORY_SEPARATOR . $config['login_page_favicon'])) {
                 $favicon = $UPLOAD_URL_PATH . DIRECTORY_SEPARATOR . $config['login_page_favicon'];
-            } elseif (file_exists($UPLOAD_URL_PATH . DIRECTORY_SEPARATOR . 'favicon.png')) {
+            } elseif (file_exists($UPLOAD_PATH . DIRECTORY_SEPARATOR . 'favicon.png')) {
                 $favicon = $UPLOAD_URL_PATH . DIRECTORY_SEPARATOR . 'favicon.png';
+            } elseif (file_exists($company_logo_favicon_path)) {
+                $favicon = $company_logo_favicon_url;
+            } elseif (file_exists($company_logo_path)) {
+                $favicon = $company_logo_url;
             } else {
                 $favicon = $UPLOAD_URL_PATH . DIRECTORY_SEPARATOR . 'favicon.default.png';
             }

@@ -6,7 +6,7 @@
     }
 </style>
 
-<form class="form-horizontal" method="post" role="form" action="{Text::url('')}settings/app-post"
+<form class="form-horizontal" id="settings_app_form" method="post" role="form" action="{Text::url('')}settings/app-post"
     enctype="multipart/form-data">
     <input type="hidden" name="csrf_token" value="{$csrf_token}">
     <div class="panel" id="accordion" role="tablist" aria-multiselectable="true">
@@ -152,7 +152,7 @@
                     </div>
                     <span class="help-block col-md-4">{Lang::T('rename .htaccess_firewall to .htaccess')}</span>
                 </div>
-                <button class="btn btn-success btn-block" name="general" type="submit">
+                <button class="btn btn-success btn-block js-settings-submit" name="general" type="button">
                     {Lang::T('Save Changes')}
                 </button>
             </div>
@@ -288,7 +288,7 @@
                         <small>{Lang::T('Enable or disable coupons')}</small>
                     </p>
                 </div>
-                <button class="btn btn-success btn-block" type="submit">
+                <button class="btn btn-success btn-block js-settings-submit" type="button">
                     {Lang::T('Save Changes')}
                 </button>
             </div>
@@ -447,7 +447,7 @@
                         {Lang::T('Address')}
                     </label>
                 </div>
-                <button class="btn btn-success btn-block" type="submit">
+                <button class="btn btn-success btn-block js-settings-submit" type="button">
                     {Lang::T('Save Changes')}
                 </button>
             </div>
@@ -559,7 +559,7 @@
                 <p class="help-block col-md-4">{Lang::T('Enable Turnstile for customer login page.')}</p>
                 </div>
     
-                <button class="btn btn-success btn-block" type="submit">
+                <button class="btn btn-success btn-block js-settings-submit" type="button">
                 {Lang::T('Save Changes')}
                 </button>
             </div>
@@ -625,7 +625,7 @@
                         </p>
                     </div>
                 {/if}
-                <button class="btn btn-success btn-block" type="submit">
+                <button class="btn btn-success btn-block js-settings-submit" type="button">
                     {Lang::T('Save Changes')}
                 </button>
             </div>
@@ -656,7 +656,7 @@
                             href="https://github.com/hotspotbilling/phpnuxbill/wiki/FreeRadius"
                             target="_blank">{Lang::T('Radius Instructions')}</a></p>
                 </div>
-                <button class="btn btn-success btn-block" type="submit">
+                <button class="btn btn-success btn-block js-settings-submit" type="button">
                     {Lang::T('Save Changes')}
                 </button>
             </div>
@@ -700,7 +700,7 @@
                             placeholder="{Lang::T('i agree to extends and will paid full after this')}">{$_c['extend_confirmation']}</textarea>
                     </div>
                 </div>
-                <button class="btn btn-success btn-block" type="submit">
+                <button class="btn btn-success btn-block js-settings-submit" type="button">
                     {Lang::T('Save Changes')}
                 </button>
             </div>
@@ -770,7 +770,7 @@
                         </small>
                     </p>
                 </div>
-                <button class="btn btn-success btn-block" type="submit">
+                <button class="btn btn-success btn-block js-settings-submit" type="button">
                     {Lang::T('Save Changes')}
                 </button>
             </div>
@@ -810,7 +810,7 @@
                 <small id="emailHelp" class="form-text text-muted">
                     {Lang::T('You will get Payment and Error notification')}
                 </small>
-                <button class="btn btn-success btn-block" type="submit">
+                <button class="btn btn-success btn-block js-settings-submit" type="button">
                     {Lang::T('Save Changes')}
                 </button>
             </div>
@@ -869,7 +869,7 @@
                     {Lang::T('in here too.')} <a href="https://gateway.drnet.biz.id" target="_blank">{Lang::T('Free
                         Server')}</a></small>
 
-                <button class="btn btn-success btn-block" type="submit">
+                <button class="btn btn-success btn-block js-settings-submit" type="button">
                     {Lang::T('Save Changes')}
                 </button>
             </div>
@@ -998,7 +998,7 @@
                 <small id="emailHelp" class="form-text text-muted">{Lang::T('You can use')} WhatsApp
                     {Lang::T('in here too.')} <a href="https://gateway.drnet.biz.id" target="_blank">{Lang::T('Free
                         Server')}</a></small>
-                <button class="btn btn-success btn-block" type="submit">
+                <button class="btn btn-success btn-block js-settings-submit" type="button">
                     {Lang::T('Save Changes')}
                 </button>
             </div>
@@ -1080,7 +1080,7 @@
                     </p>
                 </div>
 
-                <button class="btn btn-success btn-block" type="submit">
+                <button class="btn btn-success btn-block js-settings-submit" type="button">
                     {Lang::T('Save Changes')}
                 </button>
             </div>
@@ -1161,7 +1161,7 @@
                         {Lang::T('7 Days')}
                     </label>
                 </div>
-                <button class="btn btn-success btn-block" type="submit">
+                <button class="btn btn-success btn-block js-settings-submit" type="button">
                     {Lang::T('Save Changes')}
                 </button>
             </div>
@@ -1198,7 +1198,7 @@
                 <p class="col-md-5 help-block">/ip hotspot walled-garden<br>
                     add dst-host=tawk.to<br>
                     add dst-host=*.tawk.to</p>
-                <button class="btn btn-success btn-block" type="submit">
+                <button class="btn btn-success btn-block js-settings-submit" type="button">
                     {Lang::T('Save Changes')}
                 </button>
             </div>
@@ -1225,7 +1225,7 @@
                     </div>
                     <p class="col-md-4 help-block">{Lang::T('This Token will act as SuperAdmin/Admin')}</p>
                 </div>
-                <button class="btn btn-success btn-block" type="submit">
+                <button class="btn btn-success btn-block js-settings-submit" type="button">
                     {Lang::T('Save Changes')}
                 </button>
             </div>
@@ -1258,7 +1258,7 @@
                             onmouseleave="this.type = 'password'" onmouseenter="this.type = 'text'">
                     </div>
                 </div>
-                <button class="btn btn-success btn-block" type="submit">
+                <button class="btn btn-success btn-block js-settings-submit" type="button">
                     {Lang::T('Save Changes')}
                 </button>
             </div>
@@ -1329,7 +1329,7 @@
                     <p class="help-block col-md-4">{Lang::T('Enter the custom tax rate (e.g., 3.75 for 3.75%)')}</p>
                 </div>
 
-                <button class="btn btn-success btn-block" type="submit">
+                <button class="btn btn-success btn-block js-settings-submit" type="button">
                     {Lang::T('Save Changes')}
                 </button>
             </div>
@@ -1374,7 +1374,7 @@
                         will allow
                         you to download plugin from private/paid repository')}</label>
                 </div>
-                <button class="btn btn-success btn-block" type="submit">
+                <button class="btn btn-success btn-block js-settings-submit" type="button">
                     {Lang::T('Save Changes')}
                 </button>
             </div>
@@ -1573,5 +1573,18 @@
         }
     });
     document.getElementById('login_page_type').dispatchEvent(new Event('change'));
+</script>
+<script>
+    document.addEventListener("DOMContentLoaded", function() {
+        var form = document.getElementById('settings_app_form');
+        if (!form) return;
+        var buttons = document.querySelectorAll('.js-settings-submit');
+        buttons.forEach(function(button) {
+            button.addEventListener('click', function(e) {
+                e.preventDefault();
+                form.submit();
+            });
+        });
+    });
 </script>
 {include file="sections/footer.tpl"}

@@ -94,10 +94,20 @@ switch ($action) {
         }
         $ui->assign('logo', $logo);
 
-        if (!empty($config['login_page_logo']) && file_exists($UPLOAD_URL_PATH . DIRECTORY_SEPARATOR . $config['login_page_logo'])) {
+        $company_logo_path = $UPLOAD_PATH . DIRECTORY_SEPARATOR . 'logo.png';
+        $company_logo_url = $UPLOAD_URL_PATH . DIRECTORY_SEPARATOR . 'logo.png';
+        $company_logo_login_path = $UPLOAD_PATH . DIRECTORY_SEPARATOR . 'logo.login.png';
+        $company_logo_login_url = $UPLOAD_URL_PATH . DIRECTORY_SEPARATOR . 'logo.login.png';
+        $company_logo_favicon_path = $UPLOAD_PATH . DIRECTORY_SEPARATOR . 'logo.favicon.png';
+        $company_logo_favicon_url = $UPLOAD_URL_PATH . DIRECTORY_SEPARATOR . 'logo.favicon.png';
+        if (!empty($config['login_page_logo']) && file_exists($UPLOAD_PATH . DIRECTORY_SEPARATOR . $config['login_page_logo'])) {
             $login_logo = $UPLOAD_URL_PATH . DIRECTORY_SEPARATOR . $config['login_page_logo'];
-        } elseif (file_exists($UPLOAD_URL_PATH . DIRECTORY_SEPARATOR . 'login-logo.png')) {
+        } elseif (file_exists($UPLOAD_PATH . DIRECTORY_SEPARATOR . 'login-logo.png')) {
             $login_logo = $UPLOAD_URL_PATH . DIRECTORY_SEPARATOR . 'login-logo.png';
+        } elseif (file_exists($company_logo_login_path)) {
+            $login_logo = $company_logo_login_url;
+        } elseif (file_exists($company_logo_path)) {
+            $login_logo = $company_logo_url;
         } else {
             $login_logo = $UPLOAD_URL_PATH . DIRECTORY_SEPARATOR . 'login-logo.default.png';
         }
@@ -110,10 +120,14 @@ switch ($action) {
             $wallpaper = $UPLOAD_URL_PATH . DIRECTORY_SEPARATOR . 'wallpaper.default.png';
         }
 
-        if (!empty($config['login_page_favicon']) && file_exists($UPLOAD_URL_PATH . DIRECTORY_SEPARATOR . $config['login_page_favicon'])) {
+        if (!empty($config['login_page_favicon']) && file_exists($UPLOAD_PATH . DIRECTORY_SEPARATOR . $config['login_page_favicon'])) {
             $favicon = $UPLOAD_URL_PATH . DIRECTORY_SEPARATOR . $config['login_page_favicon'];
-        } elseif (file_exists($UPLOAD_URL_PATH . DIRECTORY_SEPARATOR . 'favicon.png')) {
+        } elseif (file_exists($UPLOAD_PATH . DIRECTORY_SEPARATOR . 'favicon.png')) {
             $favicon = $UPLOAD_URL_PATH . DIRECTORY_SEPARATOR . 'favicon.png';
+        } elseif (file_exists($company_logo_favicon_path)) {
+            $favicon = $company_logo_favicon_url;
+        } elseif (file_exists($company_logo_path)) {
+            $favicon = $company_logo_url;
         } else {
             $favicon = $UPLOAD_URL_PATH . DIRECTORY_SEPARATOR . 'favicon.default.png';
         }
@@ -207,9 +221,16 @@ switch ($action) {
         run_hook('save_settings'); #HOOK
         if (!empty($_FILES['logo']['name'])) {
             if (function_exists('imagecreatetruecolor')) {
-                if (file_exists($UPLOAD_PATH . DIRECTORY_SEPARATOR . 'logo.png'))
-                    unlink($UPLOAD_PATH . DIRECTORY_SEPARATOR . 'logo.png');
-                File::resizeCropImage($_FILES['logo']['tmp_name'], $UPLOAD_PATH . DIRECTORY_SEPARATOR . 'logo.png', 1078, 200, 100);
+                $logoTmp = $_FILES['logo']['tmp_name'];
+                $logoPath = $UPLOAD_PATH . DIRECTORY_SEPARATOR . 'logo.png';
+                $logoLoginPath = $UPLOAD_PATH . DIRECTORY_SEPARATOR . 'logo.login.png';
+                $logoFaviconPath = $UPLOAD_PATH . DIRECTORY_SEPARATOR . 'logo.favicon.png';
+                if (file_exists($logoPath)) {
+                    unlink($logoPath);
+                }
+                File::resizeCropImage($logoTmp, $logoPath, 1078, 200, 100);
+                File::resizeCropImage($logoTmp, $logoLoginPath, 300, 60, 100);
+                File::resizeCropImage($logoTmp, $logoFaviconPath, 64, 64, 100);
                 if (file_exists($_FILES['logo']['tmp_name']))
                     unlink($_FILES['logo']['tmp_name']);
             } else {
