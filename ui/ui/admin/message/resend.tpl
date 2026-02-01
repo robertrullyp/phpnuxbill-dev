@@ -681,11 +681,21 @@
 			} else if (key === 'button') {
 				var partsBtn = val.split('|');
 				var first = (partsBtn[0] || '').trim().toLowerCase();
-				if (data.mode === 'template' && (first === 'quick' || first === 'url' || first === 'call')) {
+				if (first === 'quick' || first === 'url' || first === 'call') {
+					if (data.mode !== 'template') data.mode = 'template';
+					var textVal = '';
+					var valueVal = '';
+					if (first === 'quick') {
+						valueVal = (partsBtn[1] || '').trim();
+						textVal = (partsBtn[2] || partsBtn[1] || '').trim();
+					} else {
+						textVal = (partsBtn[1] || '').trim();
+						valueVal = (partsBtn[2] || partsBtn[1] || '').trim();
+					}
 					data.templateButtons.push({
 						type: first,
-						text: (partsBtn[2] || partsBtn[1] || '').trim(),
-						value: (partsBtn[1] || '').trim()
+						text: textVal,
+						value: valueVal
 					});
 				} else {
 					data.buttons.push({

@@ -959,44 +959,51 @@
         };
         var textLines = [];
         var currentSection = 'Menu';
-        lines.forEach(function (rawLine) {
-            var line = rawLine.trim();
-            if (!line) {
-                textLines.push('');
-                return;
-            }
-            if (line.charAt(0) !== '[') {
-                textLines.push(rawLine);
-                return;
-            }
-            var sepIndex = line.indexOf('](');
-            if (sepIndex === -1 || line.slice(-1) !== ')') {
-                textLines.push(rawLine);
-                return;
-            }
-            var key = line.substring(1, sepIndex).toLowerCase();
-            var val = line.substring(sepIndex + 2, line.length - 1);
+
+        function applyKeyValue(key, val) {
             if (key === 'type') {
                 data.mode = (val || '').toLowerCase().trim() || 'buttons';
-            } else if (key === 'headertext') {
+                return true;
+            }
+            if (key === 'text' || key === 'body') {
+                if (val !== '') textLines.push(val);
+                return true;
+            }
+            if (key === 'headertext') {
                 data.headerText = val;
                 if (!data.headerType) data.headerType = '1';
-            } else if (key === 'headertype') {
+                return true;
+            }
+            if (key === 'headertype') {
                 data.headerType = normalizeHeaderType(val);
-            } else if (key === 'headermedia') {
+                return true;
+            }
+            if (key === 'headermedia') {
                 data.headerMedia = val;
                 if (!data.headerType) data.headerType = '2';
-            } else if (key === 'footer') {
+                return true;
+            }
+            if (key === 'footer') {
                 data.footer = val;
-            } else if (key === 'allowemptytext') {
+                return true;
+            }
+            if (key === 'allowemptytext') {
                 data.allowEmptyText = (val || '').toLowerCase() === 'true' || val === '1';
-            } else if (key === 'title') {
+                return true;
+            }
+            if (key === 'title') {
                 data.listTitle = val;
-            } else if (key === 'buttontext') {
+                return true;
+            }
+            if (key === 'buttontext' || key === 'button_text') {
                 data.listButtonText = val;
-            } else if (key === 'section') {
+                return true;
+            }
+            if (key === 'section') {
                 currentSection = val || 'Menu';
-            } else if (key === 'row') {
+                return true;
+            }
+            if (key === 'row') {
                 var parts = val.split('|');
                 var row = {
                     section: currentSection || 'Menu',
@@ -1007,14 +1014,26 @@
                 if (!row.title) row.title = row.id;
                 if (!row.id) row.id = row.title;
                 data.rows.push(row);
-            } else if (key === 'button') {
+                return true;
+            }
+            if (key === 'button') {
                 var partsBtn = val.split('|');
                 var first = (partsBtn[0] || '').trim().toLowerCase();
-                if (data.mode === 'template' && (first === 'quick' || first === 'url' || first === 'call')) {
+                if (first === 'quick' || first === 'url' || first === 'call') {
+                    if (data.mode !== 'template') data.mode = 'template';
+                    var textVal = '';
+                    var valueVal = '';
+                    if (first === 'quick') {
+                        valueVal = (partsBtn[1] || '').trim();
+                        textVal = (partsBtn[2] || partsBtn[1] || '').trim();
+                    } else {
+                        textVal = (partsBtn[1] || '').trim();
+                        valueVal = (partsBtn[2] || partsBtn[1] || '').trim();
+                    }
                     data.templateButtons.push({
                         type: first,
-                        text: (partsBtn[2] || partsBtn[1] || '').trim(),
-                        value: (partsBtn[1] || '').trim()
+                        text: textVal,
+                        value: valueVal
                     });
                 } else {
                     data.buttons.push({
@@ -1022,8 +1041,69 @@
                         text: (partsBtn[1] || partsBtn[0] || '').trim()
                     });
                 }
+                return true;
             }
-        });
+            return false;
+        }
+
+        for (var i = 0; i < lines.length; i++) {
+            var rawLine = lines[i];
+            var line = rawLine.trim();
+            if (!line) {
+                textLines.push('');
+                continue;
+            }
+
+            var lower = line.toLowerCase();
+            if (lower.indexOf('[text](') === 0 || lower.indexOf('[body](') === 0) {
+                var textKey = lower.indexOf('[body](') === 0 ? 'body' : 'text';
+                var prefix = '[' + textKey + '](';
+                var startIndex = rawLine.toLowerCase().indexOf(prefix);
+                var firstPart = rawLine.substring(startIndex + prefix.length);
+                var buffer = [];
+                if (line.slice(-1) === ')') {
+                    buffer.push(firstPart.replace(/\)\s*$/, ''));
+                } else {
+                    buffer.push(firstPart);
+                    for (i = i + 1; i < lines.length; i++) {
+                        var nextRaw = lines[i];
+                        var nextLine = nextRaw.trim();
+                        if (nextLine === '') {
+                            buffer.push('');
+                            continue;
+                        }
+                        if (/\)\s*$/.test(nextLine)) {
+                            buffer.push(nextRaw.replace(/\)\s*$/, ''));
+                            break;
+                        }
+                        buffer.push(nextRaw);
+                    }
+                }
+                buffer.forEach(function (txtLine) {
+                    textLines.push(txtLine);
+                });
+                continue;
+            }
+
+            if (line.charAt(0) === '[') {
+                var sepIndex = line.indexOf('](');
+                if (sepIndex === -1 || line.slice(-1) !== ')') {
+                    textLines.push(rawLine);
+                    continue;
+                }
+                var key = line.substring(1, sepIndex).toLowerCase();
+                var val = line.substring(sepIndex + 2, line.length - 1);
+                if (applyKeyValue(key, val)) continue;
+                textLines.push(rawLine);
+                continue;
+            }
+
+            var match = line.match(/^([A-Za-z0-9_]+)\s*[:=]\s*(.*)$/);
+            if (match) {
+                if (applyKeyValue(match[1].toLowerCase(), match[2])) continue;
+            }
+            textLines.push(rawLine);
+        }
         data.text = textLines.join('\n').trim();
         if (data.headerText && !data.headerType) data.headerType = '1';
         if (data.headerMedia && !data.headerType) data.headerType = '2';
