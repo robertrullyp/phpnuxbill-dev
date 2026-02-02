@@ -4,8 +4,6 @@ config.php
 .vscode/
 .playwright/
 node_modules/
-# !system/plugin/ai_chat*
-# !system/plugin/ui/ai_chat*
 ui/ui/compiled
 ui/compiled/*.php
 ui/cache/*.php
@@ -65,3 +63,4 @@ docs/**
 system/uploads/invoices/**
 !system/uploads/invoices/
 !system/uploads/invoices/index.html
+TODO.md

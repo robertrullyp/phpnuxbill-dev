@@ -223,6 +223,15 @@ switch ($action) {
         if (file_exists($file))
             unlink($file);
         if ($tipe == 'plugin') {
+            if ($plugin === 'ai-chatbot-phpnuxbill-plugin') {
+                $plugin_main = $PLUGIN_PATH . DIRECTORY_SEPARATOR . 'ai_chatbot.php';
+                if (file_exists($plugin_main)) {
+                    include_once $plugin_main;
+                }
+                if (function_exists('ai_chatbot_plugin_uninstall')) {
+                    ai_chatbot_plugin_uninstall(true);
+                }
+            }
             foreach ($json['plugins'] as $plg) {
                 if ($plg['id'] == $plugin) {
                     if (!empty($config['github_token']) && !empty($config['github_username'])) {
@@ -301,6 +310,15 @@ switch ($action) {
                         r2(getUrl('pluginmanager'), 'e', 'Extracted Folder is unknown');
                     }
                     File::copyFolder($folder, $PLUGIN_PATH . DIRECTORY_SEPARATOR, ['README.md', 'LICENSE']);
+                    if ($plugin === 'ai-chatbot-phpnuxbill-plugin') {
+                        $plugin_main = $PLUGIN_PATH . DIRECTORY_SEPARATOR . 'ai_chatbot.php';
+                        if (file_exists($plugin_main)) {
+                            include_once $plugin_main;
+                        }
+                        if (function_exists('ai_chatbot_plugin_install')) {
+                            ai_chatbot_plugin_install();
+                        }
+                    }
                     File::deleteFolder($folder);
                     unlink($file);
                     r2(getUrl('pluginmanager'), 's', 'Plugin ' . $plugin . ' has been installed');
