@@ -109,6 +109,16 @@ switch ($action) {
             $zip->extractTo($cache);
             $zip->close();
             $plugin = basename($_FILES['zip_plugin']['name']);
+            $plugin_base = pathinfo($plugin, PATHINFO_FILENAME);
+            $folder = resolveExtractedFolder($cache, $plugin_base);
+            $ai_chatbot_detected = false;
+            if (file_exists($cache . 'plugin' . DIRECTORY_SEPARATOR . 'ai_chatbot.php')) {
+                $ai_chatbot_detected = true;
+            } elseif ($folder) {
+                if (file_exists($folder . 'plugin' . DIRECTORY_SEPARATOR . 'ai_chatbot.php') || file_exists($folder . 'ai_chatbot.php')) {
+                    $ai_chatbot_detected = true;
+                }
+            }
             unlink($_FILES['zip_plugin']['tmp_name']);
             $success = 0;
             //moving
@@ -130,15 +140,32 @@ switch ($action) {
             }
             if ($success == 0) {
                 // old plugin and theme using this
-                $check = strtolower($ghUrl);
+                $check = strtolower($plugin_base);
                 if (strpos($check, 'plugin') !== false) {
-                    File::copyFolder($folder, $PLUGIN_PATH . DIRECTORY_SEPARATOR);
+                    if ($folder) {
+                        File::copyFolder($folder, $PLUGIN_PATH . DIRECTORY_SEPARATOR);
+                    }
                 } else if (strpos($check, 'payment') !== false) {
-                    File::copyFolder($folder, $PAYMENTGATEWAY_PATH . DIRECTORY_SEPARATOR);
+                    if ($folder) {
+                        File::copyFolder($folder, $PAYMENTGATEWAY_PATH . DIRECTORY_SEPARATOR);
+                    }
                 } else if (strpos($check, 'theme') !== false) {
-                    rename($folder, $UI_PATH . DIRECTORY_SEPARATOR . 'themes' . DIRECTORY_SEPARATOR . $plugin);
+                    if ($folder) {
+                        rename($folder, $UI_PATH . DIRECTORY_SEPARATOR . 'themes' . DIRECTORY_SEPARATOR . $plugin);
+                    }
                 } else if (strpos($check, 'device') !== false) {
-                    File::copyFolder($folder, $DEVICE_PATH . DIRECTORY_SEPARATOR);
+                    if ($folder) {
+                        File::copyFolder($folder, $DEVICE_PATH . DIRECTORY_SEPARATOR);
+                    }
+                }
+            }
+            if ($ai_chatbot_detected) {
+                $plugin_main = $PLUGIN_PATH . DIRECTORY_SEPARATOR . 'ai_chatbot.php';
+                if (file_exists($plugin_main)) {
+                    include_once $plugin_main;
+                }
+                if (function_exists('ai_chatbot_plugin_install')) {
+                    ai_chatbot_plugin_install();
                 }
             }
             //Cleaning
@@ -170,6 +197,10 @@ switch ($action) {
             if ($folder === null) {
                 r2(getUrl('pluginmanager'), 'e', 'Extracted Folder is unknown');
             }
+            $ai_chatbot_detected = false;
+            if (file_exists($folder . 'plugin' . DIRECTORY_SEPARATOR . 'ai_chatbot.php') || file_exists($folder . 'ai_chatbot.php')) {
+                $ai_chatbot_detected = true;
+            }
             $success = 0;
             if (file_exists($folder . 'plugin')) {
                 File::copyFolder($folder . 'plugin' . DIRECTORY_SEPARATOR, $PLUGIN_PATH . DIRECTORY_SEPARATOR);
@@ -198,6 +229,15 @@ switch ($action) {
                     rename($folder, $UI_PATH . DIRECTORY_SEPARATOR . 'themes' . DIRECTORY_SEPARATOR . $plugin);
                 } else if (strpos($check, 'device') !== false) {
                     File::copyFolder($folder, $DEVICE_PATH . DIRECTORY_SEPARATOR);
+                }
+            }
+            if ($ai_chatbot_detected) {
+                $plugin_main = $PLUGIN_PATH . DIRECTORY_SEPARATOR . 'ai_chatbot.php';
+                if (file_exists($plugin_main)) {
+                    include_once $plugin_main;
+                }
+                if (function_exists('ai_chatbot_plugin_install')) {
+                    ai_chatbot_plugin_install();
                 }
             }
             File::deleteFolder($cache);

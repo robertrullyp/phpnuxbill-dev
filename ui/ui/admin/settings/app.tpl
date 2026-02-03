@@ -36,7 +36,7 @@
                             class="help-block">{Lang::T('For PDF Reports | Best size 1078 x 200 | uploaded image will be autosize')}</span>
                     </div>
                     <span class="help-block col-md-4">
-                        <a href="./{$logo}" target="_blank"><img src="./{$logo}" height="48" alt="logo for PDF"></a>
+                        <a href="{$app_url}/{$logo|replace:'\\':'/'}" target="_blank"><img src="{$app_url}/{$logo|replace:'\\':'/'}" height="48" alt="logo for PDF"></a>
                     </span>
                 </div>
                 <div class="form-group">
@@ -238,7 +238,7 @@
                                 class="help-block"><small>{Lang::T('Best size 300 x 60 | uploaded image will be autosize')}</small></span>
                         </div>
                         <span class="help-block col-md-4">
-                            <a href="./{$login_logo}" target="_blank"><img src="./{$login_logo}" height="48"
+                            <a href="{$app_url}/{$login_logo|replace:'\\':'/'}" target="_blank"><img src="{$app_url}/{$login_logo|replace:'\\':'/'}" height="48"
                                     alt="Logo"></a>
                         </span>
                     </div>
@@ -251,7 +251,7 @@
                                 class="help-block"><small>{Lang::T('Best size 1920 x 1080 | uploaded image will be autosize')}</small></span>
                         </div>
                         <span class="help-block col-md-4">
-                            <a href="./{$wallpaper}" target="_blank"><img src="./{$wallpaper}" height="48"
+                            <a href="{$app_url}/{$wallpaper|replace:'\\':'/'}" target="_blank"><img src="{$app_url}/{$wallpaper|replace:'\\':'/'}" height="48"
                                     alt="Wallpaper"></a>
                         </span>
                     </div>

@@ -49,18 +49,18 @@
                     <ul class="nav navbar-nav">
                         <div class="wrap">
                             <div class="">
-                                <button id="openSearch" class="search"><i class="fa fa-search x2"></i></button>
+                                <button type="button" id="openSearch" class="search"><i class="fa fa-search x2"></i></button>
                             </div>
                         </div>
                         <div id="searchOverlay" class="search-overlay">
-                            <div class="search-container">
+                            <form id="adminSearchForm" class="search-container" role="search" autocomplete="off" onsubmit="return false;">
                                 <input type="text" id="searchTerm" class="searchTerm"
                                     placeholder="{Lang::T('Search Users')}" autocomplete="off">
                                 <div id="searchResults" class="search-results">
                                     <!-- Search results will be displayed here -->
                                 </div>
                                 <button type="button" id="closeSearch" class="cancelButton">{Lang::T('Cancel')}</button>
-                            </div>
+                            </form>
                         </div>
                         <li>
                             <a class="toggle-container" href="#">
