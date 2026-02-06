@@ -1225,6 +1225,130 @@
                     </div>
                     <p class="col-md-4 help-block">{Lang::T('This Token will act as SuperAdmin/Admin')}</p>
                 </div>
+                <hr>
+                <div class="form-group">
+                    <label class="col-md-3 control-label">{Lang::T('API Rate Limit')}</label>
+                    <div class="col-md-5">
+                        <label class="checkbox-inline">
+                            <input type="checkbox" name="api_rate_limit_enabled" value="1"
+                                {if !isset($_c['api_rate_limit_enabled']) || $_c['api_rate_limit_enabled'] neq 'no'}checked{/if}>
+                            {Lang::T('Enabled')}
+                        </label>
+                    </div>
+                    <p class="col-md-4 help-block">{Lang::T('Applies to all API requests')}</p>
+                </div>
+                <div class="form-group">
+                    <label class="col-md-3 control-label">{Lang::T('Rate Limit Max')}</label>
+                    <div class="col-md-5">
+                        <input type="number" class="form-control" id="api_rate_limit_max" name="api_rate_limit_max"
+                            value="{$_c['api_rate_limit_max']|default:120}" min="0" step="1">
+                    </div>
+                    <p class="col-md-4 help-block">{Lang::T('Requests per window (0 = unlimited)')}</p>
+                </div>
+                <div class="form-group">
+                    <label class="col-md-3 control-label">{Lang::T('Rate Limit Window')}</label>
+                    <div class="col-md-5">
+                        <input type="number" class="form-control" id="api_rate_limit_window" name="api_rate_limit_window"
+                            value="{$_c['api_rate_limit_window']|default:60}" min="0" step="1">
+                    </div>
+                    <p class="col-md-4 help-block">{Lang::T('Window in seconds')}</p>
+                </div>
+                <div class="form-group">
+                    <label class="col-md-3 control-label">{Lang::T('API Key Attempts Max')}</label>
+                    <div class="col-md-5">
+                        <input type="number" class="form-control" id="admin_api_key_attempts_max" name="admin_api_key_attempts_max"
+                            value="{$_c['admin_api_key_attempts_max']|default:5}" min="1" step="1">
+                    </div>
+                    <p class="col-md-4 help-block">{Lang::T('Allowed failures before backoff')}</p>
+                </div>
+                <div class="form-group">
+                    <label class="col-md-3 control-label">{Lang::T('Attempts Window')}</label>
+                    <div class="col-md-5">
+                        <input type="number" class="form-control" id="admin_api_key_attempts_window" name="admin_api_key_attempts_window"
+                            value="{$_c['admin_api_key_attempts_window']|default:300}" min="60" step="1">
+                    </div>
+                    <p class="col-md-4 help-block">{Lang::T('Seconds to count failures')}</p>
+                </div>
+                <div class="form-group">
+                    <label class="col-md-3 control-label">{Lang::T('API Key Backoff')}</label>
+                    <div class="col-md-5">
+                        <label class="checkbox-inline">
+                            <input type="checkbox" name="admin_api_key_backoff_enabled" value="1"
+                                {if !isset($_c['admin_api_key_backoff_enabled']) || $_c['admin_api_key_backoff_enabled'] neq 'no'}checked{/if}>
+                            {Lang::T('Enabled')}
+                        </label>
+                    </div>
+                    <p class="col-md-4 help-block">{Lang::T('Throttle invalid API key attempts')}</p>
+                </div>
+                <div class="form-group">
+                    <label class="col-md-3 control-label">{Lang::T('Backoff Base Delay')}</label>
+                    <div class="col-md-5">
+                        <input type="number" class="form-control" id="admin_api_key_backoff_base_delay"
+                            name="admin_api_key_backoff_base_delay" value="{$_c['admin_api_key_backoff_base_delay']|default:5}" min="0" step="1">
+                    </div>
+                    <p class="col-md-4 help-block">{Lang::T('Seconds (first wait)')}</p>
+                </div>
+                <div class="form-group">
+                    <label class="col-md-3 control-label">{Lang::T('Backoff Max Delay')}</label>
+                    <div class="col-md-5">
+                        <input type="number" class="form-control" id="admin_api_key_backoff_max_delay"
+                            name="admin_api_key_backoff_max_delay" value="{$_c['admin_api_key_backoff_max_delay']|default:3600}" min="0" step="1">
+                    </div>
+                    <p class="col-md-4 help-block">{Lang::T('Seconds (maximum wait)')}</p>
+                </div>
+                <div class="form-group">
+                    <label class="col-md-3 control-label">{Lang::T('Backoff Reset Window')}</label>
+                    <div class="col-md-5">
+                        <input type="number" class="form-control" id="admin_api_key_backoff_reset_window"
+                            name="admin_api_key_backoff_reset_window" value="{$_c['admin_api_key_backoff_reset_window']|default:900}" min="0" step="1">
+                    </div>
+                    <p class="col-md-4 help-block">{Lang::T('Seconds without attempts to reset')}</p>
+                </div>
+                <div class="form-group">
+                    <label class="col-md-3 control-label">{Lang::T('API Key Allowlist')}</label>
+                    <div class="col-md-5">
+                        <textarea class="form-control" id="admin_api_key_allowlist" name="admin_api_key_allowlist"
+                            rows="3" placeholder="127.0.0.1&#10;192.168.1.0/24">{$_c['admin_api_key_allowlist']|escape}</textarea>
+                    </div>
+                    <p class="col-md-4 help-block">{Lang::T('One IP/CIDR per line')}</p>
+                </div>
+                <div class="form-group">
+                    <label class="col-md-3 control-label">{Lang::T('Blocked IPs')}</label>
+                    <div class="col-md-9">
+                        {if isset($api_key_blocks) && $api_key_blocks|@count > 0}
+                            <div class="table-responsive">
+                                <table class="table table-bordered">
+                                    <thead>
+                                        <tr>
+                                            <th>{Lang::T('IP')}</th>
+                                            <th>{Lang::T('Blocked Until')}</th>
+                                            <th>{Lang::T('Failures')}</th>
+                                            <th>{Lang::T('Action')}</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {foreach $api_key_blocks as $block}
+                                            <tr>
+                                                <td>{$block.ip|escape}</td>
+                                                <td>{$block.blocked_until_human|escape}</td>
+                                                <td>{$block.fail_count|escape}</td>
+                                                <td>
+                                                    <a class="btn btn-xs btn-danger"
+                                                        href="{Text::url('settings/api-unblock&ip=')}{ $block.ip|escape:'url' }&csrf_token={$csrf_token}"
+                                                        onclick="return confirm('{Lang::T('Unblock this IP?')}');">
+                                                        {Lang::T('Unblock')}
+                                                    </a>
+                                                </td>
+                                            </tr>
+                                        {/foreach}
+                                    </tbody>
+                                </table>
+                            </div>
+                        {else}
+                            <p class="help-block">{Lang::T('No blocked IPs')}</p>
+                        {/if}
+                    </div>
+                </div>
                 <button class="btn btn-success btn-block js-settings-submit" type="button">
                     {Lang::T('Save Changes')}
                 </button>

@@ -11,8 +11,119 @@ $ui->assign('_system_menu', 'settings');
 $action = $routes['1'];
 $ui->assign('_admin', $admin);
 
+function settings_parse_user_data($raw)
+{
+    if (is_array($raw)) {
+        return $raw;
+    }
+    if (!is_string($raw)) {
+        return [];
+    }
+
+    $raw = trim($raw);
+    if ($raw === '') {
+        return [];
+    }
+
+    $decoded = json_decode($raw, true);
+
+    return is_array($decoded) ? $decoded : [];
+}
+
+function settings_api_key_backoff_check($actor_id, $target_id)
+{
+    $actor_id = (int) $actor_id;
+    $target_id = (int) $target_id;
+
+    $config = $GLOBALS['config'] ?? [];
+    $enabled = ($config['admin_api_key_backoff_enabled'] ?? 'yes') !== 'no';
+    if (!$enabled) {
+        return ['allowed' => true];
+    }
+
+    $base_delay = (int) ($config['admin_api_key_backoff_base_delay'] ?? 5);
+    $max_delay = (int) ($config['admin_api_key_backoff_max_delay'] ?? 3600);
+    $reset_window = (int) ($config['admin_api_key_backoff_reset_window'] ?? 900);
+
+    if ($base_delay < 1) {
+        $base_delay = 1;
+    }
+    if ($max_delay < $base_delay) {
+        $max_delay = $base_delay;
+    }
+    if ($reset_window < 60) {
+        $reset_window = 60;
+    }
+
+    $cache_base = $GLOBALS['CACHE_PATH'] ?? null;
+    if (!$cache_base) {
+        return ['allowed' => true];
+    }
+
+    $dir = rtrim($cache_base, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . 'admin_api_key_throttle';
+    if (!is_dir($dir)) {
+        @mkdir($dir, 0775, true);
+    }
+    if (!is_dir($dir)) {
+        return ['allowed' => true];
+    }
+
+    $key = 'actor:' . $actor_id . '|target:' . $target_id;
+    $path = $dir . DIRECTORY_SEPARATOR . hash('sha256', $key) . '.json';
+    $now = time();
+
+    $state = [
+        'attempts' => 0,
+        'last_at' => 0,
+        'next_allowed_at' => 0,
+    ];
+
+    if (is_file($path)) {
+        $raw = @file_get_contents($path);
+        if ($raw !== false) {
+            $decoded = json_decode($raw, true);
+            if (is_array($decoded)) {
+                $state['attempts'] = (int) ($decoded['attempts'] ?? 0);
+                $state['last_at'] = (int) ($decoded['last_at'] ?? 0);
+                $state['next_allowed_at'] = (int) ($decoded['next_allowed_at'] ?? 0);
+            }
+        }
+    }
+
+    if ($state['next_allowed_at'] > $now) {
+        return [
+            'allowed' => false,
+            'wait' => $state['next_allowed_at'] - $now,
+        ];
+    }
+
+    if ($state['last_at'] === 0 || ($now - $state['last_at']) > $reset_window) {
+        $state['attempts'] = 0;
+    }
+
+    $state['attempts']++;
+    $delay = $base_delay * (2 ** max(0, $state['attempts'] - 1));
+    if ($delay > $max_delay) {
+        $delay = $max_delay;
+    }
+
+    $state['last_at'] = $now;
+    $state['next_allowed_at'] = $now + $delay;
+
+    @file_put_contents($path, json_encode($state), LOCK_EX);
+
+    return [
+        'allowed' => true,
+        'delay' => $delay,
+        'next_allowed_at' => $state['next_allowed_at'],
+    ];
+}
+
 switch ($action) {
     case 'docs':
+        if (!in_array($admin['user_type'], ['SuperAdmin', 'Admin'])) {
+            _alert(Lang::T('You do not have permission to access this page'), 'danger', "dashboard");
+        }
         $d = ORM::for_table('tbl_appconfig')->where('setting', 'docs_clicked')->find_one();
         if ($d) {
             $d->value = 'yes';
@@ -187,6 +298,41 @@ switch ($action) {
             $config['mikrotik_sms_command'] = "/tool sms send";
         }
         $ui->assign('template_files', $templates);
+        $api_key_blocks = [];
+        $block_dir = $CACHE_PATH . DIRECTORY_SEPARATOR . 'admin_api_key_backoff';
+        if (is_dir($block_dir)) {
+            $files = glob($block_dir . DIRECTORY_SEPARATOR . '*.json') ?: [];
+            $now = time();
+            foreach ($files as $file) {
+                $raw = @file_get_contents($file);
+                if ($raw === false) {
+                    continue;
+                }
+                $decoded = json_decode($raw, true);
+                if (!is_array($decoded)) {
+                    continue;
+                }
+                $blocked_until = (int) ($decoded['blocked_until'] ?? 0);
+                if ($blocked_until <= $now && isset($decoded['next_allowed_at'])) {
+                    $blocked_until = (int) $decoded['next_allowed_at'];
+                }
+                if ($blocked_until <= $now) {
+                    continue;
+                }
+                $ip = trim((string) ($decoded['ip'] ?? ''));
+                if ($ip === '') {
+                    continue;
+                }
+                $api_key_blocks[] = [
+                    'ip' => $ip,
+                    'blocked_until' => $blocked_until,
+                    'blocked_until_human' => date('Y-m-d H:i:s', $blocked_until),
+                    'fail_count' => (int) ($decoded['fail_count'] ?? 0),
+                    'backoff_attempts' => (int) ($decoded['backoff_attempts'] ?? ($decoded['attempts'] ?? 0)),
+                ];
+            }
+        }
+        $ui->assign('api_key_blocks', $api_key_blocks);
         $ui->assign('_c', $config);
         $ui->assign('php', $php);
         $ui->assign('dir', str_replace('controllers', '', __DIR__));
@@ -264,6 +410,52 @@ switch ($action) {
             $_POST['notification_reminder_1day'] = isset($_POST['notification_reminder_1day']) ? 'yes' : 'no';
             $_POST['notification_reminder_3days'] = isset($_POST['notification_reminder_3days']) ? 'yes' : 'no';
             $_POST['notification_reminder_7days'] = isset($_POST['notification_reminder_7days']) ? 'yes' : 'no';
+            $_POST['api_rate_limit_enabled'] = isset($_POST['api_rate_limit_enabled']) ? 'yes' : 'no';
+            $_POST['admin_api_key_backoff_enabled'] = isset($_POST['admin_api_key_backoff_enabled']) ? 'yes' : 'no';
+
+            $api_rate_limit_max = (int) _post('api_rate_limit_max', 120);
+            if ($api_rate_limit_max < 0) {
+                $api_rate_limit_max = 0;
+            }
+            $_POST['api_rate_limit_max'] = $api_rate_limit_max;
+
+            $api_rate_limit_window = (int) _post('api_rate_limit_window', 60);
+            if ($api_rate_limit_window < 0) {
+                $api_rate_limit_window = 0;
+            }
+            $_POST['api_rate_limit_window'] = $api_rate_limit_window;
+
+            $attempts_max = (int) _post('admin_api_key_attempts_max', 5);
+            if ($attempts_max < 1) {
+                $attempts_max = 1;
+            }
+            $_POST['admin_api_key_attempts_max'] = $attempts_max;
+
+            $attempts_window = (int) _post('admin_api_key_attempts_window', 300);
+            if ($attempts_window < 60) {
+                $attempts_window = 60;
+            }
+            $_POST['admin_api_key_attempts_window'] = $attempts_window;
+
+            $backoff_base = (int) _post('admin_api_key_backoff_base_delay', 5);
+            if ($backoff_base < 0) {
+                $backoff_base = 0;
+            }
+            $backoff_max = (int) _post('admin_api_key_backoff_max_delay', 3600);
+            if ($backoff_max < 0) {
+                $backoff_max = 0;
+            }
+            if ($backoff_max > 0 && $backoff_base > 0 && $backoff_max < $backoff_base) {
+                $backoff_max = $backoff_base;
+            }
+            $backoff_reset = (int) _post('admin_api_key_backoff_reset_window', 900);
+            if ($backoff_reset < 0) {
+                $backoff_reset = 0;
+            }
+            $_POST['admin_api_key_backoff_base_delay'] = $backoff_base;
+            $_POST['admin_api_key_backoff_max_delay'] = $backoff_max;
+            $_POST['admin_api_key_backoff_reset_window'] = $backoff_reset;
+            $_POST['admin_api_key_allowlist'] = trim((string) _post('admin_api_key_allowlist', ''));
 
             // hide dashboard
             $_POST['hide_mrc'] = _post('hide_mrc', 'no');
@@ -375,6 +567,26 @@ switch ($action) {
 
             r2(getUrl('settings/app'), 's', Lang::T('Settings Saved Successfully'));
         }
+        break;
+
+    case 'api-unblock':
+        if (!in_array($admin['user_type'], ['SuperAdmin', 'Admin'])) {
+            _alert(Lang::T('You do not have permission to access this page'), 'danger', "dashboard");
+        }
+        $csrf_token = _get('csrf_token');
+        if (!Csrf::check($csrf_token)) {
+            r2(getUrl('settings/app'), 'e', Lang::T('Invalid or Expired CSRF Token') . ".");
+        }
+        Csrf::generateAndStoreToken();
+        $ip = trim((string) _get('ip'));
+        if ($ip === '') {
+            r2(getUrl('settings/app'), 'e', Lang::T('IP Address is required'));
+        }
+        if (class_exists('Admin')) {
+            Admin::clearApiKeyBlock($ip);
+        }
+        _log('[' . $admin['username'] . ']: Unblocked API key IP ' . $ip, $admin['user_type'], $admin['id']);
+        r2(getUrl('settings/app'), 's', Lang::T('IP unblocked'));
         break;
 
     case 'localisation':
@@ -618,6 +830,12 @@ switch ($action) {
             }
         }
         if ($d) {
+            $admin_data = settings_parse_user_data($d['data'] ?? '');
+            $has_api_key = !empty($admin_data['admin_api_key_hash'])
+                || !empty($admin_data['admin_api_key'])
+                || !empty($admin_data['ai_chatbot_api_key_hash'])
+                || !empty($admin_data['ai_chatbot_api_key']);
+            $ui->assign('admin_api_key_set', $has_api_key);
             run_hook('view_edit_admin'); #HOOK
             if ($d['user_type'] == 'Sales') {
                 $ui->assign('agent', ORM::for_table('tbl_users')->where('id', $d['root'])->find_array()[0]);
@@ -677,6 +895,12 @@ switch ($action) {
                     $ui->assign('notify', 'No photo found to delete');
                 }
             }
+            $admin_data = settings_parse_user_data(is_object($d) ? ($d->data ?? '') : ($d['data'] ?? ''));
+            $has_api_key = !empty($admin_data['admin_api_key_hash'])
+                || !empty($admin_data['admin_api_key'])
+                || !empty($admin_data['ai_chatbot_api_key_hash'])
+                || !empty($admin_data['ai_chatbot_api_key']);
+            $ui->assign('admin_api_key_set', $has_api_key);
             $ui->assign('id', $id);
             $ui->assign('d', $d);
             run_hook('view_edit_admin'); #HOOK
@@ -822,6 +1046,15 @@ switch ($action) {
         }
 
         $id = _post('id');
+        $api_key = trim((string) _post('admin_api_key'));
+        if ($api_key === '') {
+            $api_key = trim((string) _post('ai_chatbot_api_key'));
+        }
+        $api_key_clear = (_post('admin_api_key_clear') === '1');
+        if (!$api_key_clear && _post('ai_chatbot_api_key_clear') === '1') {
+            $api_key_clear = true;
+        }
+        $api_key_action = ($api_key !== '' || $api_key_clear);
         if ($admin['id'] == $id) {
             $d = ORM::for_table('tbl_users')->find_one($id);
         } else {
@@ -849,6 +1082,16 @@ switch ($action) {
         }
         run_hook('edit_admin'); #HOOK
         if ($msg == '') {
+            if ($api_key_action) {
+                $throttle = settings_api_key_backoff_check($admin['id'], $id);
+                if (empty($throttle['allowed'])) {
+                    $wait = (int) ($throttle['wait'] ?? 0);
+                    if ($wait < 1) {
+                        $wait = 1;
+                    }
+                    r2(getUrl('settings/users-edit/') . $id, 'e', Lang::T('Please wait') . ' ' . $wait . ' ' . Lang::T('seconds before rotating API key again'));
+                }
+            }
             if (!empty($_FILES['photo']['name']) && file_exists($_FILES['photo']['tmp_name'])) {
                 if (function_exists('imagecreatetruecolor')) {
                     $hash = md5_file($_FILES['photo']['tmp_name']);
@@ -924,6 +1167,38 @@ switch ($action) {
                 $d->root = $admin['id'];
             } else if ($user_type == 'Sales') {
                 $d->root = $root;
+            }
+
+            if ($api_key_action) {
+                global $api_secret;
+                $raw_data = is_object($d) ? ($d->data ?? '') : ($d['data'] ?? '');
+                $user_data = settings_parse_user_data($raw_data);
+
+                if ($api_key_clear) {
+                    unset($user_data['admin_api_key']);
+                    unset($user_data['admin_api_key_hash']);
+                    unset($user_data['admin_api_key_last4']);
+                    unset($user_data['ai_chatbot_api_key']);
+                    unset($user_data['ai_chatbot_api_key_hash']);
+                    unset($user_data['ai_chatbot_api_key_last4']);
+                } else {
+                    $secret = isset($api_secret) && $api_secret !== '' ? (string) $api_secret : __FILE__;
+                    $user_data['admin_api_key_hash'] = hash_hmac('sha256', $api_key, $secret);
+                    $user_data['admin_api_key_last4'] = substr($api_key, -4);
+                    unset($user_data['admin_api_key']);
+                    unset($user_data['ai_chatbot_api_key']);
+                    unset($user_data['ai_chatbot_api_key_hash']);
+                    unset($user_data['ai_chatbot_api_key_last4']);
+                }
+
+                if (empty($user_data)) {
+                    $d->data = null;
+                } else {
+                    $encoded = json_encode($user_data, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+                    if ($encoded !== false) {
+                        $d->data = $encoded;
+                    }
+                }
             }
 
             $d->save();

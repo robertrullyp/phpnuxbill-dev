@@ -233,6 +233,7 @@
                         </ul>
                     </li>
                     {$_MENU_AFTER_REPORTS nofilter}
+                    {if in_array($_admin['user_type'],['SuperAdmin','Admin','Agent','Sales'])}
                     <li class="{if $_system_menu eq 'message'}active{/if} treeview">
                         <a href="#">
                             <i class="ion ion-android-chat"></i> <span>{Lang::T('Send Message')}</span>
@@ -248,6 +249,7 @@
                             {$_MENU_MESSAGE nofilter}
                         </ul>
                     </li>
+                    {/if}
                     {$_MENU_AFTER_MESSAGE nofilter}
                     {if in_array($_admin['user_type'],['SuperAdmin','Admin'])}
                     <li class="{if $_system_menu eq 'network'}active{/if} treeview">

@@ -44,6 +44,12 @@
                             <li class="list-group-item">
                                 <b>{Lang::T('User Type')}</b> <span class="pull-right">{$d['user_type']}</span>
                             </li>
+                            <li class="list-group-item">
+                                <b>{Lang::T('Admin API Key')}</b>
+                                <span class="pull-right">
+                                    {if $admin_api_key_set}{Lang::T('Set')}{else}{Lang::T('Not Set')}{/if}
+                                </span>
+                            </li>
                         </ul>
                     </div>
                     <div class="panel-footer">

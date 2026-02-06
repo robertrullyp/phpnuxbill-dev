@@ -10,6 +10,9 @@ $ui->assign('_system_menu', 'paymentgateway');
 
 $action = alphanumeric($routes[1]);
 $ui->assign('_admin', $admin);
+if (!in_array($admin['user_type'], ['SuperAdmin', 'Admin'])) {
+    _alert(Lang::T('You do not have permission to access this page'), 'danger', "dashboard");
+}
 switch ($action) {
     case 'delete':
         $pg = alphanumeric($routes[2]);

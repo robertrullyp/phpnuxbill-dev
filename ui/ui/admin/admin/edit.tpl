@@ -145,6 +145,33 @@
                             <span class="help-block">{Lang::T('Keep Blank to do not change Password')}</span>
                         </div>
                     </div>
+                    <div class="form-group">
+                        <label class="col-md-3 control-label">{Lang::T('Admin API Key')}</label>
+                        <div class="col-md-9">
+                            <div class="input-group js-api-key-hover">
+                                <input type="password" class="form-control" id="admin_api_key" name="admin_api_key"
+                                    autocomplete="new-password" placeholder="{Lang::T('Fill to change')}">
+                                <span class="input-group-btn">
+                                    <button class="btn btn-default" type="button" id="admin_api_key_generate" title="{Lang::T('Generate/Rotate')}">
+                                        <i class="fa fa-refresh" aria-hidden="true"></i>
+                                        <span class="sr-only">{Lang::T('Generate/Rotate')}</span>
+                                    </button>
+                                </span>
+                            </div>
+                            {if $admin_api_key_set}
+                                <span class="help-block">{Lang::T('API key is stored. Leave blank to keep it.')}</span>
+                            {else}
+                                <span class="help-block">{Lang::T('Leave blank if not used.')}</span>
+                            {/if}
+                            <span class="help-block">{Lang::T('Key will be hashed after saving and cannot be shown again.')}</span>
+                            <span class="help-block">{Lang::T('Used for all admin endpoints (API).')}</span>
+                            <div class="checkbox">
+                                <label>
+                                    <input type="checkbox" name="admin_api_key_clear" value="1"> {Lang::T('Remove API Key')}
+                                </label>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -172,5 +199,58 @@
             }
         }
     }
+
+    function generateAdminApiKey(length) {
+        length = length || 40;
+        var chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+        var result = '';
+        if (window.crypto && window.crypto.getRandomValues) {
+            var array = new Uint8Array(length);
+            window.crypto.getRandomValues(array);
+            for (var i = 0; i < array.length; i++) {
+                result += chars.charAt(array[i] % chars.length);
+            }
+            return result;
+        }
+        for (var j = 0; j < length; j++) {
+            result += chars.charAt(Math.floor(Math.random() * chars.length));
+        }
+        return result;
+    }
+
+    (function () {
+        var button = document.getElementById('admin_api_key_generate');
+        if (!button) {
+            return;
+        }
+        button.addEventListener('click', function () {
+            var input = document.getElementById('admin_api_key');
+            if (!input) {
+                return;
+            }
+            input.value = generateAdminApiKey(40);
+            var clearBox = document.querySelector('input[name="admin_api_key_clear"]');
+            if (clearBox) {
+                clearBox.checked = false;
+            }
+            input.focus();
+            input.select();
+        });
+    })();
+
+    (function () {
+        var group = document.querySelector('.js-api-key-hover');
+        var input = document.getElementById('admin_api_key');
+        if (!group || !input) {
+            return;
+        }
+        var originalType = input.type;
+        group.addEventListener('mouseenter', function () {
+            input.type = 'text';
+        });
+        group.addEventListener('mouseleave', function () {
+            input.type = originalType || 'password';
+        });
+    })();
 </script>
 {include file="sections/footer.tpl"}

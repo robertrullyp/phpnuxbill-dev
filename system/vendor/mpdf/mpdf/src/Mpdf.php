@@ -32,9 +32,11 @@ class Mpdf implements \Psr\Log\LoggerAwareInterface
 	use FpdiTrait;
 	use MpdfPsrLogAwareTrait;
 
-	const VERSION = '8.1.6';
+	const VERSION = '8.2.7';
 
 	const SCALE = 72 / 25.4;
+
+	const OBJECT_IDENTIFIER = "\xbb\xa4\xac";
 
 	var $useFixedNormalLineHeight; // mPDF 6
 	var $useFixedTextBaseline; // mPDF 6
@@ -74,7 +76,7 @@ class Mpdf implements \Psr\Log\LoggerAwareInterface
 	var $PDFXauto;
 
 	var $PDFA;
-	var $PDFAversion = '1-B';
+	var $PDFAversion;
 	var $PDFAauto;
 	var $ICCProfile;
 
@@ -830,6 +832,9 @@ class Mpdf implements \Psr\Log\LoggerAwareInterface
 	public $exposeVersion;
 
 	private $preambleWritten = false;
+
+	private $watermarkTextObject;
+	private $watermarkImageObject;
 
 	/**
 	 * @var string
@@ -1634,11 +1639,9 @@ class Mpdf implements \Psr\Log\LoggerAwareInterface
 			}
 
 			// e.g. A4-L = A4 landscape, A4-P = A4 portrait
+			$orientation = $orientation ?: 'P';
 			if (preg_match('/([0-9a-zA-Z]*)-([P,L])/i', $format, $m)) {
-				$format = $m[1];
-				$orientation = $m[2];
-			} elseif (empty($orientation)) {
-				$orientation = 'P';
+				list(, $format, $orientation) = $m;
 			}
 
 			$format = PageFormat::getSizeFromName($format);
@@ -1661,11 +1664,11 @@ class Mpdf implements \Psr\Log\LoggerAwareInterface
 
 		// Page orientation
 		$orientation = strtolower($orientation);
-		if ($orientation === 'p' || $orientation == 'portrait') {
+		if ($orientation === 'p' || $orientation === 'portrait') {
 			$orientation = 'P';
 			$this->wPt = $this->fwPt;
 			$this->hPt = $this->fhPt;
-		} elseif ($orientation === 'l' || $orientation == 'landscape') {
+		} elseif ($orientation === 'l' || $orientation === 'landscape') {
 			$orientation = 'L';
 			$this->wPt = $this->fhPt;
 			$this->hPt = $this->fwPt;
@@ -1910,6 +1913,11 @@ class Mpdf implements \Psr\Log\LoggerAwareInterface
 		}
 	}
 
+	/**
+	 * @param mixed[] $parms
+	 *
+	 * @return int
+	 */
 	function AddExtGState($parms)
 	{
 		$n = count($this->extgstates);
@@ -1930,6 +1938,7 @@ class Mpdf implements \Psr\Log\LoggerAwareInterface
 		}
 		$n++;
 		$this->extgstates[$n]['parms'] = $parms;
+
 		return $n;
 	}
 
@@ -3909,6 +3918,7 @@ class Mpdf implements \Psr\Log\LoggerAwareInterface
 			$regenerate = true;
 		} // mPDF 6
 
+		$glyphIDtoUni = null;
 		if (empty($font['name']) || $font['originalsize'] != $ttfstat['size'] || $regenerate) {
 			$generator = new MetricsGenerator($this->fontCache, $this->fontDescriptor);
 
@@ -7283,7 +7293,7 @@ class Mpdf implements \Psr\Log\LoggerAwareInterface
 								$translate_x = $this->sizeConverter->convert($vv[0], $maxsize_x, false, false);
 								$tr2 .= $this->transformTranslate($translate_x, 0, true) . ' ';
 							} elseif ($c == 'translatey' && count($vv)) {
-								$translate_y = $this->sizeConverter->convert($vv[1], $maxsize_y, false, false);
+								$translate_y = $this->sizeConverter->convert($vv[0], $maxsize_y, false, false);
 								$tr2 .= $this->transformTranslate(0, $translate_y, true) . ' ';
 							} elseif ($c == 'scale' && count($vv)) {
 								$scale_x = $vv[0] * 100;
@@ -7297,7 +7307,7 @@ class Mpdf implements \Psr\Log\LoggerAwareInterface
 								$scale_x = $vv[0] * 100;
 								$tr2 .= $this->transformScale($scale_x, 0, $cx, $cy, true) . ' ';
 							} elseif ($c == 'scaley' && count($vv)) {
-								$scale_y = $vv[1] * 100;
+								$scale_y = $vv[0] * 100;
 								$tr2 .= $this->transformScale(0, $scale_y, $cx, $cy, true) . ' ';
 							} elseif ($c == 'skew' && count($vv)) {
 								$angle_x = $this->ConvertAngle($vv[0], false);
@@ -7844,7 +7854,7 @@ class Mpdf implements \Psr\Log\LoggerAwareInterface
 			/* -- END CSS-IMAGE-FLOAT -- */
 		} // *TABLES*
 		// OBJECTS - IMAGES & FORM Elements (NB has already skipped line/page if required - in printbuffer)
-		if (substr($s, 0, 3) == "\xbb\xa4\xac") { // identifier has been identified!
+		if (substr($s, 0, 3) == Mpdf::OBJECT_IDENTIFIER) { // identifier has been identified!
 			$objattr = $this->_getObjAttr($s);
 			$h_corr = 0;
 			if ($is_table) { // *TABLES*
@@ -9091,12 +9101,14 @@ class Mpdf implements \Psr\Log\LoggerAwareInterface
 
 	function _getObjAttr($t)
 	{
-		$c = explode("\xbb\xa4\xac", $t, 2);
-		$c = explode(",", $c[1], 2);
+		$c = explode(Mpdf::OBJECT_IDENTIFIER, $t, 2);
+		$c = explode(',', $c[1], 2);
+
 		foreach ($c as $v) {
-			$v = explode("=", $v, 2);
-			$sp[$v[0]] = $v[1];
+			$v = explode('=', $v, 2);
+			$sp[$v[0]] = trim($v[1], Mpdf::OBJECT_IDENTIFIER);
 		}
+
 		return (unserialize($sp['objattr']));
 	}
 
@@ -9741,6 +9753,13 @@ class Mpdf implements \Psr\Log\LoggerAwareInterface
 				$this->margin_footer = $this->saveHTMLHeader[$n][$OE]['mf'];
 				$this->w = $this->saveHTMLHeader[$n][$OE]['pw'];
 				$this->h = $this->saveHTMLHeader[$n][$OE]['ph'];
+				if ($this->w > $this->h) {
+					$this->hPt = $this->fwPt;
+					$this->wPt = $this->fhPt;
+				} else {
+					$this->hPt = $this->fhPt;
+					$this->wPt = $this->fwPt;
+				}
 				$rotate = (isset($this->saveHTMLHeader[$n][$OE]['rotate']) ? $this->saveHTMLHeader[$n][$OE]['rotate'] : null);
 				$this->Reset();
 				$this->pageoutput[$n] = [];
@@ -9815,6 +9834,13 @@ class Mpdf implements \Psr\Log\LoggerAwareInterface
 				$this->margin_footer = $this->saveHTMLFooter[$n][$OE]['mf'];
 				$this->w = $this->saveHTMLFooter[$n][$OE]['pw'];
 				$this->h = $this->saveHTMLFooter[$n][$OE]['ph'];
+				if ($this->w > $this->h) {
+					$this->hPt = $this->fwPt;
+					$this->wPt = $this->fhPt;
+				} else {
+					$this->hPt = $this->fhPt;
+					$this->wPt = $this->fwPt;
+				}
 				$rotate = (isset($this->saveHTMLFooter[$n][$OE]['rotate']) ? $this->saveHTMLFooter[$n][$OE]['rotate'] : null);
 				$this->Reset();
 				$this->pageoutput[$n] = [];
@@ -10017,9 +10043,10 @@ class Mpdf implements \Psr\Log\LoggerAwareInterface
 				for ($i = 0; $i < 4; $i++) {
 					$m[$i] = array_merge($m1[$i], $m2[$i], $m3[$i]);
 				}
-				if (count($m[0])) {
+				$mFirstLength = count($m[0]);
+				if ($mFirstLength) {
 					$sortarr = [];
-					for ($i = 0; $i < count($m[0]); $i++) {
+					for ($i = 0; $i < $mFirstLength; $i++) {
 						$key = $m[1][$i] * 2;
 						if ($m[3][$i] == 'EMCZ') {
 							$key +=2; // background first then gradient then normal
@@ -10129,6 +10156,7 @@ class Mpdf implements \Psr\Log\LoggerAwareInterface
 			$this->page++;
 			$this->pages[$this->page] = '';
 		}
+
 		$this->state = 2;
 		$resetHTMLHeadersrequired = false;
 
@@ -10140,13 +10168,13 @@ class Mpdf implements \Psr\Log\LoggerAwareInterface
 		// Paged media (page-box)
 		if ($pagesel || $this->page_box['using']) {
 
-			if ($pagesel || $this->page == 1) {
+			if ($pagesel || $this->page === 1) {
 				$first = true;
 			} else {
 				$first = false;
 			}
 
-			if ($this->mirrorMargins && ($this->page % 2 == 0)) {
+			if ($this->mirrorMargins && ($this->page % 2 === 0)) {
 				$oddEven = 'E';
 			} else {
 				$oddEven = 'O';
@@ -10162,7 +10190,7 @@ class Mpdf implements \Psr\Log\LoggerAwareInterface
 
 			list($orientation, $mgl, $mgr, $mgt, $mgb, $mgh, $mgf, $hname, $fname, $bg, $resetpagenum, $pagenumstyle, $suppress, $marks, $newformat) = $this->SetPagedMediaCSS($psel, $first, $oddEven);
 
-			if ($this->mirrorMargins && ($this->page % 2 == 0)) {
+			if ($this->mirrorMargins && ($this->page % 2 === 0)) {
 
 				if ($hname) {
 					$ehvalue = 1;
@@ -10245,15 +10273,15 @@ class Mpdf implements \Psr\Log\LoggerAwareInterface
 			}
 		}
 
-		if ($orientation != $this->CurOrientation || $newformat) {
+		if ($orientation !== $this->CurOrientation || $newformat) {
 
 			// Change orientation
-			if ($orientation == 'P') {
+			if ($orientation === 'P') {
 				$this->wPt = $this->fwPt;
 				$this->hPt = $this->fhPt;
 				$this->w = $this->fw;
 				$this->h = $this->fh;
-				if (($this->forcePortraitHeaders || $this->forcePortraitMargins) && $this->DefOrientation == 'P') {
+				if (($this->forcePortraitHeaders || $this->forcePortraitMargins) && $this->DefOrientation === 'P') {
 					$this->tMargin = $this->orig_tMargin;
 					$this->bMargin = $this->orig_bMargin;
 					$this->DeflMargin = $this->orig_lMargin;
@@ -10269,7 +10297,7 @@ class Mpdf implements \Psr\Log\LoggerAwareInterface
 				$this->w = $this->fh;
 				$this->h = $this->fw;
 
-				if (($this->forcePortraitHeaders || $this->forcePortraitMargins) && $this->DefOrientation == 'P') {
+				if (($this->forcePortraitHeaders || $this->forcePortraitMargins) && $this->DefOrientation === 'P') {
 					$this->tMargin = $this->orig_lMargin;
 					$this->bMargin = $this->orig_rMargin;
 					$this->DeflMargin = $this->orig_bMargin;
@@ -10573,7 +10601,8 @@ class Mpdf implements \Psr\Log\LoggerAwareInterface
 
 		$this->SetAlpha($alpha);
 
-		$this->SetTColor($this->colorConverter->convert(0, $this->PDFAXwarnings));
+		$color = $this->watermarkTextObject ? $this->watermarkTextObject->getColor() : 0;
+		$this->SetTColor($this->colorConverter->convert($color, $this->PDFAXwarnings));
 
 		$szfont = $fontsize;
 		$loop = 0;
@@ -10603,6 +10632,7 @@ class Mpdf implements \Psr\Log\LoggerAwareInterface
 		$this->Rotate($angle, $wx, $wy);
 		$this->Text($wx, $wy, $texte, $OTLdata, $textvar);
 		$this->Rotate(0);
+
 		$this->SetTColor($this->colorConverter->convert(0, $this->PDFAXwarnings));
 
 		$this->SetAlpha(1);
@@ -13067,17 +13097,41 @@ class Mpdf implements \Psr\Log\LoggerAwareInterface
 
 	function SetWatermarkText($txt = '', $alpha = -1)
 	{
+		if ($txt instanceof \Mpdf\WatermarkText) {
+			$this->watermarkTextObject = $txt;
+			$this->watermarkText = $txt->getText();
+			$this->watermarkTextAlpha = $txt->getAlpha();
+			$this->watermarkAngle = $txt->getAngle();
+			$this->watermark_font = $txt->getFont() !== null ? $txt->getFont() : $this->watermark_font;
+			$this->watermark_size = $txt->getSize();
+
+			return;
+		}
+
 		if ($alpha >= 0) {
 			$this->watermarkTextAlpha = $alpha;
 		}
+
 		$this->watermarkText = $txt;
 	}
 
 	function SetWatermarkImage($src, $alpha = -1, $size = 'D', $pos = 'F')
 	{
+		if ($src instanceof \Mpdf\WatermarkImage) {
+			$this->watermarkImage = $src->getPath();
+			$this->watermark_size = $src->getSize();
+			$this->watermark_pos = $src->getPosition();
+			$this->watermarkImageAlpha = $src->getAlpha();
+			$this->watermarkImgBehind = $src->isBehindContent();
+			$this->watermarkImgAlphaBlend = $src->getAlphaBlend();
+
+			return;
+		}
+
 		if ($alpha >= 0) {
 			$this->watermarkImageAlpha = $alpha;
 		}
+
 		$this->watermarkImage = $src;
 		$this->watermark_size = $size;
 		$this->watermark_pos = $pos;
@@ -13185,7 +13239,7 @@ class Mpdf implements \Psr\Log\LoggerAwareInterface
 
 		/* -- WATERMARK -- */
 		if (($this->watermarkText) && ($this->showWatermarkText)) {
-			$this->watermark($this->watermarkText, $this->watermarkAngle, 120, $this->watermarkTextAlpha); // Watermark text
+			$this->watermark($this->watermarkText, $this->watermarkAngle, is_int($this->watermark_size) ? $this->watermark_size : 120, $this->watermarkTextAlpha); // Watermark text
 		}
 		if (($this->watermarkImage) && ($this->showWatermarkImage)) {
 			$this->watermarkImg($this->watermarkImage, $this->watermarkImageAlpha); // Watermark image
@@ -13595,7 +13649,7 @@ class Mpdf implements \Psr\Log\LoggerAwareInterface
 						$objattr['text'] = $e;
 						$objattr['OTLdata'] = $this->OTLdata;
 						$this->OTLdata = [];
-						$te = "\xbb\xa4\xactype=textarea,objattr=" . serialize($objattr) . "\xbb\xa4\xac";
+						$te = Mpdf::OBJECT_IDENTIFIER . "type=textarea,objattr=" . serialize($objattr) . Mpdf::OBJECT_IDENTIFIER;
 						if ($this->tdbegin) {
 							$this->_saveCellTextBuffer($te, $this->HREF);
 						} else {
@@ -15518,7 +15572,7 @@ class Mpdf implements \Psr\Log\LoggerAwareInterface
 
 			$objattr['listmarkerposition'] = $listitemposition;
 
-			$e = "\xbb\xa4\xactype=image,objattr=" . serialize($objattr) . "\xbb\xa4\xac";
+			$e = Mpdf::OBJECT_IDENTIFIER . "type=image,objattr=" . serialize($objattr) . Mpdf::OBJECT_IDENTIFIER;
 			$this->_saveTextBuffer($e);
 
 			if ($listitemposition == 'inside') {
@@ -15549,7 +15603,7 @@ class Mpdf implements \Psr\Log\LoggerAwareInterface
 			$objattr['fontsizept'] = $this->FontSizePt;
 			$objattr['fontstyle'] = $this->FontStyle;
 
-			$e = "\xbb\xa4\xactype=listmarker,objattr=" . serialize($objattr) . "\xbb\xa4\xac";
+			$e = Mpdf::OBJECT_IDENTIFIER . "type=listmarker,objattr=" . serialize($objattr) . Mpdf::OBJECT_IDENTIFIER;
 			$this->listitem = $this->_saveTextBuffer($e, '', '', true); // true returns array
 
 		} elseif (preg_match('/U\+([a-fA-F0-9]+)/i', $listitemtype, $m)) { // SYMBOL 2 (needs new font)
@@ -15587,7 +15641,7 @@ class Mpdf implements \Psr\Log\LoggerAwareInterface
 				$objattr['fontsize'] = $this->FontSize;
 				$objattr['fontsizept'] = $this->FontSizePt;
 				$objattr['fontstyle'] = $this->FontStyle;
-				$e = "\xbb\xa4\xactype=listmarker,objattr=" . serialize($objattr) . "\xbb\xa4\xac";
+				$e = Mpdf::OBJECT_IDENTIFIER . "type=listmarker,objattr=" . serialize($objattr) . Mpdf::OBJECT_IDENTIFIER;
 				$this->listitem = $this->_saveTextBuffer($e, '', '', true); // true returns array
 			}
 
@@ -15626,7 +15680,7 @@ class Mpdf implements \Psr\Log\LoggerAwareInterface
 				$objattr['fontsize'] = $this->FontSize;
 				$objattr['fontsizept'] = $this->FontSizePt;
 				$objattr['fontstyle'] = $this->FontStyle;
-				$e = "\xbb\xa4\xactype=listmarker,objattr=" . serialize($objattr) . "\xbb\xa4\xac";
+				$e = Mpdf::OBJECT_IDENTIFIER . "type=listmarker,objattr=" . serialize($objattr) . Mpdf::OBJECT_IDENTIFIER;
 
 				$this->listitem = $this->_saveTextBuffer($e, '', '', true); // true returns array
 			}
@@ -16019,7 +16073,7 @@ class Mpdf implements \Psr\Log\LoggerAwareInterface
 		// First make sure each element/chunk has the OTLdata for Bidi set.
 		for ($i = 0; $i < $array_size; $i++) {
 			if (empty($arrayaux[$i][18])) {
-				if (substr($arrayaux[$i][0], 0, 3) == "\xbb\xa4\xac") { // object identifier has been identified!
+				if (substr($arrayaux[$i][0], 0, 3) == Mpdf::OBJECT_IDENTIFIER) { // object identifier has been identified!
 					$unicode = [0xFFFC]; // Object replacement character
 				} else {
 					$unicode = $this->UTF8StringToArray($arrayaux[$i][0], false);
@@ -16042,10 +16096,9 @@ class Mpdf implements \Psr\Log\LoggerAwareInterface
 			$array_size = count($arrayaux);
 		}
 
-
 		// Remove empty items // mPDF 6
 		for ($i = $array_size - 1; $i > 0; $i--) {
-			if (empty($arrayaux[$i][0]) && (isset($arrayaux[$i][16]) && $arrayaux[$i][16] !== '0') && empty($arrayaux[$i][7])) {
+			if ('' === $arrayaux[$i][0] && (isset($arrayaux[$i][16]) && $arrayaux[$i][16] !== '0') && empty($arrayaux[$i][7])) {
 				unset($arrayaux[$i]);
 			}
 		}
@@ -16092,7 +16145,8 @@ class Mpdf implements \Psr\Log\LoggerAwareInterface
 			}
 
 			// FIXED TO ALLOW IT TO SHOW '0'
-			if (empty($vetor[0]) && !($vetor[0] === '0') && empty($vetor[7])) { // Ignore empty text and not carrying an internal link
+			if (empty($vetor[0]) && !($vetor[0] === '0') && empty($vetor[7])) {
+				// Ignore empty text and not carrying an internal link
 				// Check if it is the last element. If so then finish printing the block
 				if ($i == ($array_size - 1)) {
 					$this->finishFlowingBlock(true);
@@ -16206,7 +16260,7 @@ class Mpdf implements \Psr\Log\LoggerAwareInterface
 			// SPECIAL CONTENT - IMAGES & FORM OBJECTS
 			// Print-out special content
 
-			if (substr($vetor[0], 0, 3) == "\xbb\xa4\xac") { // identifier has been identified!
+			if (substr($vetor[0], 0, 3) == Mpdf::OBJECT_IDENTIFIER) { // identifier has been identified!
 				$objattr = $this->_getObjAttr($vetor[0]);
 
 				/* -- TABLES -- */
@@ -19133,7 +19187,7 @@ class Mpdf implements \Psr\Log\LoggerAwareInterface
 			}
 
 			// IMAGES & FORM ELEMENTS
-			if (substr($line, 0, 3) == "\xbb\xa4\xac") { // inline object - FORM element or IMAGE!
+			if (substr($line, 0, 3) == Mpdf::OBJECT_IDENTIFIER) { // inline object - FORM element or IMAGE!
 				$objattr = $this->_getObjAttr($line);
 				if ($objattr['type'] != 'hr' && isset($objattr['width']) && ($objattr['width'] / $this->shrin_k) > ($maxwidth + 0.0001)) {
 					if (($objattr['width'] / $this->shrin_k) > $biggestword) {
@@ -21908,10 +21962,10 @@ class Mpdf implements \Psr\Log\LoggerAwareInterface
 					if (isset($cell['textbuffer'])) {
 						for ($n = 0; $n < count($cell['textbuffer']); $n++) {
 							$t = $cell['textbuffer'][$n][0];
-							if (substr($t, 0, 19) == "\xbb\xa4\xactype=nestedtable") {
+							if (substr($t, 0, 19) == Mpdf::OBJECT_IDENTIFIER . "type=nestedtable") {
 								$objattr = $this->_getObjAttr($t);
 								$objattr['col'] = $col;
-								$cell['textbuffer'][$n][0] = "\xbb\xa4\xactype=nestedtable,objattr=" . serialize($objattr) . "\xbb\xa4\xac";
+								$cell['textbuffer'][$n][0] = Mpdf::OBJECT_IDENTIFIER . "type=nestedtable,objattr=" . serialize($objattr) . Mpdf::OBJECT_IDENTIFIER;
 								$this->table[($this->tableLevel + 1)][$objattr['nestedcontent']]['nestedpos'][1] = $col;
 							}
 						}
@@ -22192,7 +22246,18 @@ class Mpdf implements \Psr\Log\LoggerAwareInterface
 						$extra = $table['max_cell_border_width']['B'] / 2;
 					}
 
-					if ($j == $startcol && ((($y + $maxrowheight + $extra ) > ($pagetrigger + 0.001)) || (($this->keepColumns || !$this->ColActive) && !empty($tablefooter) && ($y + $maxrowheight + $tablefooterrowheight + $extra) > $pagetrigger) && ($this->tableLevel == 1 && $i < ($numrows - $table['headernrows']))) && ($y0 > 0 || $x0 > 0) && !$this->InFooter && $this->autoPageBreak) {
+					// lookahead for pagebreak
+					$pagebreaklookahead = 1;
+					while (isset($table['pagebreak-before']) && isset($table['pagebreak-before'][$i + $pagebreaklookahead]) && $table['pagebreak-before'][$i + $pagebreaklookahead] == 'avoid') {
+						// pagebreak-after is mapped to pagebreak-before on i+1 in Tags/Tr.php
+						$pagebreaklookahead++;
+					}
+					// corner case: if the pagelookahead is bigger than the pagesize, we break anyway, so fill up the page
+					if ($pagebreaklookahead * $maxrowheight + $extra > $pagetrigger + 0.001) {
+						$pagebreaklookahead = 1;
+					}
+					// if we exceed page boundaries: restart table on next page before printing the line
+					if ($j == $startcol && ((($y + $pagebreaklookahead * $maxrowheight + $extra ) > ($pagetrigger + 0.001)) || (($this->keepColumns || !$this->ColActive) && !empty($tablefooter) && ($y + $maxrowheight + $tablefooterrowheight + $extra) > $pagetrigger) && ($this->tableLevel == 1 && $i < ($numrows - $table['headernrows']))) && ($y0 > 0 || $x0 > 0) && !$this->InFooter && $this->autoPageBreak) {
 						if (!$skippage) {
 							$finalSpread = true;
 							$firstSpread = true;
@@ -23836,26 +23901,27 @@ class Mpdf implements \Psr\Log\LoggerAwareInterface
 		if ($end_page < 1) {
 			$end_page = $start_page;
 		}
-		$n_tod = $end_page - $start_page + 1;
-		$last_page = count($this->pages);
-		$n_atend = $last_page - $end_page + 1;
+
+		$deletedPagesCount = $end_page - $start_page + 1;
+		$lastPageNumber = count($this->pages);
+		$remainingPagesFromEndPageCount = $lastPageNumber - $end_page;
 
 		// move pages
-		for ($i = 0; $i < $n_atend; $i++) {
+		for ($i = 0; $i < $remainingPagesFromEndPageCount; $i++) {
 			$this->pages[$start_page + $i] = $this->pages[$end_page + 1 + $i];
 		}
-		// delete pages
-		for ($i = 0; $i < $n_tod; $i++) {
-			unset($this->pages[$last_page - $i]);
-		}
 
+		// delete pages
+		for ($i = 0; $i < $deletedPagesCount; $i++) {
+			unset($this->pages[$lastPageNumber - $i]);
+		}
 
 		/* -- BOOKMARKS -- */
 		// Update Bookmarks
 		foreach ($this->BMoutlines as $i => $o) {
 			if ($o['p'] >= $end_page) {
-				$this->BMoutlines[$i]['p'] -= $n_tod;
-			} elseif ($p < $start_page) {
+				$this->BMoutlines[$i]['p'] -= $deletedPagesCount;
+			} elseif ($o['p'] < $start_page) {
 				unset($this->BMoutlines[$i]);
 			}
 		}
@@ -23869,14 +23935,14 @@ class Mpdf implements \Psr\Log\LoggerAwareInterface
 					if (strpos($pl[4], '@') === 0) {
 						$p = substr($pl[4], 1);
 						if ($p > $end_page) {
-							$this->PageLinks[$i][$key][4] = '@' . ($p - $n_tod);
+							$this->PageLinks[$i][$key][4] = '@' . ($p - $deletedPagesCount);
 						} elseif ($p < $start_page) {
 							unset($this->PageLinks[$i][$key]);
 						}
 					}
 				}
 				if ($i > $end_page) {
-					$newarr[($i - $n_tod)] = $this->PageLinks[$i];
+					$newarr[($i - $deletedPagesCount)] = $this->PageLinks[$i];
 				} elseif ($p < $start_page) {
 					$newarr[$i] = $this->PageLinks[$i];
 				}
@@ -23903,7 +23969,7 @@ class Mpdf implements \Psr\Log\LoggerAwareInterface
 			$newarr = [];
 			foreach ($this->pageDim as $p => $v) {
 				if ($p > $end_page) {
-					$newarr[($p - $n_tod)] = $this->pageDim[$p];
+					$newarr[($p - $deletedPagesCount)] = $this->pageDim[$p];
 				} elseif ($p < $start_page) {
 					$newarr[$p] = $this->pageDim[$p];
 				}
@@ -23916,7 +23982,7 @@ class Mpdf implements \Psr\Log\LoggerAwareInterface
 		if (count($this->saveHTMLHeader)) {
 			foreach ($this->saveHTMLHeader as $p => $v) {
 				if ($p > $end_page) {
-					$newarr[($p - $n_tod)] = $this->saveHTMLHeader[$p];
+					$newarr[($p - $deletedPagesCount)] = $this->saveHTMLHeader[$p];
 				} // mPDF 5.7.3
 				elseif ($p < $start_page) {
 					$newarr[$p] = $this->saveHTMLHeader[$p];
@@ -23929,7 +23995,7 @@ class Mpdf implements \Psr\Log\LoggerAwareInterface
 			$newarr = [];
 			foreach ($this->saveHTMLFooter as $p => $v) {
 				if ($p > $end_page) {
-					$newarr[($p - $n_tod)] = $this->saveHTMLFooter[$p];
+					$newarr[($p - $deletedPagesCount)] = $this->saveHTMLFooter[$p];
 				} elseif ($p < $start_page) {
 					$newarr[$p] = $this->saveHTMLFooter[$p];
 				}
@@ -23941,7 +24007,7 @@ class Mpdf implements \Psr\Log\LoggerAwareInterface
 		// Update Internal Links
 		foreach ($this->internallink as $key => $o) {
 			if ($o['PAGE'] > $end_page) {
-				$this->internallink[$key]['PAGE'] -= $n_tod;
+				$this->internallink[$key]['PAGE'] -= $deletedPagesCount;
 			} elseif ($o['PAGE'] < $start_page) {
 				unset($this->internallink[$key]);
 			}
@@ -23950,7 +24016,7 @@ class Mpdf implements \Psr\Log\LoggerAwareInterface
 		// Update Links
 		foreach ($this->links as $key => $o) {
 			if ($o[0] > $end_page) {
-				$this->links[$key][0] -= $n_tod;
+				$this->links[$key][0] -= $deletedPagesCount;
 			} elseif ($o[0] < $start_page) {
 				unset($this->links[$key]);
 			}
@@ -23959,7 +24025,7 @@ class Mpdf implements \Psr\Log\LoggerAwareInterface
 		// Update Form fields
 		foreach ($this->form->forms as $key => $f) {
 			if ($f['page'] > $end_page) {
-				$this->form->forms[$key]['page'] -= $n_tod;
+				$this->form->forms[$key]['page'] -= $deletedPagesCount;
 			} elseif ($f['page'] < $start_page) {
 				unset($this->form->forms[$key]);
 			}
@@ -23972,7 +24038,7 @@ class Mpdf implements \Psr\Log\LoggerAwareInterface
 			foreach ($this->PageAnnots as $p => $anno) {
 				if ($p > $end_page) {
 					foreach ($anno as $o) {
-						$newarr[($p - $n_tod)][] = $o;
+						$newarr[($p - $deletedPagesCount)][] = $o;
 					}
 				} elseif ($p < $start_page) {
 					$newarr[$p] = $this->PageAnnots[$p];
@@ -23986,7 +24052,7 @@ class Mpdf implements \Psr\Log\LoggerAwareInterface
 		// Update PageNumSubstitutions
 		foreach ($this->PageNumSubstitutions as $k => $v) {
 			if ($this->PageNumSubstitutions[$k]['from'] > $end_page) {
-				$this->PageNumSubstitutions[$k]['from'] -= $n_tod;
+				$this->PageNumSubstitutions[$k]['from'] -= $deletedPagesCount;
 			} elseif ($this->PageNumSubstitutions[$k]['from'] < $start_page) {
 				unset($this->PageNumSubstitutions[$k]);
 			}
@@ -27024,7 +27090,7 @@ class Mpdf implements \Psr\Log\LoggerAwareInterface
 
 		if (strlen($html) > (int) $limit) {
 			throw new \Mpdf\MpdfException(sprintf(
-				'The HTML code size is larger than pcre.backtrack_limit %d. You should use WriteHTML() with smaller string lengths.',
+				'The HTML code size is larger than pcre.backtrack_limit %d. You should use WriteHTML() with smaller string lengths. Pass your HTML in smaller chunks.',
 				$limit
 			));
 		}
@@ -27032,7 +27098,7 @@ class Mpdf implements \Psr\Log\LoggerAwareInterface
 		preg_match_all("/(<annotation.*?>)/si", $html, $m);
 		if (count($m[1])) {
 			for ($i = 0; $i < count($m[1]); $i++) {
-				$sub = preg_replace("/\n/si", "\xbb\xa4\xac", $m[1][$i]);
+				$sub = preg_replace("/\n/si", Mpdf::OBJECT_IDENTIFIER, $m[1][$i]);
 				$html = preg_replace('/' . preg_quote($m[1][$i], '/') . '/si', $sub, $html);
 			}
 		}
@@ -27179,7 +27245,7 @@ class Mpdf implements \Psr\Log\LoggerAwareInterface
 			}
 		}
 
-		$html = preg_replace("/\xbb\xa4\xac/", "\n", $html);
+		$html = preg_replace('/' . Mpdf::OBJECT_IDENTIFIER . '/', "\n", $html);
 
 		// Fixes <p>&#8377</p> which browser copes with even though it is wrong!
 		$html = preg_replace("/(&#[x]{0,1}[0-9a-f]{1,5})</i", "\\1;<", $html);

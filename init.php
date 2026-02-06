@@ -14,6 +14,9 @@ $root_path = realpath(dirname(__FILE__)) . DIRECTORY_SEPARATOR;
 if (!isset($isApi)) {
     $isApi = false;
 }
+if (file_exists($root_path . 'system/vendor/autoload.php')) {
+    require_once $root_path . 'system/vendor/autoload.php';
+}
 // on some server, it getting error because of slash is backwards
 function _autoloader($class)
 {

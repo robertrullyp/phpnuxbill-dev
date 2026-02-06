@@ -64,3 +64,5 @@ system/uploads/invoices/**
 !system/uploads/invoices/
 !system/uploads/invoices/index.html
 TODO.md
+/scripts
+.githooks

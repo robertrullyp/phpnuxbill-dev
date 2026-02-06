@@ -1,6 +1,9 @@
 <?php
 
 $query = isset($_GET['query']) ? trim($_GET['query']) : '';
+if (!empty($isApi)) {
+    $GLOBALS['api_raw_output'] = true;
+}
 
 if (!empty($query)) {
     $results = ORM::for_table('tbl_customers')

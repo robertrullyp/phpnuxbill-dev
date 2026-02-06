@@ -209,15 +209,44 @@ switch ($action) {
 			<h3 class="sum">' . $config['currency_code'] . ' ' . number_format($xy, 2, $config['dec_point'], $config['thousands_sep']) . '</h3>';
             run_hook('print_pdf_by_date'); #HOOK
 
-            $mpdf = new \Mpdf\Mpdf();
-            $mpdf->SetProtection(array('print'));
-            $mpdf->SetTitle($config['CompanyName'] . ' Reports');
-            $mpdf->SetAuthor($config['CompanyName']);
-            $mpdf->SetWatermarkText($d['price']);
-            $mpdf->showWatermarkText = true;
-            $mpdf->watermark_font = 'Helvetica';
-            $mpdf->watermarkTextAlpha = 0.1;
-            $mpdf->SetDisplayMode('fullpage');
+            $watermarkText = $config['currency_code'] . ' ' . number_format($xy, 2, $config['dec_point'], $config['thousands_sep']);
+            if (!class_exists('\\Mpdf\\Mpdf')) {
+                if (!empty($isApi)) {
+                    showResult(false, Lang::T('PDF engine is unavailable'));
+                }
+                _alert(Lang::T('PDF engine is unavailable'), 'danger', 'reports/by-date');
+            }
+            if (!extension_loaded('mbstring') || !extension_loaded('gd')) {
+                $missing = [];
+                if (!extension_loaded('mbstring')) {
+                    $missing[] = 'mbstring';
+                }
+                if (!extension_loaded('gd')) {
+                    $missing[] = 'gd';
+                }
+                $msg = Lang::T('Missing PHP extensions') . ': ' . implode(', ', $missing);
+                if (!empty($isApi)) {
+                    showResult(false, $msg);
+                }
+                _alert($msg, 'danger', 'reports/by-date');
+            }
+
+            try {
+                $mpdf = new \Mpdf\Mpdf();
+                $mpdf->SetProtection(array('print'));
+                $mpdf->SetTitle($config['CompanyName'] . ' Reports');
+                $mpdf->SetAuthor($config['CompanyName']);
+                $mpdf->SetWatermarkText($watermarkText);
+                $mpdf->showWatermarkText = true;
+                $mpdf->watermark_font = 'Helvetica';
+                $mpdf->watermarkTextAlpha = 0.1;
+                $mpdf->SetDisplayMode('fullpage');
+            } catch (Throwable $e) {
+                if (!empty($isApi)) {
+                    showResult(false, $e->getMessage());
+                }
+                _alert($e->getMessage(), 'danger', 'reports/by-date');
+            }
 
             $style = '<style>
 			#page-wrap { width: 100%; margin: 0 auto; }
@@ -258,9 +287,22 @@ switch ($action) {
 $style
 $html
 EOF;
-            $mpdf->WriteHTML($nhtml);
-            $mpdf->Output('phpnuxbill_reports_' . date('Ymd_His') . '.pdf', 'D');
+            try {
+                $mpdf->WriteHTML($nhtml);
+                if (!empty($isApi)) {
+                    $GLOBALS['api_raw_output'] = true;
+                }
+                $mpdf->Output('phpnuxbill_reports_' . date('Ymd_His') . '.pdf', 'D');
+            } catch (Throwable $e) {
+                if (!empty($isApi)) {
+                    showResult(false, $e->getMessage());
+                }
+                _alert($e->getMessage(), 'danger', 'reports/by-date');
+            }
         } else {
+            if (!empty($isApi)) {
+                $GLOBALS['api_raw_output'] = true;
+            }
             echo 'No Data';
         }
 
@@ -402,15 +444,44 @@ EOF;
 			<h3 class="sum">' . $config['currency_code'] . ' ' . number_format($xy, 2, $config['dec_point'], $config['thousands_sep']) . '</h3>';
 
             run_hook('pdf_by_period'); #HOOK
-            $mpdf = new \Mpdf\Mpdf();
-            $mpdf->SetProtection(array('print'));
-            $mpdf->SetTitle($config['CompanyName'] . ' Reports');
-            $mpdf->SetAuthor($config['CompanyName']);
-            $mpdf->SetWatermarkText($d['price']);
-            $mpdf->showWatermarkText = true;
-            $mpdf->watermark_font = 'Helvetica';
-            $mpdf->watermarkTextAlpha = 0.1;
-            $mpdf->SetDisplayMode('fullpage');
+            $watermarkText = $config['currency_code'] . ' ' . number_format($xy, 2, $config['dec_point'], $config['thousands_sep']);
+            if (!class_exists('\\Mpdf\\Mpdf')) {
+                if (!empty($isApi)) {
+                    showResult(false, Lang::T('PDF engine is unavailable'));
+                }
+                _alert(Lang::T('PDF engine is unavailable'), 'danger', 'reports/by-period');
+            }
+            if (!extension_loaded('mbstring') || !extension_loaded('gd')) {
+                $missing = [];
+                if (!extension_loaded('mbstring')) {
+                    $missing[] = 'mbstring';
+                }
+                if (!extension_loaded('gd')) {
+                    $missing[] = 'gd';
+                }
+                $msg = Lang::T('Missing PHP extensions') . ': ' . implode(', ', $missing);
+                if (!empty($isApi)) {
+                    showResult(false, $msg);
+                }
+                _alert($msg, 'danger', 'reports/by-period');
+            }
+
+            try {
+                $mpdf = new \Mpdf\Mpdf();
+                $mpdf->SetProtection(array('print'));
+                $mpdf->SetTitle($config['CompanyName'] . ' Reports');
+                $mpdf->SetAuthor($config['CompanyName']);
+                $mpdf->SetWatermarkText($watermarkText);
+                $mpdf->showWatermarkText = true;
+                $mpdf->watermark_font = 'Helvetica';
+                $mpdf->watermarkTextAlpha = 0.1;
+                $mpdf->SetDisplayMode('fullpage');
+            } catch (Throwable $e) {
+                if (!empty($isApi)) {
+                    showResult(false, $e->getMessage());
+                }
+                _alert($e->getMessage(), 'danger', 'reports/by-period');
+            }
 
             $style = '<style>
 			#page-wrap { width: 100%; margin: 0 auto; }
@@ -451,9 +522,22 @@ EOF;
 $style
 $html
 EOF;
-            $mpdf->WriteHTML($nhtml);
-            $mpdf->Output(date('Ymd_His') . '.pdf', 'D');
+            try {
+                $mpdf->WriteHTML($nhtml);
+                if (!empty($isApi)) {
+                    $GLOBALS['api_raw_output'] = true;
+                }
+                $mpdf->Output(date('Ymd_His') . '.pdf', 'D');
+            } catch (Throwable $e) {
+                if (!empty($isApi)) {
+                    showResult(false, $e->getMessage());
+                }
+                _alert($e->getMessage(), 'danger', 'reports/by-period');
+            }
         } else {
+            if (!empty($isApi)) {
+                $GLOBALS['api_raw_output'] = true;
+            }
             echo 'No Data';
         }
 

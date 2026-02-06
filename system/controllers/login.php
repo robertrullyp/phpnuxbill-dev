@@ -138,8 +138,8 @@ switch ($do) {
                     $d->save();
                     _log($username . ' ' . Lang::T('Login Successful'), 'User', $d['id']);
                     if ($isApi) {
-                        if ($token) {
-                            showResult(true, Lang::T('Login Successful'), ['token' => "u." . $token]);
+                        if (!empty($token['token'])) {
+                            showResult(true, Lang::T('Login Successful'), ['token' => "c." . $token['token']]);
                         } else {
                             showResult(false, Lang::T('Invalid Username or Password'));
                         }

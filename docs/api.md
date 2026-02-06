@@ -32,16 +32,32 @@ API memakai parameter `token` (bisa via query string atau POST). Logika validasi
 - `api_secret` default = `db_pass` (lihat `init.php`).
 - Token dianggap expired bila `time != 0` dan umur > 7,776,000 detik (~90 hari).
 
+### Autentikasi via API key global (config)
+
+Jika `token` sama dengan `config.api_key`, API akan otomatis memakai akun **SuperAdmin** (atau fallback **Admin** pertama) sebagai konteks.
+Ini cocok untuk integrasi server‑to‑server tanpa perlu token yang berumur.
+
+### Autentikasi via API key admin (header)
+
+Selain `token`, API menerima **API key admin** via header berikut:
+- `X-Admin-Api-Key: <key>`
+- `X-API-Key: <key>`
+- `Authorization: Bearer <key>`
+
+Catatan:
+- API key bersifat **per-admin**. Saat disimpan, key akan di-hash (HMAC-SHA256) dan hanya `last4` yang disimpan. Key tidak bisa dibaca kembali.
+- Jika dihapus/di-rotate, key lama langsung tidak berlaku.
+
 ### Cara mendapatkan token
 
 - Admin login: `POST r=admin/post` (lihat bagian `admin` di bawah). Response berisi `result.token` seperti `a.<aid>.<time>.<sha1>`.
-- Customer login: `POST r=login/post`. Saat ini controller mengembalikan token dengan prefix `u.` (lihat `system/controllers/login.php`).
-  Catatan: `system/api.php` mengharapkan prefix `c.` untuk customer. Ini tidak konsisten dan berpotensi membuat token customer tidak diterima tanpa penyesuaian.
+- Customer login: `POST r=login/post`. Response berisi `result.token` seperti `c.<uid>.<time>.<sha1>`.
 
 ### Endpoint khusus di level API
 
 - `r=isValid` -> cek token valid.
 - `r=me` -> info admin dari token.
+- `r=whoami` / `r=whoami/permissions` -> identitas + izin/menu + fitur berdasarkan role (admin/customer).
 
 ## Contoh penggunaan (curl)
 
@@ -57,6 +73,18 @@ Pakai token untuk akses endpoint admin:
 curl -s "https://<domain>/system/api.php?r=dashboard&token=a.<aid>.<time>.<sha1>"
 ```
 
+Pakai API key admin (tanpa token):
+
+```bash
+curl -s -H "X-Admin-Api-Key: <key>" "https://<domain>/system/api.php?r=dashboard"
+```
+
+Contoh cek identitas + permission adaptif:
+
+```bash
+curl -s -H "X-Admin-Api-Key: <key>" "https://<domain>/system/api.php?r=whoami/permissions"
+```
+
 Contoh akses data customer (list + pencarian):
 
 ```bash
@@ -66,8 +94,29 @@ curl -s "https://<domain>/system/api.php?r=customers&token=a.<aid>.<time>.<sha1>
 ## Catatan Penting
 
 - CSRF: pengecekan CSRF dinonaktifkan saat `isApi=true` (lihat `Csrf::check`). Jadi endpoint POST via API tidak butuh `csrf_token`.
-- Output non-JSON: beberapa controller mengeluarkan CSV/PDF/HTML secara langsung (bukan melalui `$ui->display`). Aksi seperti itu tetap mengirim output asli.
+- Output non-JSON: beberapa controller mengeluarkan CSV/PDF/HTML secara langsung. Untuk aksi seperti export PDF, response akan berupa file (`content-type: application/pdf`) dan **bukan** JSON.
 - Metode HTTP: banyak aksi yang memaksa POST (lihat detail per action di bawah). Jika salah metode, response gagal.
+
+## Rate Limiting
+
+Secara default API menerapkan rate limit berbasis identitas:
+- Kunci limit: admin id / customer id; jika tidak ada, fallback IP.
+- Default: 120 request per 60 detik.
+- Konfigurasi di `config.php`: `api_rate_limit_enabled` (`yes`/`no`), `api_rate_limit_max`, `api_rate_limit_window` (detik).
+- Jika limit terlampaui: HTTP 429 + header `Retry-After` + `meta.rate_limit` di body JSON.
+- Cache disimpan di `system/cache/api_rate_limit/` dan boleh dibersihkan.
+
+Pengaturan backoff rotasi API key admin:
+- `admin_api_key_backoff_enabled` (`yes`/`no`)
+- `admin_api_key_backoff_base_delay` (detik)
+- `admin_api_key_backoff_max_delay` (detik)
+- `admin_api_key_backoff_reset_window` (detik)
+- `admin_api_key_attempts_max` (jumlah gagal sebelum backoff)
+- `admin_api_key_attempts_window` (detik untuk menghitung gagal)
+- `admin_api_key_allowlist` (daftar IP/CIDR, satu per baris)
+
+Backoff juga dipakai untuk menghambat brute force API key (invalid key berulang dari IP yang sama).
+IP yang terblokir dapat dibuka kembali lewat Settings -> App -> API Key (daftar Blocked IPs).
 
 
 ## Detail Endpoint per Controller

@@ -150,13 +150,19 @@ switch ($action) {
 
         if ($msg == '') {
             run_hook('router_edit'); #HOOK
+            $testPassword = $password;
+            if ($testPassword === '' && !empty($d['password'])) {
+                $testPassword = $d['password'];
+            }
             if (_post("testIt")) {
-                (new MikrotikHotspot())->getClient($ip_address, $username, $password);
+                (new MikrotikHotspot())->getClient($ip_address, $username, $testPassword);
             }
             $d->name = $name;
             $d->ip_address = $ip_address;
             $d->username = $username;
-            $d->password = $password;
+            if ($password !== '') {
+                $d->password = $password;
+            }
             $d->description = $description;
             $d->coordinates = $coordinates;
             $d->coverage = $coverage;

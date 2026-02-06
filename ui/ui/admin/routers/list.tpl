@@ -61,12 +61,26 @@
                                         {/if}
                                         {$ds['name']}
                                     </td>
-                                    <td style="background-color: black; color: black;"
-                                        onmouseleave="this.style.backgroundColor = 'black';"
-                                        onmouseenter="this.style.backgroundColor = 'white';">{$ds['ip_address']}</td>
-                                    <td style="background-color: black; color: black;"
-                                        onmouseleave="this.style.backgroundColor = 'black';"
-                                        onmouseenter="this.style.backgroundColor = 'white';">{$ds['username']}</td>
+                                    <td>
+                                        {if $_admin['user_type'] == 'SuperAdmin'}
+                                            <span class="js-router-secret" data-secret="{$ds['ip_address']|escape}" data-mask="********">********</span>
+                                            <button type="button" class="btn btn-default btn-xs js-router-secret-toggle" title="{Lang::T('Show')}">
+                                                <i class="fa fa-eye" aria-hidden="true"></i>
+                                            </button>
+                                        {else}
+                                            <span class="text-muted">********</span>
+                                        {/if}
+                                    </td>
+                                    <td>
+                                        {if $_admin['user_type'] == 'SuperAdmin'}
+                                            <span class="js-router-secret" data-secret="{$ds['username']|escape}" data-mask="********">********</span>
+                                            <button type="button" class="btn btn-default btn-xs js-router-secret-toggle" title="{Lang::T('Show')}">
+                                                <i class="fa fa-eye" aria-hidden="true"></i>
+                                            </button>
+                                        {else}
+                                            <span class="text-muted">********</span>
+                                        {/if}
+                                    </td>
                                     <td>{$ds['description']}</td>
                                     {if $_c['router_check']}
                                         <td>
@@ -108,4 +122,47 @@
 </div>
 
 
+<script>
+    (function () {
+        function toggleSecret(button) {
+            var cell = button.closest('td');
+            if (!cell) {
+                return;
+            }
+            var target = cell.querySelector('.js-router-secret');
+            if (!target) {
+                return;
+            }
+            var isVisible = button.getAttribute('data-visible') === '1';
+            var secret = target.getAttribute('data-secret') || '';
+            var mask = target.getAttribute('data-mask') || '********';
+            if (isVisible) {
+                target.textContent = mask;
+                button.setAttribute('data-visible', '0');
+                button.title = '{Lang::T("Show")}';
+                return;
+            }
+            target.textContent = secret;
+            button.setAttribute('data-visible', '1');
+            button.title = '{Lang::T("Hide")}';
+            if (button._hideTimer) {
+                clearTimeout(button._hideTimer);
+            }
+            button._hideTimer = setTimeout(function () {
+                target.textContent = mask;
+                button.setAttribute('data-visible', '0');
+                button.title = '{Lang::T("Show")}';
+            }, 5000);
+        }
+
+        document.addEventListener('click', function (event) {
+            var button = event.target.closest('.js-router-secret-toggle');
+            if (!button) {
+                return;
+            }
+            event.preventDefault();
+            toggleSecret(button);
+        });
+    })();
+</script>
 {include file="sections/footer.tpl"}
