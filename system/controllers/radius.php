@@ -16,6 +16,15 @@ if (!in_array($admin['user_type'], ['SuperAdmin', 'Admin'])) {
     _alert(Lang::T('You do not have permission to access this page'), 'danger', "dashboard");
 }
 
+// Radius module depends on a separate DB connection + tables.
+// In API mode we must not leak SQL errors; fail with a clear message.
+try {
+    ORM::for_table('nas', 'radius')->limit(1)->find_one();
+} catch (Throwable $e) {
+    _log('[radius] ' . $e->getMessage(), 'Error', $admin['id'] ?? 0);
+    r2(getUrl('dashboard'), 'e', Lang::T('Radius database is not configured'));
+}
+
 switch ($action) {
 
     case 'nas-add':

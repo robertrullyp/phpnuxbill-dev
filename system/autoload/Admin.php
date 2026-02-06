@@ -28,20 +28,64 @@ class Admin
         return is_array($decoded) ? $decoded : [];
     }
 
-    protected static function hashApiKey($apiKey)
+    protected static function hashApiKey($apiKey, $secret = null)
     {
         $apiKey = trim((string) $apiKey);
         if ($apiKey === '') {
             return '';
         }
-        $secret = '';
-        if (isset($GLOBALS['api_secret'])) {
-            $secret = (string) $GLOBALS['api_secret'];
-        }
-        if ($secret === '') {
-            $secret = __FILE__;
+        if ($secret === null) {
+            $secret = '';
+            if (isset($GLOBALS['admin_api_key_secret'])) {
+                $secret = (string) $GLOBALS['admin_api_key_secret'];
+            }
+            if ($secret === '' && isset($GLOBALS['api_secret'])) {
+                $secret = (string) $GLOBALS['api_secret'];
+            }
+            if ($secret === '') {
+                $secret = __FILE__;
+            }
         }
         return hash_hmac('sha256', $apiKey, $secret);
+    }
+
+    protected static function apiKeyHashSecrets()
+    {
+        $secrets = [];
+
+        $primary = trim((string) ($GLOBALS['admin_api_key_secret'] ?? ''));
+        if ($primary === '') {
+            $primary = trim((string) ($GLOBALS['api_secret'] ?? ''));
+        }
+        if ($primary !== '') {
+            $secrets[] = $primary;
+        }
+
+        // Legacy fallbacks: older versions could end up hashing with different __FILE__ values
+        // depending on where the key was generated/validated.
+        $initPath = dirname(dirname(__DIR__)) . DIRECTORY_SEPARATOR . 'init.php';
+        if (is_file($initPath)) {
+            $secrets[] = $initPath;
+        }
+        $settingsPath = dirname(__DIR__) . DIRECTORY_SEPARATOR . 'controllers' . DIRECTORY_SEPARATOR . 'settings.php';
+        if (is_file($settingsPath)) {
+            $secrets[] = $settingsPath;
+        }
+        $secrets[] = __FILE__;
+
+        // De-dup while preserving order.
+        $uniq = [];
+        $out = [];
+        foreach ($secrets as $secret) {
+            $secret = (string) $secret;
+            if ($secret === '' || isset($uniq[$secret])) {
+                continue;
+            }
+            $uniq[$secret] = true;
+            $out[] = $secret;
+        }
+
+        return $out;
     }
 
     protected static function getApiKeyFromRequest()
@@ -375,8 +419,14 @@ class Admin
             return 0;
         }
 
-        $hashedKey = self::hashApiKey($apiKey);
-        if ($hashedKey === '') {
+        $candidateHashes = [];
+        foreach (self::apiKeyHashSecrets() as $secret) {
+            $h = self::hashApiKey($apiKey, $secret);
+            if ($h !== '') {
+                $candidateHashes[] = $h;
+            }
+        }
+        if (empty($candidateHashes)) {
             return 0;
         }
 
@@ -410,7 +460,13 @@ class Admin
             }
         }
 
-        return $cache[$hashedKey] ?? 0;
+        foreach ($candidateHashes as $hashedKey) {
+            if (isset($cache[$hashedKey])) {
+                return $cache[$hashedKey];
+            }
+        }
+
+        return 0;
     }
 
     public static function getID()

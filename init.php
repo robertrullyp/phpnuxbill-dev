@@ -401,6 +401,20 @@ if (!isset($api_secret)) {
     $api_secret = $db_pass;
 }
 
+// Admin API keys are stored hashed (HMAC). Historically the hashing secret was tied to
+// `$api_secret` which defaults to `$db_pass` (and can be empty), and some code paths
+// used different fallbacks when `$api_secret` was empty. To avoid breaking admin API
+// keys when DB password is empty/rotated, keep a dedicated secret for admin API key
+// hashing with a stable fallback.
+if (!isset($admin_api_key_secret)) {
+    $admin_api_key_secret = $api_secret;
+}
+$admin_api_key_secret = trim((string) $admin_api_key_secret);
+if ($admin_api_key_secret === '') {
+    $admin_api_key_secret = __FILE__;
+}
+$GLOBALS['admin_api_key_secret'] = $admin_api_key_secret;
+
 function displayMaintenanceMessage(): void
 {
     global $config, $ui;

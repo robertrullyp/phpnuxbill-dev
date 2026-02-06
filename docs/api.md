@@ -10,6 +10,11 @@ API ini bukan REST murni; ia memanggil controller yang sama dengan UI web, tetap
 - Pola: `r=<controller>[/<action>[/<param2>[/<param3>...]]]]`
   - Contoh: `r=customers/view/123/activation`
 
+Alternatif (lebih ramah OpenAPI/Swagger): API juga mendukung gaya PATH_INFO:
+
+- Pola: `/system/api.php/<controller>[/<action>[/<param2>[/<param3>...]]]]`
+  - Contoh: `/system/api.php/customers/view/123/activation`
+
 ### Format Response JSON
 Semua response berhasil atau gagal berbentuk:
 
@@ -24,7 +29,11 @@ Semua response berhasil atau gagal berbentuk:
 
 ## Autentikasi
 
-API memakai parameter `token` (bisa via query string atau POST). Logika validasi token ada di `system/api.php`:
+API memakai parameter `token` (bisa via query string atau POST). Untuk menghindari token bocor di URL/log, token juga bisa dikirim via header:
+
+- `X-Auth-Token: <token>` (atau alias `X-Token: <token>`)
+
+Logika validasi token ada di `system/api.php`:
 
 - Admin token: `a.<aid>.<time>.<sha1>`
 - Customer token: `c.<uid>.<time>.<sha1>`

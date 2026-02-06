@@ -1182,7 +1182,10 @@ switch ($action) {
                     unset($user_data['ai_chatbot_api_key_hash']);
                     unset($user_data['ai_chatbot_api_key_last4']);
                 } else {
-                    $secret = isset($api_secret) && $api_secret !== '' ? (string) $api_secret : __FILE__;
+                    $secret = trim((string) ($GLOBALS['admin_api_key_secret'] ?? ($api_secret ?? '')));
+                    if ($secret === '') {
+                        $secret = __FILE__;
+                    }
                     $user_data['admin_api_key_hash'] = hash_hmac('sha256', $api_key, $secret);
                     $user_data['admin_api_key_last4'] = substr($api_key, -4);
                     unset($user_data['admin_api_key']);

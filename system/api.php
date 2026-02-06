@@ -10,7 +10,8 @@
 
 if ($_SERVER['REQUEST_METHOD'] === "OPTIONS" || $_SERVER['REQUEST_METHOD'] === "HEAD") {
     header('Access-Control-Allow-Origin: *');
-    header("Access-Control-Allow-Headers: Origin, X-Requested-With, Content-Type, Accept, Access-Control-Request-Method, Access-Control-Request-Headers, Authorization");
+    header("Access-Control-Allow-Methods: GET, POST, OPTIONS, HEAD");
+    header("Access-Control-Allow-Headers: Origin, X-Requested-With, Content-Type, Accept, Access-Control-Request-Method, Access-Control-Request-Headers, Authorization, X-Admin-Api-Key, X-API-Key, X-Auth-Token, X-Token, X-CSRF-Token, X-XSRF-Token");
     header("HTTP/1.1 200 OK");
     die();
 }
@@ -26,6 +27,36 @@ $admin = Admin::_info();
 $ui = new class($key)
 {
     var $assign = [];
+    private function redactArray(&$value)
+    {
+        if (!is_array($value)) {
+            return;
+        }
+
+        // Remove common secrets/sensitive fields from API responses.
+        $sensitive = [
+            'password' => true,
+            'pass' => true,
+            'secret' => true,
+            'api_key' => true,
+            'admin_api_key' => true,
+            'admin_api_key_hash' => true,
+            'ai_chatbot_api_key' => true,
+            'ai_chatbot_api_key_hash' => true,
+            'login_token' => true,
+        ];
+
+        foreach ($value as $k => &$v) {
+            $kl = is_string($k) ? strtolower($k) : '';
+            if ($kl !== '' && isset($sensitive[$kl])) {
+                unset($value[$k]);
+                continue;
+            }
+            if (is_array($v)) {
+                $this->redactArray($v);
+            }
+        }
+    }
     function display($key)
     {
         global $req;
@@ -55,15 +86,47 @@ $ui = new class($key)
         $result = [];
         foreach ($this->assign as $key => $value) {
             if($value instanceof ORM){
-                $result[$key] = $value->as_array();
+                $row = $value->as_array();
+                if ($key === '_admin') {
+                    // Limit admin payload in API responses.
+                    $row = [
+                        'id' => $row['id'] ?? null,
+                        'username' => $row['username'] ?? null,
+                        'fullname' => $row['fullname'] ?? null,
+                        'user_type' => $row['user_type'] ?? null,
+                        'status' => $row['status'] ?? null,
+                        'root' => $row['root'] ?? null,
+                    ];
+                }
+                if ($key === '_user') {
+                    $row = [
+                        'id' => $row['id'] ?? null,
+                        'username' => $row['username'] ?? null,
+                        'fullname' => $row['fullname'] ?? null,
+                        'status' => $row['status'] ?? null,
+                        'phonenumber' => $row['phonenumber'] ?? null,
+                        'email' => $row['email'] ?? null,
+                    ];
+                }
+                $this->redactArray($row);
+                $result[$key] = $row;
             }else if($value instanceof IdiormResultSet){
                 $count = count($value);
+                $result[$key] = [];
                 for($n=0;$n<$count;$n++){
-                    foreach ($value[$n] as $k=>$v) {
-                        $result[$key][$n][$k] = $v;
+                    $row = $value[$n];
+                    if ($row instanceof ORM) {
+                        $row = $row->as_array();
+                    } elseif (!is_array($row)) {
+                        $row = ['value' => $row];
                     }
+                    $this->redactArray($row);
+                    $result[$key][$n] = $row;
                 }
             }else{
+                if (is_array($value)) {
+                    $this->redactArray($value);
+                }
                 $result[$key] = $value;
             }
         }
@@ -275,9 +338,23 @@ function api_permissions_payload($admin, $customer, $config, $token = '')
 }
 
 $req = _get('r');
+// Support path-based routing for API docs/tooling:
+// - Legacy: /system/api.php?r=customers
+// - PATH_INFO: /system/api.php/customers
+if (empty($req)) {
+    if (!empty($_SERVER['PATH_INFO'])) {
+        $req = ltrim((string) $_SERVER['PATH_INFO'], '/');
+    } elseif (!empty($_SERVER['ORIG_PATH_INFO'])) {
+        $req = ltrim((string) $_SERVER['ORIG_PATH_INFO'], '/');
+    }
+}
 # a/c.id.time.md5
 # md5(a/c.id.time.$api_secret)
 $token = _req('token');
+// Optional: allow passing legacy token via header to avoid token leakage in URLs.
+if (empty($token)) {
+    $token = trim((string) ($_SERVER['HTTP_X_AUTH_TOKEN'] ?? $_SERVER['HTTP_X_TOKEN'] ?? ''));
+}
 $routes = explode('/', $req);
 $handler = $routes[0];
 

@@ -1,0 +1,4675 @@
+{
+  "info": {
+    "name": "PHPNuxBill API (Full)",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "description": "Generated from docs/api.md. Base URL: {{baseUrl}} (system/api.php).\nGenerated at: 2026-02-06T09:34:34Z\nNotes:\n- Optional: set admin_api_key + use_admin_api_key=1 to send X-Admin-Api-Key for admin requests.\n- Optional: set use_token_header=1 to also send X-Auth-Token from the token query param.\n- Run Smoke Tests to validate connectivity and auth.\n- Admin/customer tokens are captured from admin/post and login/post.\n- Mixed endpoints accept either admin or customer token; default uses admin_token.\n- Some endpoints return non-JSON (CSV/PDF/HTML).\n"
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "const useAdminApiKey = (pm.environment.get('use_admin_api_key') || '').toString() === '1';",
+          "const adminApiKey = (pm.environment.get('admin_api_key') || '').toString();",
+          "const useTokenHeader = (pm.environment.get('use_token_header') || '').toString() === '1';",
+          "",
+          "function queryParamsAll() {",
+          "  try {",
+          "    const q = pm.request.url && pm.request.url.query;",
+          "    if (!q) return [];",
+          "    if (typeof q.all === 'function') return q.all();",
+          "  } catch (e) {}",
+          "  return [];",
+          "}",
+          "",
+          "function hasQueryParam(key) {",
+          "  for (const it of queryParamsAll()) {",
+          "    if (it && it.key === key) return true;",
+          "  }",
+          "  return false;",
+          "}",
+          "",
+          "function getQueryParamValue(key) {",
+          "  for (const it of queryParamsAll()) {",
+          "    if (it && it.key === key) return (it.value || '').toString();",
+          "  }",
+          "  return '';",
+          "}",
+          "",
+          "function resolveVar(v) {",
+          "  v = (v || '').toString();",
+          "  const m = v.match(/^{{([^}]+)}}$/);",
+          "  if (!m) return v;",
+          "  const name = m[1];",
+          "  return (pm.variables.get(name) || pm.environment.get(name) || '').toString();",
+          "}",
+          "",
+          "const hasTokenParam = hasQueryParam('token');",
+          "const tokenRef = getQueryParamValue('token');",
+          "const tokenVal = resolveVar(tokenRef);",
+          "",
+          "if (useTokenHeader && tokenVal) {",
+          "  pm.request.headers.upsert({ key: 'X-Auth-Token', value: tokenVal });",
+          "}",
+          "",
+          "if (useAdminApiKey && adminApiKey && hasTokenParam) {",
+          "  const isCustomer = tokenRef.includes('user_token') || tokenVal.startsWith('c.');",
+          "  if (!isCustomer) {",
+          "    pm.request.headers.upsert({ key: 'X-Admin-Api-Key', value: adminApiKey });",
+          "  }",
+          "}"
+        ]
+      }
+    },
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "pm.test('No 5xx response', function () { pm.expect(pm.response.code).to.be.below(500); });",
+          "const ct = pm.response.headers.get('Content-Type') || '';",
+          "if (ct.includes('application/json')) {",
+          "  let j = {}; try { j = pm.response.json(); } catch (e) { j = null; }",
+          "  if (j) { pm.test('JSON has success field', function () { pm.expect(j).to.have.property('success'); }); }",
+          "}"
+        ]
+      }
+    }
+  ],
+  "item": [
+    {
+      "name": "API Meta",
+      "item": [
+        {
+          "name": "Token - isValid",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}?r=isValid&token={{admin_token}}",
+            "description": "Access: mixed; Method: GET"
+          }
+        },
+        {
+          "name": "Token - me (admin)",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}?r=me&token={{admin_token}}",
+            "description": "Access: mixed; Method: GET"
+          }
+        },
+        {
+          "name": "Whoami",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}?r=whoami&token={{admin_token}}",
+            "description": "Access: mixed; Method: GET"
+          }
+        },
+        {
+          "name": "Whoami - permissions",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}?r=whoami/permissions&token={{admin_token}}",
+            "description": "Access: mixed; Method: GET"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Smoke Tests",
+      "item": [
+        {
+          "name": "Auth - Admin Login",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/x-www-form-urlencoded"
+              }
+            ],
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "username",
+                  "value": "{{admin_username}}"
+                },
+                {
+                  "key": "password",
+                  "value": "{{admin_password}}"
+                },
+                {
+                  "key": "csrf_token",
+                  "value": "{{csrf_admin}}"
+                }
+              ]
+            },
+            "url": "{{baseUrl}}?r=admin/post",
+            "description": "Access: public; Method: POST"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let j={}; try{j=pm.response.json()}catch(e){}",
+                  "if(j && j.result && j.result.token){ pm.environment.set('admin_token', j.result.token); }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Auth - Customer Login",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/x-www-form-urlencoded"
+              }
+            ],
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "username",
+                  "value": "{{customer_username}}"
+                },
+                {
+                  "key": "password",
+                  "value": "{{customer_password}}"
+                },
+                {
+                  "key": "csrf_token",
+                  "value": "{{csrf_user}}"
+                }
+              ]
+            },
+            "url": "{{baseUrl}}?r=login/post",
+            "description": "Access: public; Method: POST"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let j={}; try{j=pm.response.json()}catch(e){}",
+                  "if(j && j.result && j.result.token){ pm.environment.set('user_token', j.result.token); }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Dashboard",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}?r=dashboard&token={{admin_token}}",
+            "description": "Access: admin; Method: GET"
+          }
+        },
+        {
+          "name": "Customers - list",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}?r=customers&token={{admin_token}}",
+            "description": "Access: admin; Method: GET"
+          }
+        },
+        {
+          "name": "Whoami - permissions",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}?r=whoami/permissions&token={{admin_token}}",
+            "description": "Access: mixed; Method: GET"
+          }
+        },
+        {
+          "name": "Reports - by-date",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}?r=reports/by-date&token={{admin_token}}",
+            "description": "Access: admin; Method: GET"
+          }
+        },
+        {
+          "name": "Reports - by-period",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}?r=reports/by-period&token={{admin_token}}",
+            "description": "Access: admin; Method: GET"
+          }
+        },
+        {
+          "name": "Invoices - list",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}?r=invoices/list&token={{admin_token}}",
+            "description": "Access: admin; Method: GET"
+          }
+        },
+        {
+          "name": "Pages - list",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}?r=pages&token={{admin_token}}",
+            "description": "Access: admin; Method: GET"
+          }
+        },
+        {
+          "name": "Settings - docs",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}?r=settings/docs&token={{admin_token}}",
+            "description": "Access: admin; Method: GET"
+          }
+        },
+        {
+          "name": "Settings - devices",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}?r=settings/devices&token={{admin_token}}",
+            "description": "Access: admin; Method: GET"
+          }
+        },
+        {
+          "name": "Widgets",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}?r=widgets&token={{admin_token}}",
+            "description": "Access: admin; Method: GET"
+          }
+        },
+        {
+          "name": "Customer - Home",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}?r=home&token={{user_token}}",
+            "description": "Access: customer; Method: GET"
+          }
+        },
+        {
+          "name": "Customer - Order history",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}?r=order/history&token={{user_token}}",
+            "description": "Access: customer; Method: GET"
+          }
+        },
+        {
+          "name": "Customer - Account profile",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}?r=accounts/profile&token={{user_token}}",
+            "description": "Access: customer; Method: GET"
+          }
+        }
+      ]
+    },
+    {
+      "name": "accounts",
+      "item": [
+        {
+          "name": "accounts - change-password",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}?r=accounts/change-password&token={{user_token}}",
+            "description": "Access: customer; Method: GET; (JSON):"
+          }
+        },
+        {
+          "name": "accounts - change-password-post",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}?r=accounts/change-password-post&token={{user_token}}",
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "cnpass",
+                  "value": ""
+                },
+                {
+                  "key": "csrf_token",
+                  "value": ""
+                },
+                {
+                  "key": "npass",
+                  "value": ""
+                },
+                {
+                  "key": "password",
+                  "value": ""
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/x-www-form-urlencoded"
+              }
+            ],
+            "description": "Access: customer; Method: POST; (JSON):"
+          }
+        },
+        {
+          "name": "accounts - profile",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}?r=accounts/profile&token={{user_token}}",
+            "description": "Access: customer; Method: GET; (JSON):"
+          }
+        },
+        {
+          "name": "accounts - edit-profile-post",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}?r=accounts/edit-profile-post&token={{user_token}}",
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "address",
+                  "value": ""
+                },
+                {
+                  "key": "csrf_token",
+                  "value": ""
+                },
+                {
+                  "key": "email",
+                  "value": ""
+                },
+                {
+                  "key": "faceDetect",
+                  "value": ""
+                },
+                {
+                  "key": "fullname",
+                  "value": ""
+                },
+                {
+                  "key": "phonenumber",
+                  "value": ""
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/x-www-form-urlencoded"
+              }
+            ],
+            "description": "Access: customer; Method: POST; (JSON):"
+          }
+        },
+        {
+          "name": "accounts - phone-update",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}?r=accounts/phone-update&token={{user_token}}",
+            "description": "Access: customer; Method: GET; (JSON):"
+          }
+        },
+        {
+          "name": "accounts - phone-update-otp",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}?r=accounts/phone-update-otp&token={{user_token}}",
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "csrf_token",
+                  "value": ""
+                },
+                {
+                  "key": "phone",
+                  "value": ""
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/x-www-form-urlencoded"
+              }
+            ],
+            "description": "Access: customer; Method: POST; (JSON):"
+          }
+        },
+        {
+          "name": "accounts - phone-update-post",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}?r=accounts/phone-update-post&token={{user_token}}",
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "csrf_token",
+                  "value": ""
+                },
+                {
+                  "key": "otp",
+                  "value": ""
+                },
+                {
+                  "key": "phone",
+                  "value": ""
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/x-www-form-urlencoded"
+              }
+            ],
+            "description": "Access: customer; Method: POST; (JSON):"
+          }
+        },
+        {
+          "name": "accounts - email-update",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}?r=accounts/email-update&token={{user_token}}",
+            "description": "Access: customer; Method: GET; (JSON):"
+          }
+        },
+        {
+          "name": "accounts - email-update-otp",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}?r=accounts/email-update-otp&token={{user_token}}",
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "csrf_token",
+                  "value": ""
+                },
+                {
+                  "key": "email",
+                  "value": ""
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/x-www-form-urlencoded"
+              }
+            ],
+            "description": "Access: customer; Method: POST; (JSON):"
+          }
+        },
+        {
+          "name": "accounts - email-update-post",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}?r=accounts/email-update-post&token={{user_token}}",
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "csrf_token",
+                  "value": ""
+                },
+                {
+                  "key": "email",
+                  "value": ""
+                },
+                {
+                  "key": "otp",
+                  "value": ""
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/x-www-form-urlencoded"
+              }
+            ],
+            "description": "Access: customer; Method: POST; (JSON):"
+          }
+        },
+        {
+          "name": "accounts - language-update-post",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}?r=accounts/language-update-post&token={{user_token}}&lang=",
+            "description": "Access: customer; Method: GET; (JSON):"
+          }
+        }
+      ]
+    },
+    {
+      "name": "admin",
+      "item": [
+        {
+          "name": "admin - post",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}?r=admin/post",
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "cf-turnstile-response",
+                  "value": ""
+                },
+                {
+                  "key": "csrf_token",
+                  "value": "{{csrf_admin}}"
+                },
+                {
+                  "key": "password",
+                  "value": "{{admin_password}}"
+                },
+                {
+                  "key": "username",
+                  "value": "{{admin_username}}"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/x-www-form-urlencoded"
+              }
+            ],
+            "description": "Access: public; Method: POST; (JSON):"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let j={}; try{j=pm.response.json()}catch(e){}",
+                  "if(j && j.result && j.result.token){ pm.environment.set('admin_token', j.result.token); }"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "autoload",
+      "item": [
+        {
+          "name": "autoload - pool",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}?r=autoload/pool&token={{admin_token}}&routers=",
+            "description": "Access: admin; Method: GET; (JSON):"
+          }
+        },
+        {
+          "name": "autoload - bw_name",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}?r=autoload/bw_name/1&token={{admin_token}}",
+            "description": "Access: admin; Method: GET; (JSON):"
+          }
+        },
+        {
+          "name": "autoload - balance",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}?r=autoload/balance/1/1&token={{admin_token}}",
+            "description": "Access: admin; Method: GET; (JSON):"
+          }
+        },
+        {
+          "name": "autoload - server",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}?r=autoload/server&token={{admin_token}}",
+            "description": "Access: admin; Method: GET; (JSON):"
+          }
+        },
+        {
+          "name": "autoload - pppoe_ip_used",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}?r=autoload/pppoe_ip_used&token={{admin_token}}&id=&ip=",
+            "description": "Access: admin; Method: GET; (JSON):"
+          }
+        },
+        {
+          "name": "autoload - pppoe_username_used",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}?r=autoload/pppoe_username_used&token={{admin_token}}&id=&u=",
+            "description": "Access: admin; Method: GET; (JSON):"
+          }
+        },
+        {
+          "name": "autoload - plan",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}?r=autoload/plan&token={{admin_token}}",
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "jenis",
+                  "value": ""
+                },
+                {
+                  "key": "server",
+                  "value": ""
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/x-www-form-urlencoded"
+              }
+            ],
+            "description": "Access: admin; Method: POST; (JSON):"
+          }
+        },
+        {
+          "name": "autoload - customer_is_active",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}?r=autoload/customer_is_active/1/1&token={{admin_token}}",
+            "description": "Access: admin; Method: GET; (JSON):"
+          }
+        },
+        {
+          "name": "autoload - plan_is_active",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}?r=autoload/plan_is_active/1&token={{admin_token}}",
+            "description": "Access: admin; Method: GET; (JSON):"
+          }
+        },
+        {
+          "name": "autoload - customer_select2",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}?r=autoload/customer_select2&token={{admin_token}}&s=",
+            "description": "Access: admin; Method: GET; (JSON):"
+          }
+        }
+      ]
+    },
+    {
+      "name": "autoload_user",
+      "item": [
+        {
+          "name": "autoload_user - isLogin",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}?r=autoload_user/isLogin/1&token={{user_token}}",
+            "description": "Access: customer; Method: GET; (JSON):"
+          }
+        },
+        {
+          "name": "autoload_user - bw_name",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}?r=autoload_user/bw_name/1&token={{user_token}}",
+            "description": "Access: customer; Method: GET; (JSON):"
+          }
+        },
+        {
+          "name": "autoload_user - inbox_unread",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}?r=autoload_user/inbox_unread&token={{user_token}}",
+            "description": "Access: customer; Method: GET; (JSON):"
+          }
+        },
+        {
+          "name": "autoload_user - inbox",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}?r=autoload_user/inbox&token={{user_token}}",
+            "description": "Access: customer; Method: GET; (JSON):"
+          }
+        },
+        {
+          "name": "autoload_user - language",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}?r=autoload_user/language&token={{user_token}}&select=",
+            "description": "Access: customer; Method: GET; (JSON):"
+          }
+        }
+      ]
+    },
+    {
+      "name": "bandwidth",
+      "item": [
+        {
+          "name": "bandwidth - list",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}?r=bandwidth/list&token={{admin_token}}",
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "csrf_token",
+                  "value": ""
+                },
+                {
+                  "key": "name",
+                  "value": ""
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/x-www-form-urlencoded"
+              }
+            ],
+            "description": "Access: admin; Method: POST; (JSON):"
+          }
+        },
+        {
+          "name": "bandwidth - add",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}?r=bandwidth/add&token={{admin_token}}",
+            "description": "Access: admin; Method: GET; (JSON):"
+          }
+        },
+        {
+          "name": "bandwidth - edit",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}?r=bandwidth/edit/1&token={{admin_token}}",
+            "description": "Access: admin; Method: GET; (JSON):"
+          }
+        },
+        {
+          "name": "bandwidth - delete",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}?r=bandwidth/delete/1&token={{admin_token}}",
+            "description": "Access: admin; Method: GET; (JSON):"
+          }
+        },
+        {
+          "name": "bandwidth - add-post",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}?r=bandwidth/add-post&token={{admin_token}}",
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "csrf_token",
+                  "value": ""
+                },
+                {
+                  "key": "name",
+                  "value": ""
+                },
+                {
+                  "key": "rate_down",
+                  "value": ""
+                },
+                {
+                  "key": "rate_down_unit",
+                  "value": ""
+                },
+                {
+                  "key": "rate_up",
+                  "value": ""
+                },
+                {
+                  "key": "rate_up_unit",
+                  "value": ""
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/x-www-form-urlencoded"
+              }
+            ],
+            "description": "Access: admin; Method: POST; (JSON):"
+          }
+        },
+        {
+          "name": "bandwidth - edit-post",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}?r=bandwidth/edit-post&token={{admin_token}}",
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "csrf_token",
+                  "value": ""
+                },
+                {
+                  "key": "id",
+                  "value": ""
+                },
+                {
+                  "key": "name",
+                  "value": ""
+                },
+                {
+                  "key": "rate_down",
+                  "value": ""
+                },
+                {
+                  "key": "rate_down_unit",
+                  "value": ""
+                },
+                {
+                  "key": "rate_up",
+                  "value": ""
+                },
+                {
+                  "key": "rate_up_unit",
+                  "value": ""
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/x-www-form-urlencoded"
+              }
+            ],
+            "description": "Access: admin; Method: POST; (JSON):"
+          }
+        }
+      ]
+    },
+    {
+      "name": "callback",
+      "item": [
+        {
+          "name": "callback - (default)",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}?r=callback",
+            "description": "Access: public; Method: GET"
+          }
+        }
+      ]
+    },
+    {
+      "name": "community",
+      "item": [
+        {
+          "name": "community - rollback",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}?r=community/rollback&token={{admin_token}}",
+            "description": "Access: admin; Method: GET; (JSON):"
+          }
+        }
+      ]
+    },
+    {
+      "name": "coupons",
+      "item": [
+        {
+          "name": "coupons - add",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}?r=coupons/add&token={{admin_token}}",
+            "description": "Access: admin; Method: GET; (JSON):"
+          }
+        },
+        {
+          "name": "coupons - add-post",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}?r=coupons/add-post&token={{admin_token}}",
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "code",
+                  "value": ""
+                },
+                {
+                  "key": "csrf_token",
+                  "value": ""
+                },
+                {
+                  "key": "description",
+                  "value": ""
+                },
+                {
+                  "key": "end_date",
+                  "value": ""
+                },
+                {
+                  "key": "max_discount_amount",
+                  "value": ""
+                },
+                {
+                  "key": "max_usage",
+                  "value": ""
+                },
+                {
+                  "key": "min_order_amount",
+                  "value": ""
+                },
+                {
+                  "key": "start_date",
+                  "value": ""
+                },
+                {
+                  "key": "status",
+                  "value": ""
+                },
+                {
+                  "key": "type",
+                  "value": ""
+                },
+                {
+                  "key": "value",
+                  "value": ""
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/x-www-form-urlencoded"
+              }
+            ],
+            "description": "Access: admin; Method: POST; (JSON):"
+          }
+        },
+        {
+          "name": "coupons - edit",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}?r=coupons/edit/1&token={{admin_token}}",
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "csrf_token",
+                  "value": ""
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/x-www-form-urlencoded"
+              }
+            ],
+            "description": "Access: admin; Method: POST; (JSON):"
+          }
+        },
+        {
+          "name": "coupons - edit-post",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}?r=coupons/edit-post&token={{admin_token}}",
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "code",
+                  "value": ""
+                },
+                {
+                  "key": "csrf_token",
+                  "value": ""
+                },
+                {
+                  "key": "description",
+                  "value": ""
+                },
+                {
+                  "key": "end_date",
+                  "value": ""
+                },
+                {
+                  "key": "max_discount_amount",
+                  "value": ""
+                },
+                {
+                  "key": "max_usage",
+                  "value": ""
+                },
+                {
+                  "key": "min_order_amount",
+                  "value": ""
+                },
+                {
+                  "key": "start_date",
+                  "value": ""
+                },
+                {
+                  "key": "status",
+                  "value": ""
+                },
+                {
+                  "key": "type",
+                  "value": ""
+                },
+                {
+                  "key": "value",
+                  "value": ""
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/x-www-form-urlencoded"
+              }
+            ],
+            "description": "Access: admin; Method: POST; (JSON):"
+          }
+        },
+        {
+          "name": "coupons - delete",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}?r=coupons/delete&token={{admin_token}}",
+            "description": "Access: admin; Method: GET; (JSON):"
+          }
+        },
+        {
+          "name": "coupons - status",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}?r=coupons/status&token={{admin_token}}",
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "coupon_id",
+                  "value": ""
+                },
+                {
+                  "key": "csrf_token",
+                  "value": ""
+                },
+                {
+                  "key": "filter",
+                  "value": ""
+                },
+                {
+                  "key": "search",
+                  "value": ""
+                },
+                {
+                  "key": "status",
+                  "value": ""
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/x-www-form-urlencoded"
+              }
+            ],
+            "description": "Access: admin; Method: POST; (JSON):"
+          }
+        }
+      ]
+    },
+    {
+      "name": "csrf-refresh",
+      "item": [
+        {
+          "name": "csrf-refresh - (default)",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}?r=csrf-refresh&token={{admin_token}}",
+            "description": "Access: mixed; Method: GET"
+          }
+        }
+      ]
+    },
+    {
+      "name": "customers",
+      "item": [
+        {
+          "name": "customers - list",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}?r=customers&token={{admin_token}}",
+            "description": "Access: admin; Method: GET; (JSON):"
+          }
+        },
+        {
+          "name": "customers - csv",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}?r=customers/csv&token={{admin_token}}",
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "csrf_token",
+                  "value": ""
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/x-www-form-urlencoded"
+              }
+            ],
+            "description": "Access: admin; Method: POST; (non-JSON, tergantung aksi):"
+          }
+        },
+        {
+          "name": "customers - csv-prepaid",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}?r=customers/csv-prepaid&token={{admin_token}}",
+            "description": "Access: admin; Method: GET; (non-JSON, tergantung aksi):"
+          }
+        },
+        {
+          "name": "customers - add",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}?r=customers/add&token={{admin_token}}",
+            "description": "Access: admin; Method: GET; (JSON):"
+          }
+        },
+        {
+          "name": "customers - recharge",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}?r=customers/recharge/1/1&token={{admin_token}}",
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "csrf_token",
+                  "value": ""
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/x-www-form-urlencoded"
+              }
+            ],
+            "description": "Access: admin; Method: POST; (JSON):"
+          }
+        },
+        {
+          "name": "customers - deactivate",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}?r=customers/deactivate/1/1&token={{admin_token}}",
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "csrf_token",
+                  "value": ""
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/x-www-form-urlencoded"
+              }
+            ],
+            "description": "Access: admin; Method: POST; (JSON):"
+          }
+        },
+        {
+          "name": "customers - sync",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}?r=customers/sync/1&token={{admin_token}}",
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "csrf_token",
+                  "value": ""
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/x-www-form-urlencoded"
+              }
+            ],
+            "description": "Access: admin; Method: POST; (JSON):"
+          }
+        },
+        {
+          "name": "customers - login",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}?r=customers/login/1&token={{admin_token}}",
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "csrf_token",
+                  "value": ""
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/x-www-form-urlencoded"
+              }
+            ],
+            "description": "Access: admin; Method: POST; (JSON):"
+          }
+        },
+        {
+          "name": "customers - viewu",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}?r=customers/viewu/1&token={{admin_token}}",
+            "description": "Access: admin; Method: GET; (JSON):"
+          }
+        },
+        {
+          "name": "customers - view",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}?r=customers/view/1/order&token={{admin_token}}",
+            "description": "Access: admin; Method: GET; (JSON):"
+          }
+        },
+        {
+          "name": "customers - edit",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}?r=customers/edit/1/1&token={{admin_token}}",
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "csrf_token",
+                  "value": ""
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/x-www-form-urlencoded"
+              }
+            ],
+            "description": "Access: admin; Method: POST; (JSON):"
+          }
+        },
+        {
+          "name": "customers - delete",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}?r=customers/delete/1&token={{admin_token}}",
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "csrf_token",
+                  "value": ""
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/x-www-form-urlencoded"
+              }
+            ],
+            "description": "Access: admin; Method: POST; (JSON):"
+          }
+        },
+        {
+          "name": "customers - add-post",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}?r=customers/add-post&token={{admin_token}}",
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "account_type",
+                  "value": ""
+                },
+                {
+                  "key": "address",
+                  "value": ""
+                },
+                {
+                  "key": "city",
+                  "value": ""
+                },
+                {
+                  "key": "coordinates",
+                  "value": ""
+                },
+                {
+                  "key": "csrf_token",
+                  "value": ""
+                },
+                {
+                  "key": "district",
+                  "value": ""
+                },
+                {
+                  "key": "email",
+                  "value": ""
+                },
+                {
+                  "key": "fullname",
+                  "value": ""
+                },
+                {
+                  "key": "password",
+                  "value": ""
+                },
+                {
+                  "key": "phonenumber",
+                  "value": ""
+                },
+                {
+                  "key": "pppoe_ip",
+                  "value": ""
+                },
+                {
+                  "key": "pppoe_password",
+                  "value": ""
+                },
+                {
+                  "key": "pppoe_username",
+                  "value": ""
+                },
+                {
+                  "key": "service_type",
+                  "value": ""
+                },
+                {
+                  "key": "state",
+                  "value": ""
+                },
+                {
+                  "key": "username",
+                  "value": ""
+                },
+                {
+                  "key": "zip",
+                  "value": ""
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/x-www-form-urlencoded"
+              }
+            ],
+            "description": "Access: admin; Method: POST; (JSON):"
+          }
+        },
+        {
+          "name": "customers - edit-post",
+          "request": {
+            "method": "GET/POST",
+            "url": "{{baseUrl}}?r=customers/edit-post&token={{admin_token}}",
+            "description": "Access: admin; Method: GET/POST; (JSON):"
+          }
+        }
+      ]
+    },
+    {
+      "name": "customfield",
+      "item": [
+        {
+          "name": "customfield - save",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}?r=customfield/save&token={{admin_token}}",
+            "description": "Access: admin; Method: GET; (JSON):"
+          }
+        }
+      ]
+    },
+    {
+      "name": "dashboard",
+      "item": [
+        {
+          "name": "dashboard - (default)",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}?r=dashboard&token={{admin_token}}",
+            "description": "Access: admin; Method: GET"
+          }
+        }
+      ]
+    },
+    {
+      "name": "default",
+      "item": [
+        {
+          "name": "default - (default)",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}?r=default",
+            "description": "Access: public; Method: GET"
+          }
+        }
+      ]
+    },
+    {
+      "name": "export",
+      "item": [
+        {
+          "name": "export - print-by-date",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}?r=export/print-by-date&token={{admin_token}}&ed=&sd=&te=&ts=",
+            "description": "Access: admin; Method: GET; (non-JSON, tergantung aksi):"
+          }
+        },
+        {
+          "name": "export - pdf-by-date",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}?r=export/pdf-by-date&token={{admin_token}}&ed=&sd=&te=&ts=",
+            "description": "Access: admin; Method: GET; (non-JSON, tergantung aksi):"
+          }
+        },
+        {
+          "name": "export - print-by-period",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}?r=export/print-by-period&token={{admin_token}}",
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "fdate",
+                  "value": ""
+                },
+                {
+                  "key": "stype",
+                  "value": ""
+                },
+                {
+                  "key": "tdate",
+                  "value": ""
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/x-www-form-urlencoded"
+              }
+            ],
+            "description": "Access: admin; Method: POST; (non-JSON, tergantung aksi):"
+          }
+        },
+        {
+          "name": "export - pdf-by-period",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}?r=export/pdf-by-period&token={{admin_token}}",
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "fdate",
+                  "value": ""
+                },
+                {
+                  "key": "stype",
+                  "value": ""
+                },
+                {
+                  "key": "tdate",
+                  "value": ""
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/x-www-form-urlencoded"
+              }
+            ],
+            "description": "Access: admin; Method: POST; (non-JSON, tergantung aksi):"
+          }
+        }
+      ]
+    },
+    {
+      "name": "forgot",
+      "item": [
+        {
+          "name": "forgot - (default)",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}?r=forgot",
+            "description": "Access: public; Method: GET"
+          }
+        }
+      ]
+    },
+    {
+      "name": "home",
+      "item": [
+        {
+          "name": "home - (default)",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}?r=home&token={{user_token}}",
+            "description": "Access: customer; Method: GET"
+          }
+        }
+      ]
+    },
+    {
+      "name": "invoices",
+      "item": [
+        {
+          "name": "invoices - list",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}?r=invoices/list&token={{admin_token}}",
+            "description": "Access: admin; Method: GET; (non-JSON, tergantung aksi):"
+          }
+        }
+      ]
+    },
+    {
+      "name": "login",
+      "item": [
+        {
+          "name": "login - post",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}?r=login/post",
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "cf-turnstile-response",
+                  "value": ""
+                },
+                {
+                  "key": "csrf_token",
+                  "value": "{{csrf_user}}"
+                },
+                {
+                  "key": "password",
+                  "value": "{{customer_password}}"
+                },
+                {
+                  "key": "username",
+                  "value": "{{customer_username}}"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/x-www-form-urlencoded"
+              }
+            ],
+            "description": "Access: public; Method: POST; (JSON):"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let j={}; try{j=pm.response.json()}catch(e){}",
+                  "if(j && j.result && j.result.token){ pm.environment.set('user_token', j.result.token); }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "login - activation",
+          "request": {
+            "method": "GET/POST",
+            "url": "{{baseUrl}}?r=login/activation&code=",
+            "description": "Access: public; Method: GET/POST; (JSON):"
+          }
+        }
+      ]
+    },
+    {
+      "name": "logout",
+      "item": [
+        {
+          "name": "logout - (default)",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}?r=logout",
+            "description": "Access: public; Method: GET"
+          }
+        }
+      ]
+    },
+    {
+      "name": "logs",
+      "item": [
+        {
+          "name": "logs - list-csv",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}?r=logs/list-csv&token={{admin_token}}",
+            "description": "Access: admin; Method: GET; (non-JSON, tergantung aksi):"
+          }
+        },
+        {
+          "name": "logs - radius-csv",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}?r=logs/radius-csv&token={{admin_token}}",
+            "description": "Access: admin; Method: GET; (non-JSON, tergantung aksi):"
+          }
+        },
+        {
+          "name": "logs - message-csv",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}?r=logs/message-csv&token={{admin_token}}",
+            "description": "Access: admin; Method: GET; (non-JSON, tergantung aksi):"
+          }
+        },
+        {
+          "name": "logs - list",
+          "request": {
+            "method": "GET/POST",
+            "url": "{{baseUrl}}?r=logs/list&token={{admin_token}}&q=",
+            "description": "Access: admin; Method: GET/POST; (JSON):"
+          }
+        },
+        {
+          "name": "logs - radius",
+          "request": {
+            "method": "GET/POST",
+            "url": "{{baseUrl}}?r=logs/radius&token={{admin_token}}&q=",
+            "description": "Access: admin; Method: GET/POST; (JSON):"
+          }
+        },
+        {
+          "name": "logs - message",
+          "request": {
+            "method": "GET/POST",
+            "url": "{{baseUrl}}?r=logs/message&token={{admin_token}}&q=",
+            "description": "Access: admin; Method: GET/POST; (JSON):"
+          }
+        }
+      ]
+    },
+    {
+      "name": "mail",
+      "item": [
+        {
+          "name": "mail - view",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}?r=mail/view/1&token={{user_token}}",
+            "description": "Access: customer; Method: GET; (JSON):"
+          }
+        },
+        {
+          "name": "mail - delete",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}?r=mail/delete/1&token={{user_token}}&p=&q=",
+            "description": "Access: customer; Method: GET; (JSON):"
+          }
+        }
+      ]
+    },
+    {
+      "name": "maps",
+      "item": [
+        {
+          "name": "maps - customer",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}?r=maps/customer&token={{admin_token}}&search=",
+            "description": "Access: admin; Method: GET; (JSON):"
+          }
+        },
+        {
+          "name": "maps - routers",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}?r=maps/routers&token={{admin_token}}",
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "name",
+                  "value": ""
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/x-www-form-urlencoded"
+              }
+            ],
+            "description": "Access: admin; Method: POST; (JSON):"
+          }
+        }
+      ]
+    },
+    {
+      "name": "message",
+      "item": [
+        {
+          "name": "message - send",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}?r=message/send/1&token={{admin_token}}",
+            "description": "Access: admin; Method: GET; (JSON):"
+          }
+        },
+        {
+          "name": "message - send-post",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}?r=message/send-post&token={{admin_token}}",
+            "description": "Access: admin; Method: GET; (JSON):"
+          }
+        },
+        {
+          "name": "message - send_bulk",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}?r=message/send_bulk&token={{admin_token}}",
+            "description": "Access: admin; Method: GET; (JSON):"
+          }
+        },
+        {
+          "name": "message - send_bulk_ajax",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}?r=message/send_bulk_ajax&token={{admin_token}}",
+            "description": "Access: admin; Method: GET; (JSON):"
+          }
+        },
+        {
+          "name": "message - send_bulk_selected",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}?r=message/send_bulk_selected&token={{admin_token}}",
+            "description": "Access: admin; Method: GET; (JSON):"
+          }
+        }
+      ]
+    },
+    {
+      "name": "order",
+      "item": [
+        {
+          "name": "order - voucher",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}?r=order/voucher&token={{user_token}}",
+            "description": "Access: customer; Method: GET; (JSON):"
+          }
+        },
+        {
+          "name": "order - history",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}?r=order/history&token={{user_token}}",
+            "description": "Access: customer; Method: GET; (JSON):"
+          }
+        },
+        {
+          "name": "order - balance",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}?r=order/balance&token={{user_token}}",
+            "description": "Access: customer; Method: GET; (JSON):"
+          }
+        },
+        {
+          "name": "order - package",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}?r=order/package&token={{user_token}}",
+            "description": "Access: customer; Method: GET; (JSON):"
+          }
+        },
+        {
+          "name": "order - unpaid",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}?r=order/unpaid&token={{user_token}}",
+            "description": "Access: customer; Method: GET; (JSON):"
+          }
+        },
+        {
+          "name": "order - view",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}?r=order/view/1/1&token={{user_token}}",
+            "description": "Access: customer; Method: GET; (JSON):"
+          }
+        },
+        {
+          "name": "order - pay",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}?r=order/pay&token={{user_token}}",
+            "description": "Access: customer; Method: GET; (JSON):"
+          }
+        },
+        {
+          "name": "order - send",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}?r=order/send/1/1&token={{user_token}}",
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "csrf_token",
+                  "value": ""
+                },
+                {
+                  "key": "username",
+                  "value": ""
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/x-www-form-urlencoded"
+              }
+            ],
+            "description": "Access: customer; Method: POST; (JSON):"
+          }
+        },
+        {
+          "name": "order - gateway",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}?r=order/gateway/1/1&token={{user_token}}",
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "amount",
+                  "value": ""
+                },
+                {
+                  "key": "coupon",
+                  "value": ""
+                },
+                {
+                  "key": "csrf_token",
+                  "value": ""
+                },
+                {
+                  "key": "custom",
+                  "value": ""
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/x-www-form-urlencoded"
+              }
+            ],
+            "description": "Access: customer; Method: POST; (JSON):"
+          }
+        },
+        {
+          "name": "order - buy",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}?r=order/buy/1/1&token={{user_token}}",
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "amount",
+                  "value": ""
+                },
+                {
+                  "key": "csrf_token",
+                  "value": ""
+                },
+                {
+                  "key": "custom",
+                  "value": ""
+                },
+                {
+                  "key": "discount",
+                  "value": ""
+                },
+                {
+                  "key": "gateway",
+                  "value": ""
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/x-www-form-urlencoded"
+              }
+            ],
+            "description": "Access: customer; Method: POST; (JSON):"
+          }
+        }
+      ]
+    },
+    {
+      "name": "page",
+      "item": [
+        {
+          "name": "page - (default)",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}?r=page&token={{user_token}}",
+            "description": "Access: customer; Method: GET"
+          }
+        }
+      ]
+    },
+    {
+      "name": "pages",
+      "item": [
+        {
+          "name": "pages - (default)",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}?r=pages&token={{admin_token}}",
+            "description": "Access: admin; Method: GET"
+          }
+        }
+      ]
+    },
+    {
+      "name": "paymentgateway",
+      "item": [
+        {
+          "name": "paymentgateway - delete",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}?r=paymentgateway/delete&token={{admin_token}}",
+            "description": "Access: admin; Method: GET; (JSON):"
+          }
+        },
+        {
+          "name": "paymentgateway - audit",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}?r=paymentgateway/audit&token={{admin_token}}&q=",
+            "description": "Access: admin; Method: GET; (JSON):"
+          }
+        },
+        {
+          "name": "paymentgateway - auditview",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}?r=paymentgateway/auditview&token={{admin_token}}",
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "save",
+                  "value": ""
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/x-www-form-urlencoded"
+              }
+            ],
+            "description": "Access: admin; Method: POST; (JSON):"
+          }
+        }
+      ]
+    },
+    {
+      "name": "plan",
+      "item": [
+        {
+          "name": "plan - sync",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}?r=plan/sync&token={{admin_token}}",
+            "description": "Access: admin; Method: GET; (JSON):"
+          }
+        },
+        {
+          "name": "plan - recharge",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}?r=plan/recharge/1&token={{admin_token}}",
+            "description": "Access: admin; Method: GET; (JSON):"
+          }
+        },
+        {
+          "name": "plan - recharge-confirm",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}?r=plan/recharge-confirm&token={{admin_token}}",
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "csrf_token",
+                  "value": ""
+                },
+                {
+                  "key": "id_customer",
+                  "value": ""
+                },
+                {
+                  "key": "plan",
+                  "value": ""
+                },
+                {
+                  "key": "server",
+                  "value": ""
+                },
+                {
+                  "key": "using",
+                  "value": ""
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/x-www-form-urlencoded"
+              }
+            ],
+            "description": "Access: admin; Method: POST; (JSON):"
+          }
+        },
+        {
+          "name": "plan - recharge-post",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}?r=plan/recharge-post&token={{admin_token}}",
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "csrf_token",
+                  "value": ""
+                },
+                {
+                  "key": "id_customer",
+                  "value": ""
+                },
+                {
+                  "key": "plan",
+                  "value": ""
+                },
+                {
+                  "key": "server",
+                  "value": ""
+                },
+                {
+                  "key": "svoucher",
+                  "value": ""
+                },
+                {
+                  "key": "using",
+                  "value": ""
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/x-www-form-urlencoded"
+              }
+            ],
+            "description": "Access: admin; Method: POST; (JSON):"
+          }
+        },
+        {
+          "name": "plan - view",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}?r=plan/view/1/1&token={{admin_token}}",
+            "description": "Access: admin; Method: GET; (JSON):"
+          }
+        },
+        {
+          "name": "plan - print",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}?r=plan/print/1&token={{admin_token}}",
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "csrf_token",
+                  "value": ""
+                },
+                {
+                  "key": "id",
+                  "value": ""
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/x-www-form-urlencoded"
+              }
+            ],
+            "description": "Access: admin; Method: POST; (non-JSON, tergantung aksi):"
+          }
+        },
+        {
+          "name": "plan - edit",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}?r=plan/edit/1&token={{admin_token}}",
+            "description": "Access: admin; Method: GET; (JSON):"
+          }
+        },
+        {
+          "name": "plan - delete",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}?r=plan/delete/1&token={{admin_token}}",
+            "description": "Access: admin; Method: GET; (JSON):"
+          }
+        },
+        {
+          "name": "plan - edit-post",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}?r=plan/edit-post&token={{admin_token}}",
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "csrf_token",
+                  "value": ""
+                },
+                {
+                  "key": "expiration",
+                  "value": ""
+                },
+                {
+                  "key": "id",
+                  "value": ""
+                },
+                {
+                  "key": "id_plan",
+                  "value": ""
+                },
+                {
+                  "key": "recharged_on",
+                  "value": ""
+                },
+                {
+                  "key": "time",
+                  "value": ""
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/x-www-form-urlencoded"
+              }
+            ],
+            "description": "Access: admin; Method: POST; (JSON):"
+          }
+        },
+        {
+          "name": "plan - voucher",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}?r=plan/voucher&token={{admin_token}}&batch_name=&customer=&plan=&router=&search=&status=",
+            "description": "Access: admin; Method: GET; (JSON):"
+          }
+        },
+        {
+          "name": "plan - add-voucher",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}?r=plan/add-voucher&token={{admin_token}}",
+            "description": "Access: admin; Method: GET; (JSON):"
+          }
+        },
+        {
+          "name": "plan - remove-voucher",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}?r=plan/remove-voucher&token={{admin_token}}",
+            "description": "Access: admin; Method: GET; (JSON):"
+          }
+        },
+        {
+          "name": "plan - print-voucher",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}?r=plan/print-voucher&token={{admin_token}}",
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "batch",
+                  "value": ""
+                },
+                {
+                  "key": "from_id",
+                  "value": ""
+                },
+                {
+                  "key": "group",
+                  "value": ""
+                },
+                {
+                  "key": "limit",
+                  "value": ""
+                },
+                {
+                  "key": "pagebreak",
+                  "value": ""
+                },
+                {
+                  "key": "planid",
+                  "value": ""
+                },
+                {
+                  "key": "selected_datetime",
+                  "value": ""
+                },
+                {
+                  "key": "vpl",
+                  "value": ""
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/x-www-form-urlencoded"
+              }
+            ],
+            "description": "Access: admin; Method: POST; (non-JSON, tergantung aksi):"
+          }
+        },
+        {
+          "name": "plan - voucher-post",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}?r=plan/voucher-post&token={{admin_token}}",
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "batch_name",
+                  "value": ""
+                },
+                {
+                  "key": "lengthcode",
+                  "value": ""
+                },
+                {
+                  "key": "numbervoucher",
+                  "value": ""
+                },
+                {
+                  "key": "plan",
+                  "value": ""
+                },
+                {
+                  "key": "prefix",
+                  "value": ""
+                },
+                {
+                  "key": "print_now",
+                  "value": ""
+                },
+                {
+                  "key": "server",
+                  "value": ""
+                },
+                {
+                  "key": "type",
+                  "value": ""
+                },
+                {
+                  "key": "voucher_format",
+                  "value": ""
+                },
+                {
+                  "key": "voucher_per_page",
+                  "value": ""
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/x-www-form-urlencoded"
+              }
+            ],
+            "description": "Access: admin; Method: POST; (JSON):"
+          }
+        },
+        {
+          "name": "plan - voucher-delete-many",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}?r=plan/voucher-delete-many&token={{admin_token}}",
+            "description": "Access: admin; Method: GET; (JSON):"
+          }
+        },
+        {
+          "name": "plan - voucher-view",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}?r=plan/voucher-view&token={{admin_token}}",
+            "description": "Access: admin; Method: GET; (JSON):"
+          }
+        },
+        {
+          "name": "plan - voucher-delete",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}?r=plan/voucher-delete/1&token={{admin_token}}",
+            "description": "Access: admin; Method: GET; (JSON):"
+          }
+        },
+        {
+          "name": "plan - refill",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}?r=plan/refill&token={{admin_token}}",
+            "description": "Access: admin; Method: GET; (JSON):"
+          }
+        },
+        {
+          "name": "plan - refill-post",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}?r=plan/refill-post&token={{admin_token}}",
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "code",
+                  "value": ""
+                },
+                {
+                  "key": "csrf_token",
+                  "value": ""
+                },
+                {
+                  "key": "id_customer",
+                  "value": ""
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/x-www-form-urlencoded"
+              }
+            ],
+            "description": "Access: admin; Method: POST; (JSON):"
+          }
+        },
+        {
+          "name": "plan - deposit",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}?r=plan/deposit&token={{admin_token}}",
+            "description": "Access: admin; Method: GET; (JSON):"
+          }
+        },
+        {
+          "name": "plan - deposit-post",
+          "request": {
+            "method": "GET/POST",
+            "url": "{{baseUrl}}?r=plan/deposit-post&token={{admin_token}}",
+            "description": "Access: admin; Method: GET/POST; (JSON):"
+          }
+        },
+        {
+          "name": "plan - extend",
+          "request": {
+            "method": "GET/POST",
+            "url": "{{baseUrl}}?r=plan/extend&token={{admin_token}}",
+            "description": "Access: admin; Method: GET/POST; (JSON):"
+          }
+        }
+      ]
+    },
+    {
+      "name": "plugin",
+      "item": [
+        {
+          "name": "plugin - (default)",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}?r=plugin",
+            "description": "Access: public; Method: GET"
+          }
+        }
+      ]
+    },
+    {
+      "name": "pluginmanager",
+      "item": [
+        {
+          "name": "pluginmanager - refresh",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}?r=pluginmanager/refresh&token={{admin_token}}",
+            "description": "Access: admin; Method: GET; (JSON):"
+          }
+        },
+        {
+          "name": "pluginmanager - dlinstall",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}?r=pluginmanager/dlinstall&token={{admin_token}}",
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "gh_url",
+                  "value": ""
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/x-www-form-urlencoded"
+              }
+            ],
+            "description": "Access: admin; Method: POST; (JSON):"
+          }
+        },
+        {
+          "name": "pluginmanager - delete",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}?r=pluginmanager/delete/1/1&token={{admin_token}}",
+            "description": "Access: admin; Method: GET; (JSON):"
+          }
+        },
+        {
+          "name": "pluginmanager - install",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}?r=pluginmanager/install/1/1&token={{admin_token}}",
+            "description": "Access: admin; Method: GET; (JSON):"
+          }
+        }
+      ]
+    },
+    {
+      "name": "pool",
+      "item": [
+        {
+          "name": "pool - list",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}?r=pool/list&token={{admin_token}}",
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "name",
+                  "value": ""
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/x-www-form-urlencoded"
+              }
+            ],
+            "description": "Access: admin; Method: POST; (JSON):"
+          }
+        },
+        {
+          "name": "pool - add",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}?r=pool/add&token={{admin_token}}",
+            "description": "Access: admin; Method: GET; (JSON):"
+          }
+        },
+        {
+          "name": "pool - edit",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}?r=pool/edit/1&token={{admin_token}}",
+            "description": "Access: admin; Method: GET; (JSON):"
+          }
+        },
+        {
+          "name": "pool - delete",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}?r=pool/delete/1&token={{admin_token}}",
+            "description": "Access: admin; Method: GET; (JSON):"
+          }
+        },
+        {
+          "name": "pool - sync",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}?r=pool/sync&token={{admin_token}}",
+            "description": "Access: admin; Method: GET; (JSON):"
+          }
+        },
+        {
+          "name": "pool - add-post",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}?r=pool/add-post&token={{admin_token}}",
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "csrf_token",
+                  "value": ""
+                },
+                {
+                  "key": "ip_address",
+                  "value": ""
+                },
+                {
+                  "key": "local_ip",
+                  "value": ""
+                },
+                {
+                  "key": "name",
+                  "value": ""
+                },
+                {
+                  "key": "routers",
+                  "value": ""
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/x-www-form-urlencoded"
+              }
+            ],
+            "description": "Access: admin; Method: POST; (JSON):"
+          }
+        },
+        {
+          "name": "pool - edit-post",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}?r=pool/edit-post&token={{admin_token}}",
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "csrf_token",
+                  "value": ""
+                },
+                {
+                  "key": "id",
+                  "value": ""
+                },
+                {
+                  "key": "ip_address",
+                  "value": ""
+                },
+                {
+                  "key": "local_ip",
+                  "value": ""
+                },
+                {
+                  "key": "routers",
+                  "value": ""
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/x-www-form-urlencoded"
+              }
+            ],
+            "description": "Access: admin; Method: POST; (JSON):"
+          }
+        },
+        {
+          "name": "pool - port",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}?r=pool/port&token={{admin_token}}",
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "name",
+                  "value": ""
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/x-www-form-urlencoded"
+              }
+            ],
+            "description": "Access: admin; Method: POST; (JSON):"
+          }
+        },
+        {
+          "name": "pool - add-port",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}?r=pool/add-port&token={{admin_token}}",
+            "description": "Access: admin; Method: GET; (JSON):"
+          }
+        },
+        {
+          "name": "pool - edit-port",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}?r=pool/edit-port/1&token={{admin_token}}",
+            "description": "Access: admin; Method: GET; (JSON):"
+          }
+        },
+        {
+          "name": "pool - delete-port",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}?r=pool/delete-port/1&token={{admin_token}}",
+            "description": "Access: admin; Method: GET; (JSON):"
+          }
+        },
+        {
+          "name": "pool - sync",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}?r=pool/sync&token={{admin_token}}",
+            "description": "Access: admin; Method: GET; (JSON):"
+          }
+        },
+        {
+          "name": "pool - add-port-post",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}?r=pool/add-port-post&token={{admin_token}}",
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "csrf_token",
+                  "value": ""
+                },
+                {
+                  "key": "name",
+                  "value": ""
+                },
+                {
+                  "key": "port_range",
+                  "value": ""
+                },
+                {
+                  "key": "public_ip",
+                  "value": ""
+                },
+                {
+                  "key": "routers",
+                  "value": ""
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/x-www-form-urlencoded"
+              }
+            ],
+            "description": "Access: admin; Method: POST; (JSON):"
+          }
+        },
+        {
+          "name": "pool - edit-port-post",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}?r=pool/edit-port-post&token={{admin_token}}",
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "csrf_token",
+                  "value": ""
+                },
+                {
+                  "key": "id",
+                  "value": ""
+                },
+                {
+                  "key": "name",
+                  "value": ""
+                },
+                {
+                  "key": "public_ip",
+                  "value": ""
+                },
+                {
+                  "key": "range_port",
+                  "value": ""
+                },
+                {
+                  "key": "routers",
+                  "value": ""
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/x-www-form-urlencoded"
+              }
+            ],
+            "description": "Access: admin; Method: POST; (JSON):"
+          }
+        }
+      ]
+    },
+    {
+      "name": "radius",
+      "item": [
+        {
+          "name": "radius - nas-add",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}?r=radius/nas-add&token={{admin_token}}",
+            "description": "Access: admin; Method: GET; (JSON):"
+          }
+        },
+        {
+          "name": "radius - nas-add-post",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}?r=radius/nas-add-post&token={{admin_token}}",
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "community",
+                  "value": ""
+                },
+                {
+                  "key": "csrf_token",
+                  "value": ""
+                },
+                {
+                  "key": "description",
+                  "value": ""
+                },
+                {
+                  "key": "nasname",
+                  "value": ""
+                },
+                {
+                  "key": "ports",
+                  "value": ""
+                },
+                {
+                  "key": "routers",
+                  "value": ""
+                },
+                {
+                  "key": "secret",
+                  "value": ""
+                },
+                {
+                  "key": "server",
+                  "value": ""
+                },
+                {
+                  "key": "shortname",
+                  "value": ""
+                },
+                {
+                  "key": "type",
+                  "value": ""
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/x-www-form-urlencoded"
+              }
+            ],
+            "description": "Access: admin; Method: POST; (JSON):"
+          }
+        },
+        {
+          "name": "radius - nas-edit",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}?r=radius/nas-edit/1&token={{admin_token}}&name=",
+            "description": "Access: admin; Method: GET; (JSON):"
+          }
+        },
+        {
+          "name": "radius - nas-edit-post",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}?r=radius/nas-edit-post/1&token={{admin_token}}",
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "community",
+                  "value": ""
+                },
+                {
+                  "key": "csrf_token",
+                  "value": ""
+                },
+                {
+                  "key": "description",
+                  "value": ""
+                },
+                {
+                  "key": "nasname",
+                  "value": ""
+                },
+                {
+                  "key": "ports",
+                  "value": ""
+                },
+                {
+                  "key": "routers",
+                  "value": ""
+                },
+                {
+                  "key": "secret",
+                  "value": ""
+                },
+                {
+                  "key": "server",
+                  "value": ""
+                },
+                {
+                  "key": "shortname",
+                  "value": ""
+                },
+                {
+                  "key": "type",
+                  "value": ""
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/x-www-form-urlencoded"
+              }
+            ],
+            "description": "Access: admin; Method: POST; (JSON):"
+          }
+        },
+        {
+          "name": "radius - nas-delete",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}?r=radius/nas-delete/1&token={{admin_token}}",
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "csrf_token",
+                  "value": ""
+                },
+                {
+                  "key": "name",
+                  "value": ""
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/x-www-form-urlencoded"
+              }
+            ],
+            "description": "Access: admin; Method: POST; (JSON):"
+          }
+        }
+      ]
+    },
+    {
+      "name": "register",
+      "item": [
+        {
+          "name": "register - post",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}?r=register/post",
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "address",
+                  "value": ""
+                },
+                {
+                  "key": "cpassword",
+                  "value": ""
+                },
+                {
+                  "key": "csrf_token",
+                  "value": ""
+                },
+                {
+                  "key": "email",
+                  "value": ""
+                },
+                {
+                  "key": "fullname",
+                  "value": ""
+                },
+                {
+                  "key": "otp_code",
+                  "value": ""
+                },
+                {
+                  "key": "password",
+                  "value": ""
+                },
+                {
+                  "key": "phone_number",
+                  "value": ""
+                },
+                {
+                  "key": "username",
+                  "value": ""
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/x-www-form-urlencoded"
+              }
+            ],
+            "description": "Access: public; Method: POST; (JSON):"
+          }
+        }
+      ]
+    },
+    {
+      "name": "reports",
+      "item": [
+        {
+          "name": "reports - ajax",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}?r=reports/ajax/type&token={{admin_token}}&ed=&sd=&te=&ts=",
+            "description": "Access: admin; Method: GET; (JSON):"
+          }
+        },
+        {
+          "name": "reports - by-date",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}?r=reports/by-date&token={{admin_token}}",
+            "description": "Access: admin; Method: GET; (JSON):"
+          }
+        },
+        {
+          "name": "reports - activation",
+          "request": {
+            "method": "GET/POST",
+            "url": "{{baseUrl}}?r=reports/activation&token={{admin_token}}&q=",
+            "description": "Access: admin; Method: GET/POST; (JSON):"
+          }
+        },
+        {
+          "name": "reports - by-period",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}?r=reports/by-period&token={{admin_token}}",
+            "description": "Access: admin; Method: GET; (JSON):"
+          }
+        },
+        {
+          "name": "reports - period-view",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}?r=reports/period-view&token={{admin_token}}",
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "fdate",
+                  "value": ""
+                },
+                {
+                  "key": "stype",
+                  "value": ""
+                },
+                {
+                  "key": "tdate",
+                  "value": ""
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/x-www-form-urlencoded"
+              }
+            ],
+            "description": "Access: admin; Method: POST; (JSON):"
+          }
+        },
+        {
+          "name": "reports - daily-report",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}?r=reports/daily-report&token={{admin_token}}&ed=&sd=&te=&ts=",
+            "description": "Access: admin; Method: GET; (JSON):"
+          }
+        }
+      ]
+    },
+    {
+      "name": "routers",
+      "item": [
+        {
+          "name": "routers - add",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}?r=routers/add&token={{admin_token}}",
+            "description": "Access: admin; Method: GET; (JSON):"
+          }
+        },
+        {
+          "name": "routers - edit",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}?r=routers/edit/1&token={{admin_token}}&name=",
+            "description": "Access: admin; Method: GET; (JSON):"
+          }
+        },
+        {
+          "name": "routers - delete",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}?r=routers/delete/1&token={{admin_token}}",
+            "description": "Access: admin; Method: GET; (JSON):"
+          }
+        },
+        {
+          "name": "routers - add-post",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}?r=routers/add-post&token={{admin_token}}",
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "description",
+                  "value": ""
+                },
+                {
+                  "key": "enabled",
+                  "value": ""
+                },
+                {
+                  "key": "ip_address",
+                  "value": ""
+                },
+                {
+                  "key": "name",
+                  "value": ""
+                },
+                {
+                  "key": "password",
+                  "value": ""
+                },
+                {
+                  "key": "testIt",
+                  "value": ""
+                },
+                {
+                  "key": "username",
+                  "value": ""
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/x-www-form-urlencoded"
+              }
+            ],
+            "description": "Access: admin; Method: POST; (JSON):"
+          }
+        },
+        {
+          "name": "routers - edit-post",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}?r=routers/edit-post&token={{admin_token}}",
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "coordinates",
+                  "value": ""
+                },
+                {
+                  "key": "coverage",
+                  "value": ""
+                },
+                {
+                  "key": "description",
+                  "value": ""
+                },
+                {
+                  "key": "id",
+                  "value": ""
+                },
+                {
+                  "key": "ip_address",
+                  "value": ""
+                },
+                {
+                  "key": "name",
+                  "value": ""
+                },
+                {
+                  "key": "password",
+                  "value": ""
+                },
+                {
+                  "key": "testIt",
+                  "value": ""
+                },
+                {
+                  "key": "username",
+                  "value": ""
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/x-www-form-urlencoded"
+              }
+            ],
+            "description": "Access: admin; Method: POST; (JSON):"
+          }
+        }
+      ]
+    },
+    {
+      "name": "search_user",
+      "item": [
+        {
+          "name": "search_user - (default)",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}?r=search_user",
+            "description": "Access: public; Method: GET"
+          }
+        }
+      ]
+    },
+    {
+      "name": "services",
+      "item": [
+        {
+          "name": "services - sync",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}?r=services/sync/1&token={{admin_token}}",
+            "description": "Access: admin; Method: GET; (JSON):"
+          }
+        },
+        {
+          "name": "services - hotspot",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}?r=services/hotspot&token={{admin_token}}&bandwidth=&device=&name=&router=&status=&type1=&type2=&type3=&valid=",
+            "description": "Access: admin; Method: GET; (JSON):"
+          }
+        },
+        {
+          "name": "services - add",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}?r=services/add&token={{admin_token}}",
+            "description": "Access: admin; Method: GET; (JSON):"
+          }
+        },
+        {
+          "name": "services - edit",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}?r=services/edit/1&token={{admin_token}}",
+            "description": "Access: admin; Method: GET; (JSON):"
+          }
+        },
+        {
+          "name": "services - delete",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}?r=services/delete/1&token={{admin_token}}",
+            "description": "Access: admin; Method: GET; (JSON):"
+          }
+        },
+        {
+          "name": "services - add-post",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}?r=services/add-post&token={{admin_token}}",
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "data_limit",
+                  "value": ""
+                },
+                {
+                  "key": "data_unit",
+                  "value": ""
+                },
+                {
+                  "key": "device",
+                  "value": ""
+                },
+                {
+                  "key": "enabled",
+                  "value": ""
+                },
+                {
+                  "key": "expired_date",
+                  "value": ""
+                },
+                {
+                  "key": "id_bw",
+                  "value": ""
+                },
+                {
+                  "key": "limit_type",
+                  "value": ""
+                },
+                {
+                  "key": "name",
+                  "value": ""
+                },
+                {
+                  "key": "plan_type",
+                  "value": ""
+                },
+                {
+                  "key": "prepaid",
+                  "value": ""
+                },
+                {
+                  "key": "price",
+                  "value": ""
+                },
+                {
+                  "key": "radius",
+                  "value": ""
+                },
+                {
+                  "key": "routers",
+                  "value": ""
+                },
+                {
+                  "key": "sharedusers",
+                  "value": ""
+                },
+                {
+                  "key": "time_limit",
+                  "value": ""
+                },
+                {
+                  "key": "time_unit",
+                  "value": ""
+                },
+                {
+                  "key": "typebp",
+                  "value": ""
+                },
+                {
+                  "key": "validity",
+                  "value": ""
+                },
+                {
+                  "key": "validity_unit",
+                  "value": ""
+                },
+                {
+                  "key": "visibility",
+                  "value": ""
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/x-www-form-urlencoded"
+              }
+            ],
+            "description": "Access: admin; Method: POST; (JSON):"
+          }
+        },
+        {
+          "name": "services - edit-post",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}?r=services/edit-post&token={{admin_token}}",
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "data_limit",
+                  "value": ""
+                },
+                {
+                  "key": "data_unit",
+                  "value": ""
+                },
+                {
+                  "key": "device",
+                  "value": ""
+                },
+                {
+                  "key": "enabled",
+                  "value": ""
+                },
+                {
+                  "key": "expired_date",
+                  "value": ""
+                },
+                {
+                  "key": "id",
+                  "value": ""
+                },
+                {
+                  "key": "id_bw",
+                  "value": ""
+                },
+                {
+                  "key": "limit_type",
+                  "value": ""
+                },
+                {
+                  "key": "name",
+                  "value": ""
+                },
+                {
+                  "key": "on_login",
+                  "value": ""
+                },
+                {
+                  "key": "on_logout",
+                  "value": ""
+                },
+                {
+                  "key": "plan_expired",
+                  "value": ""
+                },
+                {
+                  "key": "plan_type",
+                  "value": ""
+                },
+                {
+                  "key": "prepaid",
+                  "value": ""
+                },
+                {
+                  "key": "price",
+                  "value": ""
+                },
+                {
+                  "key": "price_old",
+                  "value": ""
+                },
+                {
+                  "key": "routers",
+                  "value": ""
+                },
+                {
+                  "key": "sharedusers",
+                  "value": ""
+                },
+                {
+                  "key": "time_limit",
+                  "value": ""
+                },
+                {
+                  "key": "time_unit",
+                  "value": ""
+                },
+                {
+                  "key": "typebp",
+                  "value": ""
+                },
+                {
+                  "key": "validity",
+                  "value": ""
+                },
+                {
+                  "key": "validity_unit",
+                  "value": ""
+                },
+                {
+                  "key": "visibility",
+                  "value": ""
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/x-www-form-urlencoded"
+              }
+            ],
+            "description": "Access: admin; Method: POST; (JSON):"
+          }
+        },
+        {
+          "name": "services - pppoe",
+          "request": {
+            "method": "GET/POST",
+            "url": "{{baseUrl}}?r=services/pppoe&token={{admin_token}}",
+            "description": "Access: admin; Method: GET/POST; (JSON):"
+          }
+        },
+        {
+          "name": "services - pppoe-add",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}?r=services/pppoe-add&token={{admin_token}}",
+            "description": "Access: admin; Method: GET; (JSON):"
+          }
+        },
+        {
+          "name": "services - pppoe-edit",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}?r=services/pppoe-edit/1&token={{admin_token}}",
+            "description": "Access: admin; Method: GET; (JSON):"
+          }
+        },
+        {
+          "name": "services - pppoe-delete",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}?r=services/pppoe-delete/1&token={{admin_token}}",
+            "description": "Access: admin; Method: GET; (JSON):"
+          }
+        },
+        {
+          "name": "services - pppoe-add-post",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}?r=services/pppoe-add-post&token={{admin_token}}",
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "device",
+                  "value": ""
+                },
+                {
+                  "key": "enabled",
+                  "value": ""
+                },
+                {
+                  "key": "expired_date",
+                  "value": ""
+                },
+                {
+                  "key": "id_bw",
+                  "value": ""
+                },
+                {
+                  "key": "name_plan",
+                  "value": ""
+                },
+                {
+                  "key": "plan_type",
+                  "value": ""
+                },
+                {
+                  "key": "pool_name",
+                  "value": ""
+                },
+                {
+                  "key": "prepaid",
+                  "value": ""
+                },
+                {
+                  "key": "price",
+                  "value": ""
+                },
+                {
+                  "key": "radius",
+                  "value": ""
+                },
+                {
+                  "key": "routers",
+                  "value": ""
+                },
+                {
+                  "key": "validity",
+                  "value": ""
+                },
+                {
+                  "key": "validity_unit",
+                  "value": ""
+                },
+                {
+                  "key": "visibility",
+                  "value": ""
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/x-www-form-urlencoded"
+              }
+            ],
+            "description": "Access: admin; Method: POST; (JSON):"
+          }
+        },
+        {
+          "name": "services - edit-pppoe-post",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}?r=services/edit-pppoe-post&token={{admin_token}}",
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "device",
+                  "value": ""
+                },
+                {
+                  "key": "enabled",
+                  "value": ""
+                },
+                {
+                  "key": "expired_date",
+                  "value": ""
+                },
+                {
+                  "key": "id",
+                  "value": ""
+                },
+                {
+                  "key": "id_bw",
+                  "value": ""
+                },
+                {
+                  "key": "name_plan",
+                  "value": ""
+                },
+                {
+                  "key": "on_login",
+                  "value": ""
+                },
+                {
+                  "key": "on_logout",
+                  "value": ""
+                },
+                {
+                  "key": "plan_expired",
+                  "value": ""
+                },
+                {
+                  "key": "plan_type",
+                  "value": ""
+                },
+                {
+                  "key": "pool_name",
+                  "value": ""
+                },
+                {
+                  "key": "prepaid",
+                  "value": ""
+                },
+                {
+                  "key": "price",
+                  "value": ""
+                },
+                {
+                  "key": "price_old",
+                  "value": ""
+                },
+                {
+                  "key": "routers",
+                  "value": ""
+                },
+                {
+                  "key": "validity",
+                  "value": ""
+                },
+                {
+                  "key": "validity_unit",
+                  "value": ""
+                },
+                {
+                  "key": "visibility",
+                  "value": ""
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/x-www-form-urlencoded"
+              }
+            ],
+            "description": "Access: admin; Method: POST; (JSON):"
+          }
+        },
+        {
+          "name": "services - balance",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}?r=services/balance&token={{admin_token}}",
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "name",
+                  "value": ""
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/x-www-form-urlencoded"
+              }
+            ],
+            "description": "Access: admin; Method: POST; (JSON):"
+          }
+        },
+        {
+          "name": "services - balance-add",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}?r=services/balance-add&token={{admin_token}}",
+            "description": "Access: admin; Method: GET; (JSON):"
+          }
+        },
+        {
+          "name": "services - balance-edit",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}?r=services/balance-edit/1&token={{admin_token}}",
+            "description": "Access: admin; Method: GET; (JSON):"
+          }
+        },
+        {
+          "name": "services - balance-delete",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}?r=services/balance-delete/1&token={{admin_token}}",
+            "description": "Access: admin; Method: GET; (JSON):"
+          }
+        },
+        {
+          "name": "services - balance-edit-post",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}?r=services/balance-edit-post&token={{admin_token}}",
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "enabled",
+                  "value": ""
+                },
+                {
+                  "key": "id",
+                  "value": ""
+                },
+                {
+                  "key": "name",
+                  "value": ""
+                },
+                {
+                  "key": "prepaid",
+                  "value": ""
+                },
+                {
+                  "key": "price",
+                  "value": ""
+                },
+                {
+                  "key": "price_old",
+                  "value": ""
+                },
+                {
+                  "key": "visibility",
+                  "value": ""
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/x-www-form-urlencoded"
+              }
+            ],
+            "description": "Access: admin; Method: POST; (JSON):"
+          }
+        },
+        {
+          "name": "services - balance-add-post",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}?r=services/balance-add-post&token={{admin_token}}",
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "enabled",
+                  "value": ""
+                },
+                {
+                  "key": "name",
+                  "value": ""
+                },
+                {
+                  "key": "price",
+                  "value": ""
+                },
+                {
+                  "key": "visibility",
+                  "value": ""
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/x-www-form-urlencoded"
+              }
+            ],
+            "description": "Access: admin; Method: POST; (JSON):"
+          }
+        },
+        {
+          "name": "services - vpn",
+          "request": {
+            "method": "GET/POST",
+            "url": "{{baseUrl}}?r=services/vpn&token={{admin_token}}",
+            "description": "Access: admin; Method: GET/POST; (JSON):"
+          }
+        },
+        {
+          "name": "services - vpn-add",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}?r=services/vpn-add&token={{admin_token}}",
+            "description": "Access: admin; Method: GET; (JSON):"
+          }
+        },
+        {
+          "name": "services - vpn-edit",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}?r=services/vpn-edit/1&token={{admin_token}}",
+            "description": "Access: admin; Method: GET; (JSON):"
+          }
+        },
+        {
+          "name": "services - vpn-delete",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}?r=services/vpn-delete/1&token={{admin_token}}",
+            "description": "Access: admin; Method: GET; (JSON):"
+          }
+        },
+        {
+          "name": "services - vpn-add-post",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}?r=services/vpn-add-post&token={{admin_token}}",
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "device",
+                  "value": ""
+                },
+                {
+                  "key": "enabled",
+                  "value": ""
+                },
+                {
+                  "key": "expired_date",
+                  "value": ""
+                },
+                {
+                  "key": "id_bw",
+                  "value": ""
+                },
+                {
+                  "key": "name_plan",
+                  "value": ""
+                },
+                {
+                  "key": "plan_type",
+                  "value": ""
+                },
+                {
+                  "key": "pool_name",
+                  "value": ""
+                },
+                {
+                  "key": "prepaid",
+                  "value": ""
+                },
+                {
+                  "key": "price",
+                  "value": ""
+                },
+                {
+                  "key": "radius",
+                  "value": ""
+                },
+                {
+                  "key": "routers",
+                  "value": ""
+                },
+                {
+                  "key": "validity",
+                  "value": ""
+                },
+                {
+                  "key": "validity_unit",
+                  "value": ""
+                },
+                {
+                  "key": "visibility",
+                  "value": ""
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/x-www-form-urlencoded"
+              }
+            ],
+            "description": "Access: admin; Method: POST; (JSON):"
+          }
+        },
+        {
+          "name": "services - edit-vpn-post",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}?r=services/edit-vpn-post&token={{admin_token}}",
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "device",
+                  "value": ""
+                },
+                {
+                  "key": "enabled",
+                  "value": ""
+                },
+                {
+                  "key": "expired_date",
+                  "value": ""
+                },
+                {
+                  "key": "id",
+                  "value": ""
+                },
+                {
+                  "key": "id_bw",
+                  "value": ""
+                },
+                {
+                  "key": "name_plan",
+                  "value": ""
+                },
+                {
+                  "key": "on_login",
+                  "value": ""
+                },
+                {
+                  "key": "on_logout",
+                  "value": ""
+                },
+                {
+                  "key": "plan_expired",
+                  "value": ""
+                },
+                {
+                  "key": "plan_type",
+                  "value": ""
+                },
+                {
+                  "key": "pool_name",
+                  "value": ""
+                },
+                {
+                  "key": "prepaid",
+                  "value": ""
+                },
+                {
+                  "key": "price",
+                  "value": ""
+                },
+                {
+                  "key": "price_old",
+                  "value": ""
+                },
+                {
+                  "key": "routers",
+                  "value": ""
+                },
+                {
+                  "key": "validity",
+                  "value": ""
+                },
+                {
+                  "key": "validity_unit",
+                  "value": ""
+                },
+                {
+                  "key": "visibility",
+                  "value": ""
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/x-www-form-urlencoded"
+              }
+            ],
+            "description": "Access: admin; Method: POST; (JSON):"
+          }
+        }
+      ]
+    },
+    {
+      "name": "settings",
+      "item": [
+        {
+          "name": "settings - docs",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}?r=settings/docs&token={{admin_token}}",
+            "description": "Access: admin; Method: GET; (JSON):"
+          }
+        },
+        {
+          "name": "settings - devices",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}?r=settings/devices&token={{admin_token}}",
+            "description": "Access: admin; Method: GET; (JSON):"
+          }
+        },
+        {
+          "name": "settings - app",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}?r=settings/app&token={{admin_token}}&testEmail=&testSms=&testTg=&testWa=",
+            "description": "Access: admin; Method: GET; (JSON):"
+          }
+        },
+        {
+          "name": "settings - app-post",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}?r=settings/app-post&token={{admin_token}}",
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "CompanyName",
+                  "value": ""
+                },
+                {
+                  "key": "csrf_token",
+                  "value": ""
+                },
+                {
+                  "key": "custom_tax_rate",
+                  "value": ""
+                },
+                {
+                  "key": "hide_al",
+                  "value": ""
+                },
+                {
+                  "key": "hide_aui",
+                  "value": ""
+                },
+                {
+                  "key": "hide_mrc",
+                  "value": ""
+                },
+                {
+                  "key": "hide_pg",
+                  "value": ""
+                },
+                {
+                  "key": "hide_tms",
+                  "value": ""
+                },
+                {
+                  "key": "hide_uet",
+                  "value": ""
+                },
+                {
+                  "key": "hide_vs",
+                  "value": ""
+                },
+                {
+                  "key": "login_Page_template",
+                  "value": ""
+                },
+                {
+                  "key": "login_page_description",
+                  "value": ""
+                },
+                {
+                  "key": "login_page_head",
+                  "value": ""
+                },
+                {
+                  "key": "login_page_type",
+                  "value": ""
+                },
+                {
+                  "key": "turnstile_admin_enabled",
+                  "value": ""
+                },
+                {
+                  "key": "turnstile_client_enabled",
+                  "value": ""
+                },
+                {
+                  "key": "turnstile_secret_key",
+                  "value": ""
+                },
+                {
+                  "key": "turnstile_site_key",
+                  "value": ""
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/x-www-form-urlencoded"
+              }
+            ],
+            "description": "Access: admin; Method: POST; (JSON):"
+          }
+        },
+        {
+          "name": "settings - localisation",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}?r=settings/localisation&token={{admin_token}}",
+            "description": "Access: admin; Method: GET; (JSON):"
+          }
+        },
+        {
+          "name": "settings - localisation-post",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}?r=settings/localisation-post&token={{admin_token}}",
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "country_code_phone",
+                  "value": ""
+                },
+                {
+                  "key": "csrf_token",
+                  "value": ""
+                },
+                {
+                  "key": "date_format",
+                  "value": ""
+                },
+                {
+                  "key": "hotspot_plan",
+                  "value": ""
+                },
+                {
+                  "key": "lan",
+                  "value": ""
+                },
+                {
+                  "key": "pppoe_plan",
+                  "value": ""
+                },
+                {
+                  "key": "radius_plan",
+                  "value": ""
+                },
+                {
+                  "key": "tzone",
+                  "value": ""
+                },
+                {
+                  "key": "vpn_plan",
+                  "value": ""
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/x-www-form-urlencoded"
+              }
+            ],
+            "description": "Access: admin; Method: POST; (JSON):"
+          }
+        },
+        {
+          "name": "settings - users",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}?r=settings/users&token={{admin_token}}&search=",
+            "description": "Access: admin; Method: GET; (JSON):"
+          }
+        },
+        {
+          "name": "settings - users-add",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}?r=settings/users-add&token={{admin_token}}",
+            "description": "Access: admin; Method: GET; (JSON):"
+          }
+        },
+        {
+          "name": "settings - users-view",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}?r=settings/users-view/1&token={{admin_token}}",
+            "description": "Access: admin; Method: GET; (JSON):"
+          }
+        },
+        {
+          "name": "settings - users-edit",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}?r=settings/users-edit/1/1&token={{admin_token}}",
+            "description": "Access: admin; Method: GET; (JSON):"
+          }
+        },
+        {
+          "name": "settings - users-delete",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}?r=settings/users-delete/1&token={{admin_token}}",
+            "description": "Access: admin; Method: GET; (JSON):"
+          }
+        },
+        {
+          "name": "settings - users-post",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}?r=settings/users-post&token={{admin_token}}",
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "city",
+                  "value": ""
+                },
+                {
+                  "key": "csrf_token",
+                  "value": ""
+                },
+                {
+                  "key": "email",
+                  "value": ""
+                },
+                {
+                  "key": "fullname",
+                  "value": ""
+                },
+                {
+                  "key": "password",
+                  "value": ""
+                },
+                {
+                  "key": "phone",
+                  "value": ""
+                },
+                {
+                  "key": "root",
+                  "value": ""
+                },
+                {
+                  "key": "send_notif",
+                  "value": ""
+                },
+                {
+                  "key": "subdistrict",
+                  "value": ""
+                },
+                {
+                  "key": "user_type",
+                  "value": ""
+                },
+                {
+                  "key": "username",
+                  "value": ""
+                },
+                {
+                  "key": "ward",
+                  "value": ""
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/x-www-form-urlencoded"
+              }
+            ],
+            "description": "Access: admin; Method: POST; (JSON):"
+          }
+        },
+        {
+          "name": "settings - users-edit-post",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}?r=settings/users-edit-post&token={{admin_token}}",
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "city",
+                  "value": ""
+                },
+                {
+                  "key": "cpassword",
+                  "value": ""
+                },
+                {
+                  "key": "csrf_token",
+                  "value": ""
+                },
+                {
+                  "key": "email",
+                  "value": ""
+                },
+                {
+                  "key": "faceDetect",
+                  "value": ""
+                },
+                {
+                  "key": "fullname",
+                  "value": ""
+                },
+                {
+                  "key": "id",
+                  "value": ""
+                },
+                {
+                  "key": "password",
+                  "value": ""
+                },
+                {
+                  "key": "phone",
+                  "value": ""
+                },
+                {
+                  "key": "root",
+                  "value": ""
+                },
+                {
+                  "key": "status",
+                  "value": ""
+                },
+                {
+                  "key": "subdistrict",
+                  "value": ""
+                },
+                {
+                  "key": "user_type",
+                  "value": ""
+                },
+                {
+                  "key": "username",
+                  "value": ""
+                },
+                {
+                  "key": "ward",
+                  "value": ""
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/x-www-form-urlencoded"
+              }
+            ],
+            "description": "Access: admin; Method: POST; (JSON):"
+          }
+        },
+        {
+          "name": "settings - change-password",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}?r=settings/change-password&token={{admin_token}}",
+            "description": "Access: admin; Method: GET; (JSON):"
+          }
+        },
+        {
+          "name": "settings - change-password-post",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}?r=settings/change-password-post&token={{admin_token}}",
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "cnpass",
+                  "value": ""
+                },
+                {
+                  "key": "csrf_token",
+                  "value": ""
+                },
+                {
+                  "key": "npass",
+                  "value": ""
+                },
+                {
+                  "key": "password",
+                  "value": ""
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/x-www-form-urlencoded"
+              }
+            ],
+            "description": "Access: admin; Method: POST; (JSON):"
+          }
+        },
+        {
+          "name": "settings - notifications",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}?r=settings/notifications&token={{admin_token}}",
+            "description": "Access: admin; Method: GET; (JSON):"
+          }
+        },
+        {
+          "name": "settings - notifications-post",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}?r=settings/notifications-post&token={{admin_token}}",
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "csrf_token",
+                  "value": ""
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/x-www-form-urlencoded"
+              }
+            ],
+            "description": "Access: admin; Method: POST; (JSON):"
+          }
+        },
+        {
+          "name": "settings - dbstatus",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}?r=settings/dbstatus&token={{admin_token}}",
+            "description": "Access: admin; Method: GET; (JSON):"
+          }
+        },
+        {
+          "name": "settings - dbbackup",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}?r=settings/dbbackup&token={{admin_token}}",
+            "description": "Access: admin; Method: GET; (non-JSON, tergantung aksi):"
+          }
+        },
+        {
+          "name": "settings - dbrestore",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}?r=settings/dbrestore&token={{admin_token}}",
+            "description": "Access: admin; Method: GET; (non-JSON, tergantung aksi):"
+          }
+        },
+        {
+          "name": "settings - language",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}?r=settings/language&token={{admin_token}}",
+            "description": "Access: admin; Method: GET; (JSON):"
+          }
+        },
+        {
+          "name": "settings - lang-post",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}?r=settings/lang-post&token={{admin_token}}",
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "csrf_token",
+                  "value": ""
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/x-www-form-urlencoded"
+              }
+            ],
+            "description": "Access: admin; Method: POST; (JSON):"
+          }
+        },
+        {
+          "name": "settings - maintenance",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}?r=settings/maintenance&token={{admin_token}}",
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "csrf_token",
+                  "value": ""
+                },
+                {
+                  "key": "save",
+                  "value": ""
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/x-www-form-urlencoded"
+              }
+            ],
+            "description": "Access: admin; Method: POST; (JSON):"
+          }
+        },
+        {
+          "name": "settings - miscellaneous",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}?r=settings/miscellaneous&token={{admin_token}}",
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "csrf_token",
+                  "value": ""
+                },
+                {
+                  "key": "save",
+                  "value": ""
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/x-www-form-urlencoded"
+              }
+            ],
+            "description": "Access: admin; Method: POST; (JSON):"
+          }
+        }
+      ]
+    },
+    {
+      "name": "voucher",
+      "item": [
+        {
+          "name": "voucher - activation",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}?r=voucher/activation&token={{admin_token}}&code=",
+            "description": "Access: mixed; Method: GET; (JSON):"
+          }
+        },
+        {
+          "name": "voucher - activation-post",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}?r=voucher/activation-post&token={{admin_token}}",
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "code",
+                  "value": ""
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/x-www-form-urlencoded"
+              }
+            ],
+            "description": "Access: mixed; Method: POST; (JSON):"
+          }
+        },
+        {
+          "name": "voucher - list-activated",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}?r=voucher/list-activated&token={{admin_token}}",
+            "description": "Access: mixed; Method: GET; (JSON):"
+          }
+        },
+        {
+          "name": "voucher - invoice",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}?r=voucher/invoice&token={{admin_token}}",
+            "description": "Access: mixed; Method: GET; (non-JSON, tergantung aksi):"
+          }
+        }
+      ]
+    },
+    {
+      "name": "widgets",
+      "item": [
+        {
+          "name": "widgets - (default)",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}?r=widgets&token={{admin_token}}",
+            "description": "Access: admin; Method: GET"
+          }
+        }
+      ]
+    }
+  ]
+}

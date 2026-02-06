@@ -50,13 +50,18 @@ switch ($action) {
         }
         break;
     case 'radius-csv':
-        $logs = ORM::for_table('radpostauth')
-            ->select('id')
-            ->select('username')
-            ->select('pass')
-            ->select('reply')
-            ->select('authdate')
-            ->order_by_asc('id')->find_array();
+        try {
+            $logs = ORM::for_table('radpostauth', 'radius')
+                ->select('id')
+                ->select('username')
+                ->select('pass')
+                ->select('reply')
+                ->select('authdate')
+                ->order_by_asc('id')->find_array();
+        } catch (Throwable $e) {
+            _log('[logs/radius-csv] ' . $e->getMessage(), 'Error', $admin['id'] ?? 0);
+            r2(getUrl('logs/list/'), 'e', Lang::T('Radius database is not configured'));
+        }
         $h = false;
         set_time_limit(-1);
         header('Pragma: public');
@@ -135,16 +140,21 @@ switch ($action) {
     case 'radius':
         $q = (_post('q') ? _post('q') : _get('q'));
         $keep = _post('keep');
-        if (!empty($keep)) {
-            ORM::raw_execute("DELETE FROM radpostauth WHERE UNIX_TIMESTAMP(authdate) < UNIX_TIMESTAMP(DATE_SUB(NOW(), INTERVAL $keep DAY))", [], 'radius');
-            r2(getUrl('logs/radius/'), 's', "Delete logs older than $keep days");
-        }
-        if ($q != '') {
-            $query = ORM::for_table('radpostauth', 'radius')->where_like('username', '%' . $q . '%')->order_by_desc('id');
-            $d = Paginator::findMany($query, ['q' => $q]);
-        } else {
-            $query = ORM::for_table('radpostauth', 'radius')->order_by_desc('id');
-            $d = Paginator::findMany($query);
+        try {
+            if (!empty($keep)) {
+                ORM::raw_execute("DELETE FROM radpostauth WHERE UNIX_TIMESTAMP(authdate) < UNIX_TIMESTAMP(DATE_SUB(NOW(), INTERVAL $keep DAY))", [], 'radius');
+                r2(getUrl('logs/radius/'), 's', "Delete logs older than $keep days");
+            }
+            if ($q != '') {
+                $query = ORM::for_table('radpostauth', 'radius')->where_like('username', '%' . $q . '%')->order_by_desc('id');
+                $d = Paginator::findMany($query, ['q' => $q]);
+            } else {
+                $query = ORM::for_table('radpostauth', 'radius')->order_by_desc('id');
+                $d = Paginator::findMany($query);
+            }
+        } catch (Throwable $e) {
+            _log('[logs/radius] ' . $e->getMessage(), 'Error', $admin['id'] ?? 0);
+            r2(getUrl('logs/list/'), 'e', Lang::T('Radius database is not configured'));
         }
 
         $ui->assign('d', $d);

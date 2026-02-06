@@ -31,11 +31,28 @@ switch ($do) {
         }
         Csrf::generateAndStoreToken();
 
+        // Fail fast on missing payload (esp. for API calls) to avoid hooks/captcha crashes.
+        if ($raw_username === '' || $password === '') {
+            if ($isApi) {
+                showResult(false, Lang::T('Invalid Username or Password'));
+            }
+            _msglog('e', Lang::T('Invalid Username or Password'));
+            r2(getUrl('login'));
+        }
+
         // ==== Cloudflare Turnstile (Customer Login) ====
         $tsEnabled = (!empty($_c['turnstile_client_enabled']) && $_c['turnstile_client_enabled'] == '1');
         $secret = $_c['turnstile_secret_key'] ?? '';
-        if ($secret === '' && defined('TURNSTILE_SECRET_KEY')) { $secret = TURNSTILE_SECRET_KEY; }
-        if ($tsEnabled && $secret !== '') {
+        if ($secret === '' && defined('TURNSTILE_SECRET_KEY')) {
+            $secret = TURNSTILE_SECRET_KEY;
+        }
+        // Turnstile is a browser UI control; API clients should not be forced through it.
+        if (!$isApi && $tsEnabled && $secret !== '') {
+            if (!extension_loaded('curl')) {
+                _msglog('e', Lang::T('cURL extension is missing'));
+                r2(getUrl('login'));
+            }
+
             $token = _post('cf-turnstile-response');
             if (empty($token)) {
                 _msglog('e', Lang::T('Verification required'));
@@ -43,7 +60,7 @@ switch ($do) {
             }
             $ch = curl_init('https://challenges.cloudflare.com/turnstile/v0/siteverify');
             $payload = http_build_query([
-                'secret'   => $secret,
+                'secret' => $secret,
                 'response' => $token,
                 // 'remoteip' => $_SERVER['REMOTE_ADDR'] ?? '',
             ]);
@@ -54,56 +71,30 @@ switch ($do) {
                 CURLOPT_TIMEOUT => 10,
                 CURLOPT_HTTPHEADER => ['Content-Type: application/x-www-form-urlencoded'],
             ]);
-            $resp = curl_exec($ch); $http = curl_getinfo($ch, CURLINFO_HTTP_CODE); $err = curl_error($ch); curl_close($ch);
-            $ok = false; $json = null;
-            if ($http === 200 && $resp) { $json = json_decode($resp, true); $ok = !empty($json['success']); }
+            $resp = curl_exec($ch);
+            $http = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            $err = curl_error($ch);
+            curl_close($ch);
+
+            $ok = false;
+            $json = null;
+            if ($http === 200 && $resp) {
+                $json = json_decode($resp, true);
+                $ok = !empty($json['success']);
+            }
             if (!$ok) {
                 $msg = Lang::T('Captcha verification failed');
-                if (!empty($json['error-codes'])) { $msg .= ' (' . implode(', ', (array)$json['error-codes']) . ')'; }
-                elseif (!empty($err)) { $msg .= ' (' . $err . ')'; }
+                if (!empty($json['error-codes'])) {
+                    $msg .= ' (' . implode(', ', (array) $json['error-codes']) . ')';
+                } elseif (!empty($err)) {
+                    $msg .= ' (' . $err . ')';
+                }
                 _msglog('e', $msg);
                 r2(getUrl('login'));
             }
         }
 
         run_hook('customer_login'); #HOOK
-        $tsEnabled = (!empty($_c['turnstile_client_enabled']) && $_c['turnstile_client_enabled'] == '1');
-        $secret = $_c['turnstile_secret_key'] ?? '';
-        if ($secret === '' && defined('TURNSTILE_SECRET_KEY')) { $secret = TURNSTILE_SECRET_KEY; }
-        if ($tsEnabled && $secret !== '' && !extension_loaded('curl')) {
-            _msglog('e', Lang::T('cURL extension is missing'));
-            r2(getUrl('login'));
-        }
-        if ($tsEnabled && $secret !== '') {
-            $token = _post('cf-turnstile-response');
-            if (empty($token)) {
-                _msglog('e', Lang::T('Verification required'));
-                r2(getUrl('login'));
-            }
-            $ch = curl_init('https://challenges.cloudflare.com/turnstile/v0/siteverify');
-            $payload = http_build_query([
-                'secret'   => $secret,
-                'response' => $token,
-                // 'remoteip' => $_SERVER['REMOTE_ADDR'] ?? '',
-            ]);
-            curl_setopt_array($ch, [
-                CURLOPT_POST => true,
-                CURLOPT_POSTFIELDS => $payload,
-                CURLOPT_RETURNTRANSFER => true,
-                CURLOPT_TIMEOUT => 10,
-                CURLOPT_HTTPHEADER => ['Content-Type: application/x-www-form-urlencoded'],
-            ]);
-            $resp = curl_exec($ch); $http = curl_getinfo($ch, CURLINFO_HTTP_CODE); $err = curl_error($ch); curl_close($ch);
-            $ok = false; $json = null;
-            if ($http === 200 && $resp) { $json = json_decode($resp, true); $ok = !empty($json['success']); }
-            if (!$ok) {
-                $msg = Lang::T('Captcha verification failed');
-                if (!empty($json['error-codes'])) { $msg .= ' (' . implode(', ', (array)$json['error-codes']) . ')'; }
-                elseif (!empty($err)) { $msg .= ' (' . $err . ')'; }
-                _msglog('e', $msg);
-                r2(getUrl('login'));
-            }
-        }
         if ($raw_username != '' and $password != '') {
             $loginType = $_c['registration_username'] ?? 'username';
             switch ($loginType) {
@@ -162,38 +153,206 @@ switch ($do) {
         break;
 
     case 'activation':
-        if (!empty(_post('voucher_only'))) {
-            $csrf_token = _post('csrf_token');
-            if (!Csrf::check($csrf_token)) {
-                _msglog('e', Lang::T('Invalid or Expired CSRF Token'));
-                r2(getUrl('login'));
+        // Activation changes data; only accept POST. Browser GET falls through to login page.
+        if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST') {
+            if ($isApi) {
+                showResult(false, Lang::T('Invalid request method'));
             }
-            Csrf::generateAndStoreToken();
-            $voucher = Text::alphanumeric(_post('voucher_only'), "-_.,");
-            $tur = ORM::for_table('tbl_user_recharges')
-                ->where('username', $voucher)
-                ->where('customer_id', '0') // Voucher Only will make customer ID as 0
-                ->find_one();
-            if ($tur) {
-                if ($tur['status'] == 'off') {
-                    _alert(Lang::T('Internet Voucher Expired'), 'danger', "login");
+            // For non-API GET, continue to the default login page.
+        } else {
+            if (!empty(_post('voucher_only'))) {
+                $csrf_token = _post('csrf_token');
+                if (!Csrf::check($csrf_token)) {
+                    _msglog('e', Lang::T('Invalid or Expired CSRF Token'));
+                    r2(getUrl('login'));
                 }
-                $p = ORM::for_table('tbl_plans')->where('id', $tur['plan_id'])->find_one();
-                if ($p) {
-                    $dvc = Package::getDevice($p);
-                    if ($_app_stage != 'demo') {
-                        if (file_exists($dvc)) {
+                Csrf::generateAndStoreToken();
+                $voucher = Text::alphanumeric(_post('voucher_only'), "-_.,");
+
+                if ($voucher === '') {
+                    r2(getUrl('login'), 'e', Lang::T('Voucher invalid'));
+                }
+
+                $tur = ORM::for_table('tbl_user_recharges')
+                    ->where('username', $voucher)
+                    ->where('customer_id', '0') // Voucher Only will make customer ID as 0
+                    ->find_one();
+                if ($tur) {
+                    if ($tur['status'] == 'off') {
+                        _alert(Lang::T('Internet Voucher Expired'), 'danger', "login");
+                    }
+                    $p = ORM::for_table('tbl_plans')->where('id', $tur['plan_id'])->find_one();
+                    if ($p) {
+                        $dvc = Package::getDevice($p);
+                        if ($_app_stage != 'demo') {
                             if (file_exists($dvc)) {
-                                require_once $dvc;
-                                $c = [
-                                    'fullname' => "Voucher",
-                                    'email' => '',
-                                    'username' => $voucher,
-                                    'password' => $voucher,
-                                ];
-                                (new $p['device'])->add_customer($c, $p);
+                                if (file_exists($dvc)) {
+                                    require_once $dvc;
+                                    $c = [
+                                        'fullname' => "Voucher",
+                                        'email' => '',
+                                        'username' => $voucher,
+                                        'password' => $voucher,
+                                    ];
+                                    (new $p['device'])->add_customer($c, $p);
+                                } else {
+                                    new Exception(Lang::T("Devices Not Found"));
+                                }
+                                if (!empty($config['voucher_redirect'])) {
+                                    r2($config['voucher_redirect'], 's', Lang::T("Voucher activation success, now you can login"));
+                                } else {
+                                    r2(getUrl('login'), 's', Lang::T("Voucher activation success, now you can login"));
+                                }
                             } else {
                                 new Exception(Lang::T("Devices Not Found"));
+                            }
+                        }
+                        if (!empty($config['voucher_redirect'])) {
+                            _alert(Lang::T("Voucher activation success, now you can login"), 'danger', $config['voucher_redirect']);
+                        } else {
+                            r2(getUrl('login'), 's', Lang::T("Voucher activation success, you are connected to internet"));
+                        }
+                    } else {
+                        _alert(Lang::T('Internet Plan Expired'), 'danger', "login");
+                    }
+                } else {
+                    $v = ORM::for_table('tbl_voucher')->whereRaw("BINARY code = '$voucher'")->find_one();
+                    if (!$v) {
+                        _alert(Lang::T('Voucher invalid'), 'danger', "login");
+                    }
+                    if ($v['status'] == 0) {
+                        if (Package::rechargeUser(0, $v['routers'], $v['id_plan'], "Voucher", $voucher)) {
+                            $v->status = "1";
+                            $v->save();
+                            $tur = ORM::for_table('tbl_user_recharges')->where('username', $voucher)->find_one();
+                            if ($tur) {
+                                $p = ORM::for_table('tbl_plans')->where('id', $tur['plan_id'])->find_one();
+                                if ($p) {
+                                    $dvc = Package::getDevice($p);
+                                    if ($_app_stage != 'demo') {
+                                        if (file_exists($dvc)) {
+                                            if (file_exists($dvc)) {
+                                                require_once $dvc;
+                                                $c = [
+                                                    'fullname' => "Voucher",
+                                                    'email' => '',
+                                                    'username' => $voucher,
+                                                    'password' => $voucher,
+                                                ];
+                                                (new $p['device'])->add_customer($c, $p);
+                                            } else {
+                                                new Exception(Lang::T("Devices Not Found"));
+                                            }
+                                            if (!empty($config['voucher_redirect'])) {
+                                                r2($config['voucher_redirect'], 's', Lang::T("Voucher activation success, now you can login"));
+                                            } else {
+                                                r2(getUrl('login'), 's', Lang::T("Voucher activation success, now you can login"));
+                                            }
+                                        } else {
+                                            new Exception(Lang::T("Devices Not Found"));
+                                        }
+                                    }
+                                    if (!empty($config['voucher_redirect'])) {
+                                        _alert(Lang::T("Voucher activation success, now you can login"), 'danger', $config['voucher_redirect']);
+                                    } else {
+                                        r2(getUrl('login'), 's', Lang::T("Voucher activation success, you are connected to internet"));
+                                    }
+                                } else {
+                                    _alert(Lang::T('Internet Plan Expired'), 'danger', "login");
+                                }
+                            } else {
+                                _alert(Lang::T('Voucher activation failed'), 'danger', "login");
+                            }
+                        } else {
+                            _alert(Lang::T('Voucher activation failed'), 'danger', "login");
+                        }
+                    } else {
+                        _alert(Lang::T('Internet Voucher Expired'), 'danger', "login");
+                    }
+                }
+            } else {
+                $voucher = Text::alphanumeric(_post('voucher'), "-_.,");
+
+                $username = _post('username');
+                if ($voucher === '' || $username === '') {
+                    r2(getUrl('login'), 'e', Lang::T('Voucher invalid'));
+                }
+
+                $v1 = ORM::for_table('tbl_voucher')->whereRaw("BINARY code = '$voucher'")->find_one();
+                if ($v1) {
+                    // voucher exists, check customer exists or not
+                    if ($_c['registration_username'] === 'phone') {
+                        $username = Lang::phoneFormat($username);
+                        $user = ORM::for_table('tbl_customers')->where('phonenumber', $username)->find_one();
+                    } else {
+                        $user = ORM::for_table('tbl_customers')->where('username', $username)->find_one();
+                    }
+                    if (!$user) {
+                        $d = ORM::for_table('tbl_customers')->create();
+                        if ($_c['registration_username'] === 'phone') {
+                            $d->username = $username;
+                            $d->phonenumber = $username;
+                        } else {
+                            $d->username = alphanumeric($username, "+_.@-");
+                            $d->phonenumber = (strlen($username) < 21) ? $username : '';
+                        }
+                        $d->password = $voucher;
+                        $d->fullname = '';
+                        $d->address = '';
+                        $d->email = '';
+                        if ($d->save()) {
+                            $user = ORM::for_table('tbl_customers')->where($_c['registration_username'] === 'phone' ? 'phonenumber' : 'username', $username)->find_one($d->id());
+                            if (!$user) {
+                                r2(getUrl('login'), 'e', Lang::T('Voucher activation failed'));
+                            }
+                        } else {
+                            _alert(Lang::T('Login Successful'), 'success', "dashboard");
+                            r2(getUrl('login'), 'e', Lang::T('Voucher activation failed') . '.');
+                        }
+                    }
+                    if ($v1['status'] == 0) {
+                        $oldPass = $user['password'];
+                        // change customer password to voucher code
+                        $user->password = $voucher;
+                        $user->save();
+                        // voucher activation
+                        if (Package::rechargeUser($user['id'], $v1['routers'], $v1['id_plan'], "Voucher", $voucher)) {
+                            $v1->status = "1";
+                            $v1->used_date = date('Y-m-d H:i:s');
+                            $v1->user = $user['username'];
+                            $v1->save();
+                            $user->last_login = date('Y-m-d H:i:s');
+                            $user->save();
+                            // add customer to mikrotik
+                            if (!empty($_SESSION['nux-mac']) && !empty($_SESSION['nux-ip'])) {
+                                try {
+                                    $p = ORM::for_table('tbl_plans')->where('id', $v1['id_plan'])->find_one();
+                                    $dvc = Package::getDevice($p);
+                                    if ($_app_stage != 'demo') {
+                                        if (file_exists($dvc)) {
+                                            require_once $dvc;
+                                            (new $p['device'])->connect_customer($user, $_SESSION['nux-ip'], $_SESSION['nux-mac'], $v1['routers']);
+                                            if (!empty($config['voucher_redirect'])) {
+                                                r2($config['voucher_redirect'], 's', Lang::T("Voucher activation success, now you can login"));
+                                            } else {
+                                                r2(getUrl('login'), 's', Lang::T("Voucher activation success, now you can login"));
+                                            }
+                                        } else {
+                                            new Exception(Lang::T("Devices Not Found"));
+                                        }
+                                    }
+                                    if (!empty($config['voucher_redirect'])) {
+                                        r2($config['voucher_redirect'], 's', Lang::T("Voucher activation success, you are connected to internet"));
+                                    } else {
+                                        r2(getUrl('login'), 's', Lang::T("Voucher activation success, you are connected to internet"));
+                                    }
+                                } catch (Exception $e) {
+                                    if (!empty($config['voucher_redirect'])) {
+                                        r2($config['voucher_redirect'], 's', Lang::T("Voucher activation success, now you can login"));
+                                    } else {
+                                        r2(getUrl('login'), 's', Lang::T("Voucher activation success, now you can login"));
+                                    }
+                                }
                             }
                             if (!empty($config['voucher_redirect'])) {
                                 r2($config['voucher_redirect'], 's', Lang::T("Voucher activation success, now you can login"));
@@ -201,213 +360,64 @@ switch ($do) {
                                 r2(getUrl('login'), 's', Lang::T("Voucher activation success, now you can login"));
                             }
                         } else {
-                            new Exception(Lang::T("Devices Not Found"));
+                            // if failed to recharge, restore old password
+                            $user->password = $oldPass;
+                            $user->save();
+                            r2(getUrl('login'), 'e', Lang::T("Failed to activate voucher"));
                         }
-                    }
-                    if (!empty($config['voucher_redirect'])) {
-                        _alert(Lang::T("Voucher activation success, now you can login"), 'danger', $config['voucher_redirect']);
                     } else {
-                        r2(getUrl('login'), 's', Lang::T("Voucher activation success, you are connected to internet"));
-                    }
-                } else {
-                    _alert(Lang::T('Internet Plan Expired'), 'danger', "login");
-                }
-            } else {
-                $v = ORM::for_table('tbl_voucher')->whereRaw("BINARY code = '$voucher'")->find_one();
-                if (!$v) {
-                    _alert(Lang::T('Voucher invalid'), 'danger', "login");
-                }
-                if ($v['status'] == 0) {
-                    if (Package::rechargeUser(0, $v['routers'], $v['id_plan'], "Voucher", $voucher)) {
-                        $v->status = "1";
-                        $v->save();
-                        $tur = ORM::for_table('tbl_user_recharges')->where('username', $voucher)->find_one();
-                        if ($tur) {
-                            $p = ORM::for_table('tbl_plans')->where('id', $tur['plan_id'])->find_one();
-                            if ($p) {
-                                $dvc = Package::getDevice($p);
-                                if ($_app_stage != 'demo') {
-                                    if (file_exists($dvc)) {
+                        // used voucher
+                        // check if voucher used by this username
+                        if ($v1['user'] == $user['username']) {
+                            $user->last_login = date('Y-m-d H:i:s');
+                            $user->save();
+                            if (!empty($_SESSION['nux-mac']) && !empty($_SESSION['nux-ip'])) {
+                                try {
+                                    $p = ORM::for_table('tbl_plans')->where('id', $v1['id_plan'])->find_one();
+                                    $dvc = Package::getDevice($p);
+                                    if ($_app_stage != 'demo') {
                                         if (file_exists($dvc)) {
                                             require_once $dvc;
-                                            $c = [
-                                                'fullname' => "Voucher",
-                                                'email' => '',
-                                                'username' => $voucher,
-                                                'password' => $voucher,
-                                            ];
-                                            (new $p['device'])->add_customer($c, $p);
+                                            (new $p['device'])->connect_customer($user, $_SESSION['nux-ip'], $_SESSION['nux-mac'], $v1['routers']);
+                                            if (!empty($config['voucher_redirect'])) {
+                                                r2($config['voucher_redirect'], 's', Lang::T("Voucher activation success, now you can login"));
+                                            } else {
+                                                r2(getUrl('login'), 's', Lang::T("Voucher activation success, now you can login"));
+                                            }
                                         } else {
                                             new Exception(Lang::T("Devices Not Found"));
                                         }
-                                        if (!empty($config['voucher_redirect'])) {
-                                            r2($config['voucher_redirect'], 's', Lang::T("Voucher activation success, now you can login"));
-                                        } else {
-                                            r2(getUrl('login'), 's', Lang::T("Voucher activation success, now you can login"));
-                                        }
-                                    } else {
-                                        new Exception(Lang::T("Devices Not Found"));
                                     }
-                                }
-                                if (!empty($config['voucher_redirect'])) {
-                                    _alert(Lang::T("Voucher activation success, now you can login"), 'danger', $config['voucher_redirect']);
-                                } else {
-                                    r2(getUrl('login'), 's', Lang::T("Voucher activation success, you are connected to internet"));
+                                    if (!empty($config['voucher_redirect'])) {
+                                        r2($config['voucher_redirect'], 's', Lang::T("Voucher activation success, you are connected to internet"));
+                                    } else {
+                                        r2(getUrl('login'), 's', Lang::T("Voucher activation success, now you can login"));
+                                    }
+                                } catch (Exception $e) {
+                                    if (!empty($config['voucher_redirect'])) {
+                                        r2($config['voucher_redirect'], 's', Lang::T("Voucher activation success, now you can login"));
+                                    } else {
+                                        r2(getUrl('login'), 's', Lang::T("Voucher activation success, now you can login"));
+                                    }
                                 }
                             } else {
-                                _alert(Lang::T('Internet Plan Expired'), 'danger', "login");
-                            }
-                        } else {
-                            _alert(Lang::T('Voucher activation failed'), 'danger', "login");
-                        }
-                    } else {
-                        _alert(Lang::T('Voucher activation failed'), 'danger', "login");
-                    }
-                } else {
-                    _alert(Lang::T('Internet Voucher Expired'), 'danger', "login");
-                }
-            }
-        } else {
-            $voucher = Text::alphanumeric(_post('voucher'), "-_.,");
-            $username = _post('username');
-            $v1 = ORM::for_table('tbl_voucher')->whereRaw("BINARY code = '$voucher'")->find_one();
-            if ($v1) {
-                // voucher exists, check customer exists or not
-                if ($_c['registration_username'] === 'phone') {
-                    $username = Lang::phoneFormat($username);
-                    $user = ORM::for_table('tbl_customers')->where('phonenumber', $username)->find_one();
-                } else {
-                    $user = ORM::for_table('tbl_customers')->where('username', $username)->find_one();
-                }
-                if (!$user) {
-                    $d = ORM::for_table('tbl_customers')->create();
-                    if ($_c['registration_username'] === 'phone') {
-                        $d->username = $username;
-                        $d->phonenumber = $username;
-                    } else {
-                        $d->username = alphanumeric($username, "+_.@-");
-                        $d->phonenumber = (strlen($username) < 21) ? $username : '';
-                    }
-                    $d->password = $voucher;
-                    $d->fullname = '';
-                    $d->address = '';
-                    $d->email = '';
-                    if ($d->save()) {
-                        $user = ORM::for_table('tbl_customers')->where($_c['registration_username'] === 'phone' ? 'phonenumber' : 'username', $username)->find_one($d->id());
-                        if (!$user) {
-                            r2(getUrl('login'), 'e', Lang::T('Voucher activation failed'));
-                        }
-                    } else {
-                        _alert(Lang::T('Login Successful'), 'success', "dashboard");
-                        r2(getUrl('login'), 'e', Lang::T('Voucher activation failed') . '.');
-                    }
-                }
-                if ($v1['status'] == 0) {
-                    $oldPass = $user['password'];
-                    // change customer password to voucher code
-                    $user->password = $voucher;
-                    $user->save();
-                    // voucher activation
-                    if (Package::rechargeUser($user['id'], $v1['routers'], $v1['id_plan'], "Voucher", $voucher)) {
-                        $v1->status = "1";
-                        $v1->used_date = date('Y-m-d H:i:s');
-                        $v1->user = $user['username'];
-                        $v1->save();
-                        $user->last_login = date('Y-m-d H:i:s');
-                        $user->save();
-                        // add customer to mikrotik
-                        if (!empty($_SESSION['nux-mac']) && !empty($_SESSION['nux-ip'])) {
-                            try {
-                                $p = ORM::for_table('tbl_plans')->where('id', $v1['id_plan'])->find_one();
-                                $dvc = Package::getDevice($p);
-                                if ($_app_stage != 'demo') {
-                                    if (file_exists($dvc)) {
-                                        require_once $dvc;
-                                        (new $p['device'])->connect_customer($user, $_SESSION['nux-ip'], $_SESSION['nux-mac'], $v1['routers']);
-                                        if (!empty($config['voucher_redirect'])) {
-                                            r2($config['voucher_redirect'], 's', Lang::T("Voucher activation success, now you can login"));
-                                        } else {
-                                            r2(getUrl('login'), 's', Lang::T("Voucher activation success, now you can login"));
-                                        }
-                                    } else {
-                                        new Exception(Lang::T("Devices Not Found"));
-                                    }
-                                }
-                                if (!empty($config['voucher_redirect'])) {
-                                    r2($config['voucher_redirect'], 's', Lang::T("Voucher activation success, you are connected to internet"));
-                                } else {
-                                    r2(getUrl('login'), 's', Lang::T("Voucher activation success, you are connected to internet"));
-                                }
-                            } catch (Exception $e) {
-                                if (!empty($config['voucher_redirect'])) {
-                                    r2($config['voucher_redirect'], 's', Lang::T("Voucher activation success, now you can login"));
-                                } else {
-                                    r2(getUrl('login'), 's', Lang::T("Voucher activation success, now you can login"));
-                                }
-                            }
-                        }
-                        if (!empty($config['voucher_redirect'])) {
-                            r2($config['voucher_redirect'], 's', Lang::T("Voucher activation success, now you can login"));
-                        } else {
-                            r2(getUrl('login'), 's', Lang::T("Voucher activation success, now you can login"));
-                        }
-                    } else {
-                        // if failed to recharge, restore old password
-                        $user->password = $oldPass;
-                        $user->save();
-                        r2(getUrl('login'), 'e', Lang::T("Failed to activate voucher"));
-                    }
-                } else {
-                    // used voucher
-                    // check if voucher used by this username
-                    if ($v1['user'] == $user['username']) {
-                        $user->last_login = date('Y-m-d H:i:s');
-                        $user->save();
-                        if (!empty($_SESSION['nux-mac']) && !empty($_SESSION['nux-ip'])) {
-                            try {
-                                $p = ORM::for_table('tbl_plans')->where('id', $v1['id_plan'])->find_one();
-                                $dvc = Package::getDevice($p);
-                                if ($_app_stage != 'demo') {
-                                    if (file_exists($dvc)) {
-                                        require_once $dvc;
-                                        (new $p['device'])->connect_customer($user, $_SESSION['nux-ip'], $_SESSION['nux-mac'], $v1['routers']);
-                                        if (!empty($config['voucher_redirect'])) {
-                                            r2($config['voucher_redirect'], 's', Lang::T("Voucher activation success, now you can login"));
-                                        } else {
-                                            r2(getUrl('login'), 's', Lang::T("Voucher activation success, now you can login"));
-                                        }
-                                    } else {
-                                        new Exception(Lang::T("Devices Not Found"));
-                                    }
-                                }
                                 if (!empty($config['voucher_redirect'])) {
                                     r2($config['voucher_redirect'], 's', Lang::T("Voucher activation success, you are connected to internet"));
                                 } else {
                                     r2(getUrl('login'), 's', Lang::T("Voucher activation success, now you can login"));
                                 }
-                            } catch (Exception $e) {
-                                if (!empty($config['voucher_redirect'])) {
-                                    r2($config['voucher_redirect'], 's', Lang::T("Voucher activation success, now you can login"));
-                                } else {
-                                    r2(getUrl('login'), 's', Lang::T("Voucher activation success, now you can login"));
-                                }
                             }
                         } else {
-                            if (!empty($config['voucher_redirect'])) {
-                                r2($config['voucher_redirect'], 's', Lang::T("Voucher activation success, you are connected to internet"));
-                            } else {
-                                r2(getUrl('login'), 's', Lang::T("Voucher activation success, now you can login"));
-                            }
+                            // voucher used by other customer
+                            r2(getUrl('login'), 'e', Lang::T('Voucher Not Valid'));
                         }
-                    } else {
-                        // voucher used by other customer
-                        r2(getUrl('login'), 'e', Lang::T('Voucher Not Valid'));
                     }
+                } else {
+                    _msglog('e', Lang::T('Invalid Username or Password'));
+                    r2(getUrl('login'));
                 }
-            } else {
-                _msglog('e', Lang::T('Invalid Username or Password'));
-                r2(getUrl('login'));
             }
+            break;
         }
     default:
         run_hook('customer_view_login'); #HOOK
@@ -474,4 +484,3 @@ switch ($do) {
 
         break;
 }
-
