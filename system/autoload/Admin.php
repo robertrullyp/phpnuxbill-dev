@@ -412,6 +412,48 @@ class Admin
         return true;
     }
 
+    /**
+     * Manually create/update an API key backoff record for an IP.
+     *
+     * This writes to the same cache files used by the API key backoff guard.
+     * Useful for admin UI CRUD in Settings -> App -> API Key -> Blocked IPs.
+     */
+    public static function saveApiKeyBlockState($ip, array $overrides)
+    {
+        $ip = trim((string) $ip);
+        if ($ip === '' || !filter_var($ip, FILTER_VALIDATE_IP)) {
+            return false;
+        }
+
+        $identity = 'ip:' . $ip;
+        [$state, $path] = self::apiKeyGuardLoad($identity, $ip);
+        if ($path === '') {
+            return false;
+        }
+
+        $allowed = ['fail_count', 'fail_window_start', 'backoff_attempts', 'blocked_until', 'last_at'];
+        foreach ($allowed as $key) {
+            if (!array_key_exists($key, $overrides)) {
+                continue;
+            }
+            $value = (int) $overrides[$key];
+            if (in_array($key, ['fail_count', 'backoff_attempts'], true) && $value < 0) {
+                $value = 0;
+            }
+            $state[$key] = $value;
+        }
+
+        $now = time();
+        $state['ip'] = $ip;
+        if (empty($state['fail_window_start'])) {
+            $state['fail_window_start'] = $now;
+        }
+        $state['last_at'] = $now;
+
+        self::apiKeyGuardSave($path, $state);
+        return true;
+    }
+
     protected static function getAdminIdByApiKey($apiKey)
     {
         $apiKey = trim((string) $apiKey);

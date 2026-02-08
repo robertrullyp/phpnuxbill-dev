@@ -3,6 +3,19 @@
 Dokumen ini merangkum endpoint API yang tersedia berdasarkan isi `system/api.php` dan seluruh `system/controllers/*.php`.
 API ini bukan REST murni; ia memanggil controller yang sama dengan UI web, tetapi mengembalikan JSON (melalui `showResult`) ketika berjalan dalam mode API.
 
+## Contoh Lengkap (Per Endpoint)
+
+Untuk contoh request yang lengkap per endpoint (termasuk contoh beberapa cara auth: API key vs token), lihat:
+
+- `docs/API_EXAMPLES.md` (generated dari `docs/openapi.json`)
+
+Regenerate:
+
+```bash
+python3 scripts/generate_openapi.py
+python3 scripts/generate_api_examples.py
+```
+
 ## Base URL & Pola Route
 
 - Base URL: `https://<domain>/system/api.php`
@@ -31,7 +44,8 @@ Semua response berhasil atau gagal berbentuk:
 
 API memakai parameter `token` (bisa via query string atau POST). Untuk menghindari token bocor di URL/log, token juga bisa dikirim via header:
 
-- `X-Auth-Token: <token>` (atau alias `X-Token: <token>`)
+- `X-Token: <token>` (disarankan)
+- `X-Auth-Token: <token>` (alias legacy)
 
 Logika validasi token ada di `system/api.php`:
 
@@ -54,8 +68,11 @@ Selain `token`, API menerima **API key admin** via header berikut:
 - `Authorization: Bearer <key>`
 
 Catatan:
+- Header `Authorization` kadang tidak diteruskan ke PHP (tergantung setup Apache/Nginx/PHP-FPM/proxy). Jika `Authorization: Bearer ...` tidak bekerja, gunakan `X-Admin-Api-Key` atau konfigurasi server agar `HTTP_AUTHORIZATION` diteruskan ke PHP.
 - API key bersifat **per-admin**. Saat disimpan, key akan di-hash (HMAC-SHA256) dan hanya `last4` yang disimpan. Key tidak bisa dibaca kembali.
 - Jika dihapus/di-rotate, key lama langsung tidak berlaku.
+- Secret hashing untuk admin API key memakai `$admin_api_key_secret` (lihat `init.php`). Disarankan set `$admin_api_key_secret` di `config.php` ke nilai yang stabil agar perubahan `db_pass` tidak memutus semua admin API key.
+- API key mengidentifikasi **admin user tertentu** dan role/permission mengikuti `tbl_users.user_type` (RBAC). Jadi API key role `Agent`/`Sales`/`Report` akan otomatis dibatasi seperti akses UI mereka.
 
 ### Cara mendapatkan token
 
@@ -64,9 +81,51 @@ Catatan:
 
 ### Endpoint khusus di level API
 
-- `r=isValid` -> cek token valid.
-- `r=me` -> info admin dari token.
-- `r=whoami` / `r=whoami/permissions` -> identitas + izin/menu + fitur berdasarkan role (admin/customer).
+Endpoint berikut di-handle langsung oleh `system/api.php` (bukan controller di `system/controllers/`).
+
+#### `whoami`
+- Route: `r=whoami`
+- Method: GET
+- Auth: admin API key atau token (admin/customer)
+Example request:
+```bash
+# Admin via API key
+curl -s -H "X-Admin-Api-Key: <ADMIN_API_KEY>" "https://<domain>/system/api.php?r=whoami"
+
+# Customer via token header (lebih aman dari query token)
+curl -s -H "X-Token: c.<uid>.<time>.<sha1>" "https://<domain>/system/api.php?r=whoami"
+```
+
+#### `whoami/permissions`
+- Route: `r=whoami/permissions`
+- Method: GET
+- Auth: admin API key atau token (admin/customer)
+Example request:
+```bash
+curl -s -H "X-Admin-Api-Key: <ADMIN_API_KEY>" "https://<domain>/system/api.php?r=whoami/permissions"
+```
+
+#### `isValid`
+- Route: `r=isValid`
+- Method: GET
+- Auth: token (admin/customer)
+Example request:
+```bash
+# Token via header
+curl -s -H "X-Token: a.<aid>.<time>.<sha1>" "https://<domain>/system/api.php?r=isValid"
+
+# Legacy token via query
+curl -s "https://<domain>/system/api.php?r=isValid&token=a.<aid>.<time>.<sha1>"
+```
+
+#### `me`
+- Route: `r=me`
+- Method: GET
+- Auth: token admin (`a.<...>`)
+Example request:
+```bash
+curl -s -H "X-Token: a.<aid>.<time>.<sha1>" "https://<domain>/system/api.php?r=me"
+```
 
 ## Contoh penggunaan (curl)
 
@@ -103,6 +162,7 @@ curl -s "https://<domain>/system/api.php?r=customers&token=a.<aid>.<time>.<sha1>
 ## Catatan Penting
 
 - CSRF: pengecekan CSRF dinonaktifkan saat `isApi=true` (lihat `Csrf::check`). Jadi endpoint POST via API tidak butuh `csrf_token`.
+- Redaksi data sensitif: response API akan menghapus field sensitif (mis. `password`, `secret`, `api_key`, `admin_api_key_hash`, `login_token`) dan membatasi payload `_admin`/`_user` ke field yang aman. Jangan bergantung pada field sensitif muncul di JSON API.
 - Output non-JSON: beberapa controller mengeluarkan CSV/PDF/HTML secara langsung. Untuk aksi seperti export PDF, response akan berupa file (`content-type: application/pdf`) dan **bukan** JSON.
 - Metode HTTP: banyak aksi yang memaksa POST (lihat detail per action di bawah). Jika salah metode, response gagal.
 
@@ -605,14 +665,14 @@ Example response (JSON):
 
 #### `list`
 - Route: `r=bandwidth/list`
-- Method: POST (implicit; uses POST params)
+- Method: GET/POST (filter `name` via POST)
 - Path params: (tidak ada)
-- GET params: (tidak ada)
+- GET params: `p`
 - POST params: `csrf_token`, `name`
 - REQUEST params: (tidak ada)
 Example request:
 ```bash
-curl -s -X POST "https://<domain>/system/api.php?r=bandwidth/list&token=a.<aid>.<time>.<sha1>" 
+curl -s -X POST "https://<domain>/system/api.php?r=bandwidth/list&token=a.<aid>.<time>.<sha1>&p=1" 
   -d "csrf_token=<value>" 
   -d "name=<value>"
 ```
@@ -710,16 +770,23 @@ Example response (JSON):
 ```
 
 ### `callback` (access: public)
-- Default action: (tidak eksplisit / tergantung controller)
+- Default action: (gateway callback)
 - Actions: (tidak ada switch/action eksplisit)
 
+#### `payment-notification`
+- Route: `r=callback`
+- Method: GET/POST (tergantung gateway; umumnya POST)
+- Path params: routes[1] => $gateway
+- GET params: (tergantung gateway)
+- POST params: (tergantung gateway)
+- REQUEST params: (tergantung gateway)
 Example request:
 ```bash
-curl -s "https://<domain>/system/api.php?r=callback"
+curl -s -X POST "https://<domain>/system/api.php?r=callback/<gateway>"
 ```
-Example response (JSON):
-```json
-{"success": true, "message": "OK", "result": {}, "meta": {}}
+Example response (non-JSON, tergantung gateway):
+```text
+<binary/pdf/csv/html output>
 ```
 
 ### `community` (access: admin)
@@ -742,7 +809,30 @@ Example response (JSON):
 ```
 
 ### `coupons` (access: admin)
-- Default action: (tidak eksplisit / tergantung controller)
+- Default action: `list`
+
+#### `list` (default)
+- Route: `r=coupons` (tanpa action)
+- Method: GET/POST (list uses Paginator; search via POST)
+- Path params: (tidak ada)
+- GET params: `p`
+- POST params: `csrf_token`, `search`, `filter`
+- REQUEST params: (tidak ada)
+Example requests:
+```bash
+# List (GET, paging)
+curl -s "https://<domain>/system/api.php?r=coupons&token=a.<aid>.<time>.<sha1>&p=1"
+
+# Search (POST; p tetap query param karena Paginator membaca dari GET)
+curl -s -X POST "https://<domain>/system/api.php?r=coupons&p=1&token=a.<aid>.<time>.<sha1>"   -d "search=<query>"
+```
+Example response (JSON):
+```json
+{"success": true, "message": "OK", "result": {}, "meta": {}}
+```
+
+Catatan:
+- UI kadang memakai `r=coupons/list`, tetapi action `list` tidak ada di switch dan akan jatuh ke default list yang sama.
 
 #### `add`
 - Route: `r=coupons/add`
@@ -783,7 +873,7 @@ Example response (JSON):
 #### `edit`
 - Route: `r=coupons/edit`
 - Method: POST (enforced)
-- Path params: routes[2] => (direct)
+- Path params: routes[2] => $coupon_id
 - GET params: (tidak ada)
 - POST params: `csrf_token`
 - REQUEST params: (tidak ada)
@@ -819,34 +909,33 @@ Example response (JSON):
 
 #### `delete`
 - Route: `r=coupons/delete`
-- Method: GET
+- Method: POST (enforced; custom JSON)
 - Path params: (tidak ada)
 - GET params: (tidak ada)
-- POST params: (tidak ada)
+- POST params: `couponIds`
 - REQUEST params: (tidak ada)
 Example request:
 ```bash
-curl -s "https://<domain>/system/api.php?r=coupons/delete&token=a.<aid>.<time>.<sha1>"
+curl -s -X POST "https://<domain>/system/api.php?r=coupons/delete&token=a.<aid>.<time>.<sha1>"   -d 'couponIds=[1,2,3]'
 ```
-Example response (JSON):
+Example response (non-standard JSON):
 ```json
-{"success": true, "message": "OK", "result": {}, "meta": {}}
+{"status": "success", "message": "..."}
 ```
 
 #### `status`
 - Route: `r=coupons/status`
-- Method: POST (implicit; uses POST params)
+- Method: POST (enforced)
 - Path params: (tidak ada)
 - GET params: (tidak ada)
-- POST params: `coupon_id`, `csrf_token`, `filter`, `search`, `status`
+- POST params: `coupon_id`, `csrf_token`, `status`
 - REQUEST params: (tidak ada)
 Example request:
 ```bash
 curl -s -X POST "https://<domain>/system/api.php?r=coupons/status&token=a.<aid>.<time>.<sha1>" 
   -d "coupon_id=<value>" 
   -d "csrf_token=<value>" 
-  -d "filter=<value>" 
-  # ... lihat daftar parameter di atas
+  -d "status=active"
 ```
 Example response (JSON):
 ```json
@@ -857,13 +946,20 @@ Example response (JSON):
 - Default action: (tidak eksplisit / tergantung controller)
 - Actions: (tidak ada switch/action eksplisit)
 
+#### `refresh` (default)
+- Route: `r=csrf-refresh`
+- Method: GET
+- Path params: (tidak ada)
+- GET params: (tidak ada)
+- POST params: (tidak ada)
+- REQUEST params: (tidak ada)
 Example request:
 ```bash
 curl -s "https://<domain>/system/api.php?r=csrf-refresh&token=<admin_or_customer_token>"
 ```
 Example response (JSON):
 ```json
-{"success": true, "message": "OK", "result": {}, "meta": {}}
+{"success": true, "message": "ok", "result": {"csrf_token": "...", "csrf_token_logout": "..."}, "meta": {}}
 ```
 
 ### `customers` (access: admin)
@@ -871,19 +967,23 @@ Example response (JSON):
 
 #### `list` (default)
 - Route: `r=customers` (tanpa action)
-- Method: GET (umumnya)
+- Method: GET
 - Path params: (tidak ada)
-- GET params: (tidak ada)
+- GET params: `p`, `filter`, `search`, `order`, `orderby`
 - POST params: (tidak ada)
 - REQUEST params: (tidak ada)
 Example request:
 ```bash
-curl -s "https://<domain>/system/api.php?r=customers&token=a.<aid>.<time>.<sha1>"
+curl -s "https://<domain>/system/api.php?r=customers&token=a.<aid>.<time>.<sha1>&p=1&filter=Active&search=<query>&order=username&orderby=asc"
 ```
 Example response (JSON):
 ```json
 {"success": true, "message": "OK", "result": {}, "meta": {}}
 ```
+
+Catatan:
+- Endpoint ini paginated. Data ada di `result.d`, info paging ada di `result.paginator`.
+- Default `per_page` biasanya 30 (tergantung cookie/config `customer_per_page`).
 
 #### `csv`
 - Route: `r=customers/csv`
@@ -933,6 +1033,9 @@ Example response (JSON):
 ```json
 {"success": true, "message": "OK", "result": {}, "meta": {}}
 ```
+
+Catatan:
+- Endpoint ini untuk menampilkan data form (UI). Untuk membuat customer gunakan `POST r=customers/add-post`.
 
 #### `recharge`
 - Route: `r=customers/recharge`
@@ -1091,14 +1194,14 @@ Example response (JSON):
 
 #### `edit-post`
 - Route: `r=customers/edit-post`
-- Method: GET/POST (uses POST and GET/REQUEST params)
+- Method: POST (implicit; uses POST params)
 - Path params: (tidak ada)
 - GET params: (tidak ada)
 - POST params: `account_type`, `address`, `city`, `coordinates`, `csrf_token`, `district`, `email`, `export`, `faceDetect`, `fullname`, `id`, `password`, `phonenumber`, `pppoe_ip`, `pppoe_password`, `pppoe_username`, `service_type`, `state`, `status`, `username`, `zip`
-- REQUEST params: `filter`, `order`, `orderby`, `search`
+- REQUEST params: (tidak ada)
 Example request:
 ```bash
-curl -s -X POST "https://<domain>/system/api.php?r=customers/edit-post&token=a.<aid>.<time>.<sha1>&filter=<value>&order=<value>&orderby=<value>" 
+curl -s -X POST "https://<domain>/system/api.php?r=customers/edit-post&token=a.<aid>.<time>.<sha1>" 
   -d "account_type=<value>" 
   -d "address=<value>" 
   -d "city=<value>" 
@@ -1114,14 +1217,16 @@ Example response (JSON):
 
 #### `save`
 - Route: `r=customfield/save`
-- Method: GET
+- Method: POST (enforced)
 - Path params: (tidak ada)
 - GET params: (tidak ada)
-- POST params: (tidak ada)
+- POST params: `name[]`, `order[]`, `type[]`, `placeholder[]`, `value[]`, `register[]`, `required[]`
 - REQUEST params: (tidak ada)
 Example request:
 ```bash
-curl -s "https://<domain>/system/api.php?r=customfield/save&token=a.<aid>.<time>.<sha1>"
+curl -s -X POST "https://<domain>/system/api.php?r=customfield/save&token=a.<aid>.<time>.<sha1>" 
+  -d "name[]=Address" 
+  -d "type[]=text"
 ```
 Example response (JSON):
 ```json
@@ -1132,26 +1237,40 @@ Example response (JSON):
 - Default action: (tidak eksplisit / tergantung controller)
 - Actions: (tidak ada switch/action eksplisit)
 
+#### `dashboard` (default)
+- Route: `r=dashboard`
+- Method: GET
+- Path params: (tidak ada)
+- GET params: (tidak ada)
+- POST params: (tidak ada)
+- REQUEST params: (tidak ada)
 Example request:
 ```bash
 curl -s "https://<domain>/system/api.php?r=dashboard&token=a.<aid>.<time>.<sha1>"
 ```
 Example response (JSON):
 ```json
-{"success": true, "message": "OK", "result": {}, "meta": {}}
+{"success": true, "message": "dashboard", "result": { }, "meta": { }}
 ```
 
 ### `default` (access: public)
 - Default action: (tidak eksplisit / tergantung controller)
 - Actions: (tidak ada switch/action eksplisit)
 
+#### `default` (default)
+- Route: `r=default`
+- Method: GET
+- Path params: (tidak ada)
+- GET params: (tidak ada)
+- POST params: (tidak ada)
+- REQUEST params: (tidak ada)
 Example request:
 ```bash
 curl -s "https://<domain>/system/api.php?r=default"
 ```
 Example response (JSON):
 ```json
-{"success": true, "message": "OK", "result": {}, "meta": {}}
+{"success": true, "message": "default", "result": { }, "meta": { }}
 ```
 
 ### `export` (access: admin)
@@ -1233,26 +1352,40 @@ Example response (non-JSON, tergantung aksi):
 - Default action: (tidak eksplisit / tergantung controller)
 - Actions: (tidak ada switch/action eksplisit)
 
+#### `forgot` (default)
+- Route: `r=forgot`
+- Method: GET/POST (flow via `step`)
+- Path params: (tidak ada)
+- GET params: (tidak ada)
+- POST params: (tidak ada)
+- REQUEST params: `step`
 Example request:
 ```bash
-curl -s "https://<domain>/system/api.php?r=forgot"
+curl -s "https://<domain>/system/api.php?r=forgot&step=0"
 ```
 Example response (JSON):
 ```json
-{"success": true, "message": "OK", "result": {}, "meta": {}}
+{"success": true, "message": "forgot", "result": { }, "meta": { }}
 ```
 
 ### `home` (access: customer)
 - Default action: (tidak eksplisit / tergantung controller)
 - Actions: (tidak ada switch/action eksplisit)
 
+#### `home` (default)
+- Route: `r=home`
+- Method: GET
+- Path params: (tidak ada)
+- GET params: (tidak ada)
+- POST params: (tidak ada)
+- REQUEST params: (tidak ada)
 Example request:
 ```bash
 curl -s "https://<domain>/system/api.php?r=home&token=c.<uid>.<time>.<sha1>"
 ```
 Example response (JSON):
 ```json
-{"success": true, "message": "OK", "result": {}, "meta": {}}
+{"success": true, "message": "home", "result": { }, "meta": { }}
 ```
 
 ### `invoices` (access: admin)
@@ -1269,9 +1402,9 @@ Example request:
 ```bash
 curl -s "https://<domain>/system/api.php?r=invoices/list&token=a.<aid>.<time>.<sha1>"
 ```
-Example response (non-JSON, tergantung aksi):
-```text
-<binary/pdf/csv/html output>
+Example response (JSON):
+```json
+{"success": true, "message": "OK", "result": {}, "meta": {}}
 ```
 
 ### `login` (access: public)
@@ -1299,14 +1432,14 @@ Example response (JSON):
 
 #### `activation`
 - Route: `r=login/activation`
-- Method: GET/POST (uses POST and GET/REQUEST params)
+- Method: POST (enforced)
 - Path params: (tidak ada)
-- GET params: `code`
+- GET params: (tidak ada)
 - POST params: `csrf_token`, `username`, `voucher`, `voucher_only`
 - REQUEST params: (tidak ada)
 Example request:
 ```bash
-curl -s -X POST "https://<domain>/system/api.php?r=login/activation&code=<value>" 
+curl -s -X POST "https://<domain>/system/api.php?r=login/activation" 
   -d "csrf_token=<value>" 
   -d "username=<value>" 
   -d "voucher=<value>" 
@@ -1321,14 +1454,25 @@ Example response (JSON):
 - Default action: (tidak eksplisit / tergantung controller)
 - Actions: (tidak ada switch/action eksplisit)
 
+#### `logout` (default)
+- Route: `r=logout`
+- Method: POST (enforced)
+- Path params: (tidak ada)
+- GET params: (tidak ada)
+- POST params: (tidak ada)
+- REQUEST params: (tidak ada)
 Example request:
 ```bash
-curl -s "https://<domain>/system/api.php?r=logout"
+curl -s -X POST "https://<domain>/system/api.php?r=logout"
 ```
 Example response (JSON):
 ```json
-{"success": true, "message": "OK", "result": {}, "meta": {}}
+{"success": true, "message": "Logout Successful", "result": {}, "meta": {}}
 ```
+
+Catatan:
+- Saat dipanggil lewat API (`system/api.php`), logout tidak memerlukan CSRF dan bersifat best-effort (stateless).
+- Untuk logout UI web (non-API), controller dapat meminta `csrf_token_logout` untuk mitigasi CSRF.
 
 ### `logs` (access: admin)
 - Default action: (tidak eksplisit / tergantung controller)
@@ -1385,14 +1529,14 @@ Example response (non-JSON, tergantung aksi):
 - Route: `r=logs/list`
 - Method: GET/POST (uses POST and GET/REQUEST params)
 - Path params: (tidak ada)
-- GET params: `q`
+- GET params: `p`, `q`
 - POST params: `keep`, `q`
 - REQUEST params: (tidak ada)
 Example request:
 ```bash
-curl -s -X POST "https://<domain>/system/api.php?r=logs/list&token=a.<aid>.<time>.<sha1>&q=<value>" 
+curl -s -X POST "https://<domain>/system/api.php?r=logs/list&token=a.<aid>.<time>.<sha1>&p=1&q=<query>" 
   -d "keep=<value>" 
-  -d "q=<value>"
+  -d "q=<query>"
 ```
 Example response (JSON):
 ```json
@@ -1403,14 +1547,14 @@ Example response (JSON):
 - Route: `r=logs/radius`
 - Method: GET/POST (uses POST and GET/REQUEST params)
 - Path params: (tidak ada)
-- GET params: `q`
+- GET params: `p`, `q`
 - POST params: `keep`, `q`
 - REQUEST params: (tidak ada)
 Example request:
 ```bash
-curl -s -X POST "https://<domain>/system/api.php?r=logs/radius&token=a.<aid>.<time>.<sha1>&q=<value>" 
+curl -s -X POST "https://<domain>/system/api.php?r=logs/radius&token=a.<aid>.<time>.<sha1>&p=1&q=<query>" 
   -d "keep=<value>" 
-  -d "q=<value>"
+  -d "q=<query>"
 ```
 Example response (JSON):
 ```json
@@ -1421,14 +1565,14 @@ Example response (JSON):
 - Route: `r=logs/message`
 - Method: GET/POST (uses POST and GET/REQUEST params)
 - Path params: (tidak ada)
-- GET params: `q`
+- GET params: `p`, `q`
 - POST params: `keep`, `q`
 - REQUEST params: (tidak ada)
 Example request:
 ```bash
-curl -s -X POST "https://<domain>/system/api.php?r=logs/message&token=a.<aid>.<time>.<sha1>&q=<value>" 
+curl -s -X POST "https://<domain>/system/api.php?r=logs/message&token=a.<aid>.<time>.<sha1>&p=1&q=<query>" 
   -d "keep=<value>" 
-  -d "q=<value>"
+  -d "q=<query>"
 ```
 Example response (JSON):
 ```json
@@ -1437,6 +1581,25 @@ Example response (JSON):
 
 ### `mail` (access: customer)
 - Default action: (tidak eksplisit / tergantung controller)
+
+#### `list` (default)
+- Route: `r=mail` (tanpa action)
+- Method: GET
+- Path params: (tidak ada)
+- GET params: `p`, `q`
+- POST params: (tidak ada)
+- REQUEST params: (tidak ada)
+Example request:
+```bash
+curl -s "https://<domain>/system/api.php?r=mail&token=c.<uid>.<time>.<sha1>&p=0&q=<query>"
+```
+Example response (JSON):
+```json
+{"success": true, "message": "OK", "result": {}, "meta": {}}
+```
+
+Catatan:
+- `p` pada endpoint ini 0-based (p=0 halaman pertama).
 
 #### `view`
 - Route: `r=mail/view`
@@ -1477,12 +1640,12 @@ Example response (JSON):
 - Route: `r=maps/customer`
 - Method: GET
 - Path params: (tidak ada)
-- GET params: (tidak ada)
+- GET params: `p`, `search`
 - POST params: (tidak ada)
-- REQUEST params: `search`
+- REQUEST params: (tidak ada)
 Example request:
 ```bash
-curl -s "https://<domain>/system/api.php?r=maps/customer&token=a.<aid>.<time>.<sha1>&search=<value>"
+curl -s "https://<domain>/system/api.php?r=maps/customer&token=a.<aid>.<time>.<sha1>&p=1&search=<query>"
 ```
 Example response (JSON):
 ```json
@@ -1491,15 +1654,18 @@ Example response (JSON):
 
 #### `routers`
 - Route: `r=maps/routers`
-- Method: POST (implicit; uses POST params)
+- Method: GET/POST (filter via POST)
 - Path params: (tidak ada)
-- GET params: (tidak ada)
+- GET params: `p`
 - POST params: `name`
 - REQUEST params: (tidak ada)
-Example request:
+Example requests:
 ```bash
-curl -s -X POST "https://<domain>/system/api.php?r=maps/routers&token=a.<aid>.<time>.<sha1>" 
-  -d "name=<value>"
+# List (GET, paging)
+curl -s "https://<domain>/system/api.php?r=maps/routers&token=a.<aid>.<time>.<sha1>&p=1"
+
+# Filter by name (POST; p tetap query param karena Paginator membaca dari GET)
+curl -s -X POST "https://<domain>/system/api.php?r=maps/routers&p=1&token=a.<aid>.<time>.<sha1>"   -d "name=<query>"
 ```
 Example response (JSON):
 ```json
@@ -1527,14 +1693,71 @@ Example response (JSON):
 
 #### `send-post`
 - Route: `r=message/send-post`
-- Method: GET
+- Method: POST (implicit; uses POST params)
 - Path params: (tidak ada)
 - GET params: (tidak ada)
+- POST params: `email`, `id_customer`, `inbox`, `message`, `sms`, `subject`, `wa`, `wa_queue`
+- REQUEST params: (tidak ada)
+Example request:
+```bash
+curl -s -X POST "https://<domain>/system/api.php?r=message/send-post&token=a.<aid>.<time>.<sha1>" 
+  -d "id_customer=<value>" 
+  -d "subject=<value>" 
+  -d "message=<value>" 
+  -d "inbox=1"
+```
+Example response (JSON):
+```json
+{"success": true, "message": "OK", "result": {}, "meta": {}}
+```
+
+#### `wa_media_upload`
+- Route: `r=message/wa_media_upload`
+- Method: POST (enforced; multipart/form-data)
+- Path params: (tidak ada)
+- GET params: (tidak ada)
+- POST params: `media`
+- REQUEST params: (tidak ada)
+Example request:
+```bash
+curl -s -X POST "https://<domain>/system/api.php?r=message/wa_media_upload&token=a.<aid>.<time>.<sha1>" 
+  -F "media=@/path/to/file.pdf"
+```
+Example response (non-standard JSON):
+```json
+{"ok": true, "media_id": "...", "url": "...", "mime": "application/pdf", "expires_at": "YYYY-mm-dd HH:MM:SS"}
+```
+
+#### `resend`
+- Route: `r=message/resend`
+- Method: GET
+- Path params: routes[2] => $logId (direct; optional)
+- GET params: `id` (alternative to path param)
 - POST params: (tidak ada)
 - REQUEST params: (tidak ada)
 Example request:
 ```bash
-curl -s "https://<domain>/system/api.php?r=message/send-post&token=a.<aid>.<time>.<sha1>"
+curl -s "https://<domain>/system/api.php?r=message/resend/1&token=a.<aid>.<time>.<sha1>"
+```
+Example response (JSON):
+```json
+{"success": true, "message": "OK", "result": {}, "meta": {}}
+```
+
+#### `resend-post`
+- Route: `r=message/resend-post`
+- Method: POST (implicit; uses POST params)
+- Path params: (tidak ada)
+- GET params: (tidak ada)
+- POST params: `channel`, `log_id`, `message`, `recipient`
+- REQUEST params: (tidak ada)
+Example request:
+```bash
+curl -s -X POST "https://<domain>/system/api.php?r=message/resend-post&token=a.<aid>.<time>.<sha1>" 
+  -d "log_id=<value>" 
+  -d "channel=wa" 
+  -d "recipient=<value>" 
+  -d "message=<value>"
 ```
 Example response (JSON):
 ```json
@@ -1612,12 +1835,12 @@ Example response (JSON):
 - Route: `r=order/history`
 - Method: GET
 - Path params: (tidak ada)
-- GET params: (tidak ada)
+- GET params: `p`
 - POST params: (tidak ada)
 - REQUEST params: (tidak ada)
 Example request:
 ```bash
-curl -s "https://<domain>/system/api.php?r=order/history&token=c.<uid>.<time>.<sha1>"
+curl -s "https://<domain>/system/api.php?r=order/history&token=c.<uid>.<time>.<sha1>&p=1"
 ```
 Example response (JSON):
 ```json
@@ -1766,41 +1989,93 @@ Example response (JSON):
 - Default action: (tidak eksplisit / tergantung controller)
 - Actions: (tidak ada switch/action eksplisit)
 
+#### `view`
+- Route: `r=page`
+- Method: GET
+- Path params: routes[1] => $page
+- GET params: (tidak ada)
+- POST params: (tidak ada)
+- REQUEST params: (tidak ada)
 Example request:
 ```bash
-curl -s "https://<domain>/system/api.php?r=page&token=c.<uid>.<time>.<sha1>"
+curl -s "https://<domain>/system/api.php?r=page/Terms&token=c.<uid>.<time>.<sha1>"
 ```
 Example response (JSON):
 ```json
-{"success": true, "message": "OK", "result": {}, "meta": {}}
+{"success": true, "message": "page/Terms", "result": { }, "meta": { }}
 ```
 
 ### `pages` (access: admin)
 - Default action: (tidak eksplisit / tergantung controller)
 - Actions: (tidak ada switch/action eksplisit)
 
-Example request:
+#### `page-action`
+- Route: `r=pages`
+- Method: GET/POST (dynamic action; lihat catatan)
+- Path params: routes[1] => $action
+- GET params: (tidak ada)
+- POST params: `html`, `template_name`, `template_save`
+- REQUEST params: (tidak ada)
+Example requests:
 ```bash
-curl -s "https://<domain>/system/api.php?r=pages&token=a.<aid>.<time>.<sha1>"
+# View/edit page (GET)
+curl -s "https://<domain>/system/api.php?r=pages/Voucher&token=a.<aid>.<time>.<sha1>"
+
+# Save page (POST) -> action suffix harus "-post"
+curl -s -X POST "https://<domain>/system/api.php?r=pages/Voucher-post&token=a.<aid>.<time>.<sha1>"   -d "html=<value>"   -d "template_save=<value>"   -d "template_name=<value>"
+
+# Reset page from template (GET) -> action suffix harus "-reset"
+curl -s "https://<domain>/system/api.php?r=pages/Voucher-reset&token=a.<aid>.<time>.<sha1>"
+```
+Example response (JSON):
+```json
+{"success": true, "message": "pages/...", "result": { }, "meta": { }}
+```
+
+Catatan:
+- Controller `pages` menginterpretasi nilai `routes[1]` sebagai nama page file, dengan suffix `-post` dan `-reset` sebagai aksi khusus.
+- Aksi `save` dan `reset` bersifat state-changing (unsafe); sebaiknya tidak dipakai untuk automation tanpa guard ekstra.
+
+### `paymentgateway` (access: admin)
+- Default action: `list`
+
+Catatan:
+- Akses dibatasi ke `SuperAdmin` / `Admin` (role lain akan ditolak).
+- Selain endpoint di bawah, controller juga mendukung konfigurasi dinamis per gateway via `r=paymentgateway/<gateway>`:
+  - GET: tampilkan config (`<gateway>_show_config`)
+  - POST: simpan config (`<gateway>_save_config`)
+  - Parameter POST bergantung pada gateway.
+
+#### `list` (default)
+- Route: `r=paymentgateway` (tanpa action)
+- Method: GET/POST (POST untuk simpan daftar active gateway)
+- Path params: (tidak ada)
+- GET params: (tidak ada)
+- POST params: `save`, `pgs[]`
+- REQUEST params: (tidak ada)
+Example requests:
+```bash
+# List (GET)
+curl -s "https://<domain>/system/api.php?r=paymentgateway&token=a.<aid>.<time>.<sha1>"
+
+# Save active gateways (POST)
+curl -s -X POST "https://<domain>/system/api.php?r=paymentgateway&token=a.<aid>.<time>.<sha1>"   -d "save=actives"   -d "pgs[]=xendit"   -d "pgs[]=midtrans"
 ```
 Example response (JSON):
 ```json
 {"success": true, "message": "OK", "result": {}, "meta": {}}
 ```
 
-### `paymentgateway` (access: admin)
-- Default action: (tidak eksplisit / tergantung controller)
-
 #### `delete`
 - Route: `r=paymentgateway/delete`
 - Method: GET
-- Path params: (tidak ada)
+- Path params: routes[2] => $pg
 - GET params: (tidak ada)
 - POST params: (tidak ada)
 - REQUEST params: (tidak ada)
 Example request:
 ```bash
-curl -s "https://<domain>/system/api.php?r=paymentgateway/delete&token=a.<aid>.<time>.<sha1>"
+curl -s "https://<domain>/system/api.php?r=paymentgateway/delete/xendit&token=a.<aid>.<time>.<sha1>"
 ```
 Example response (JSON):
 ```json
@@ -1810,13 +2085,13 @@ Example response (JSON):
 #### `audit`
 - Route: `r=paymentgateway/audit`
 - Method: GET
-- Path params: (tidak ada)
-- GET params: (tidak ada)
+- Path params: routes[2] => $pg
+- GET params: `p`
 - POST params: (tidak ada)
 - REQUEST params: `q`
 Example request:
 ```bash
-curl -s "https://<domain>/system/api.php?r=paymentgateway/audit&token=a.<aid>.<time>.<sha1>&q=<value>"
+curl -s "https://<domain>/system/api.php?r=paymentgateway/audit/xendit&token=a.<aid>.<time>.<sha1>&p=1&q=<query>"
 ```
 Example response (JSON):
 ```json
@@ -1825,15 +2100,14 @@ Example response (JSON):
 
 #### `auditview`
 - Route: `r=paymentgateway/auditview`
-- Method: POST (implicit; uses POST params)
-- Path params: (tidak ada)
+- Method: GET
+- Path params: routes[2] => $id
 - GET params: (tidak ada)
-- POST params: `save`
+- POST params: (tidak ada)
 - REQUEST params: (tidak ada)
 Example request:
 ```bash
-curl -s -X POST "https://<domain>/system/api.php?r=paymentgateway/auditview&token=a.<aid>.<time>.<sha1>" 
-  -d "save=<value>"
+curl -s "https://<domain>/system/api.php?r=paymentgateway/auditview/1&token=a.<aid>.<time>.<sha1>"
 ```
 Example response (JSON):
 ```json
@@ -1842,6 +2116,22 @@ Example response (JSON):
 
 ### `plan` (access: admin)
 - Default action: (tidak eksplisit / tergantung controller)
+
+#### `list` (default)
+- Route: `r=plan` (tanpa action)
+- Method: GET/POST (filter via query; POST di UI biasanya redirect)
+- Path params: (tidak ada)
+- GET params: `p`, `search`, `status`, `router`, `plan`
+- POST params: `csrf_token`, `search`, `status`, `router`, `plan`
+- REQUEST params: (tidak ada)
+Example request:
+```bash
+curl -s "https://<domain>/system/api.php?r=plan&token=a.<aid>.<time>.<sha1>&p=1&search=<query>&status=on&router=<ROUTER_NAME>&plan=<PLAN_ID>"
+```
+Example response (JSON):
+```json
+{"success": true, "message": "OK", "result": {}, "meta": {}}
+```
 
 #### `sync`
 - Route: `r=plan/sync`
@@ -1944,9 +2234,9 @@ curl -s -X POST "https://<domain>/system/api.php?r=plan/print/1&token=a.<aid>.<t
   -d "csrf_token=<value>" 
   -d "id=<value>"
 ```
-Example response (non-JSON, tergantung aksi):
-```text
-<binary/pdf/csv/html output>
+Example response (JSON):
+```json
+{"success": true, "message": "OK", "result": {}, "meta": {}}
 ```
 
 #### `edit`
@@ -2065,9 +2355,9 @@ curl -s -X POST "https://<domain>/system/api.php?r=plan/print-voucher&token=a.<a
   -d "group=<value>" 
   # ... lihat daftar parameter di atas
 ```
-Example response (non-JSON, tergantung aksi):
-```text
-<binary/pdf/csv/html output>
+Example response (JSON):
+```json
+{"success": true, "message": "OK", "result": {}, "meta": {}}
 ```
 
 #### `voucher-post`
@@ -2191,7 +2481,7 @@ Example response (JSON):
 
 #### `deposit-post`
 - Route: `r=plan/deposit-post`
-- Method: GET/POST (uses POST and GET/REQUEST params)
+- Method: POST (implicit; uses POST params)
 - Path params: (tidak ada)
 - GET params: (tidak ada)
 - POST params: `amount`, `csrf_token`, `id_customer`, `id_plan`, `note`
@@ -2211,36 +2501,43 @@ Example response (JSON):
 
 #### `extend`
 - Route: `r=plan/extend`
-- Method: GET/POST (uses POST and GET/REQUEST params)
-- Path params: (tidak ada)
-- GET params: (tidak ada)
-- POST params: `plan`, `router`, `search`, `status`
-- REQUEST params: `plan`, `router`, `search`, `status`
+- Method: GET (state-changing; unsafe)
+- Path params: routes[2] => $id (direct); routes[3] => $days (direct)
+- GET params: `svoucher`
+- POST params: (tidak ada)
+- REQUEST params: (tidak ada)
 Example request:
 ```bash
-curl -s -X POST "https://<domain>/system/api.php?r=plan/extend&token=a.<aid>.<time>.<sha1>&plan=<value>&router=<value>&search=<value>" 
-  -d "plan=<value>" 
-  -d "router=<value>" 
-  -d "search=<value>" 
-  # ... lihat daftar parameter di atas
+curl -s "https://<domain>/system/api.php?r=plan/extend/1/30&token=a.<aid>.<time>.<sha1>&svoucher=<value>"
 ```
 Example response (JSON):
 ```json
 {"success": true, "message": "OK", "result": {}, "meta": {}}
 ```
 
-### `plugin` (access: public)
+### `plugin` (access: mixed)
 - Default action: (tidak eksplisit / tergantung controller)
 - Actions: (tidak ada switch/action eksplisit)
 
+#### `run`
+- Route: `r=plugin`
+- Method: GET/POST (dynamic; calls a PHP function)
+- Path params: routes[1] => $function
+- GET params: (tidak ada)
+- POST params: (tergantung plugin)
+- REQUEST params: (tergantung plugin)
 Example request:
 ```bash
-curl -s "https://<domain>/system/api.php?r=plugin"
+curl -s "https://<domain>/system/api.php?r=plugin/<function>&token=<admin_or_customer_token>"
 ```
-Example response (JSON):
-```json
-{"success": true, "message": "OK", "result": {}, "meta": {}}
+Example response (JSON / non-JSON tergantung plugin):
+```text
+<binary/pdf/csv/html output>
 ```
+
+Catatan:
+- Endpoint ini memanggil `call_user_func($function)` jika fungsi tersebut terdaftar (biasanya dari file plugin).
+- Setiap fungsi plugin harus mengimplementasikan validasi permission sendiri (karena endpoint ini bersifat dinamis).
 
 ### `pluginmanager` (access: admin)
 - Default action: (tidak eksplisit / tergantung controller)
@@ -2315,14 +2612,14 @@ Example response (JSON):
 
 #### `list`
 - Route: `r=pool/list`
-- Method: POST (implicit; uses POST params)
+- Method: GET/POST (filter `name` via POST)
 - Path params: (tidak ada)
-- GET params: (tidak ada)
+- GET params: `p`
 - POST params: `name`
 - REQUEST params: (tidak ada)
 Example request:
 ```bash
-curl -s -X POST "https://<domain>/system/api.php?r=pool/list&token=a.<aid>.<time>.<sha1>" 
+curl -s -X POST "https://<domain>/system/api.php?r=pool/list&token=a.<aid>.<time>.<sha1>&p=1" 
   -d "name=<value>"
 ```
 Example response (JSON):
@@ -2436,14 +2733,14 @@ Example response (JSON):
 
 #### `port`
 - Route: `r=pool/port`
-- Method: POST (implicit; uses POST params)
+- Method: GET/POST (filter `name` via POST)
 - Path params: (tidak ada)
-- GET params: (tidak ada)
+- GET params: `p`
 - POST params: `name`
 - REQUEST params: (tidak ada)
 Example request:
 ```bash
-curl -s -X POST "https://<domain>/system/api.php?r=pool/port&token=a.<aid>.<time>.<sha1>" 
+curl -s -X POST "https://<domain>/system/api.php?r=pool/port&token=a.<aid>.<time>.<sha1>&p=1" 
   -d "name=<value>"
 ```
 Example response (JSON):
@@ -2556,7 +2853,30 @@ Example response (JSON):
 ```
 
 ### `radius` (access: admin)
-- Default action: (tidak eksplisit / tergantung controller)
+- Default action: `list`
+
+Catatan:
+- Module Radius memerlukan koneksi DB `radius` + tabel terkait. Jika belum dikonfigurasi, endpoint akan mengembalikan error `Radius database is not configured`.
+
+#### `list` (default)
+- Route: `r=radius` (tanpa action)
+- Method: GET/POST (filter via POST)
+- Path params: (tidak ada)
+- GET params: `p`
+- POST params: `csrf_token`, `name`
+- REQUEST params: (tidak ada)
+Example requests:
+```bash
+# List (GET, paging)
+curl -s "https://<domain>/system/api.php?r=radius&token=a.<aid>.<time>.<sha1>&p=1"
+
+# Filter by name (POST; p tetap query param karena Paginator membaca dari GET)
+curl -s -X POST "https://<domain>/system/api.php?r=radius&p=1&token=a.<aid>.<time>.<sha1>"   -d "name=<query>"
+```
+Example response (JSON):
+```json
+{"success": true, "message": "OK", "result": {}, "meta": {}}
+```
 
 #### `nas-add`
 - Route: `r=radius/nas-add`
@@ -2635,13 +2955,12 @@ Example response (JSON):
 - Method: POST (enforced)
 - Path params: routes[2] => $id
 - GET params: (tidak ada)
-- POST params: `csrf_token`, `name`
+- POST params: `csrf_token`
 - REQUEST params: (tidak ada)
 Example request:
 ```bash
 curl -s -X POST "https://<domain>/system/api.php?r=radius/nas-delete/1&token=a.<aid>.<time>.<sha1>" 
-  -d "csrf_token=<value>" 
-  -d "name=<value>"
+  -d "csrf_token=<value>"
 ```
 Example response (JSON):
 ```json
@@ -2694,14 +3013,14 @@ Example response (JSON):
 
 #### `by-date`
 - Route: `r=reports/by-date`
-- Method: GET
+- Method: GET/POST (uses POST and GET/REQUEST params)
 - Path params: (tidak ada)
-- GET params: (tidak ada)
-- POST params: (tidak ada)
+- GET params: `p`, `q`
+- POST params: `keep`, `q`
 - REQUEST params: (tidak ada)
 Example request:
 ```bash
-curl -s "https://<domain>/system/api.php?r=reports/by-date&token=a.<aid>.<time>.<sha1>"
+curl -s "https://<domain>/system/api.php?r=reports/by-date&token=a.<aid>.<time>.<sha1>&p=1&q=<query>"
 ```
 Example response (JSON):
 ```json
@@ -2712,14 +3031,14 @@ Example response (JSON):
 - Route: `r=reports/activation`
 - Method: GET/POST (uses POST and GET/REQUEST params)
 - Path params: (tidak ada)
-- GET params: `q`
+- GET params: `p`, `q`
 - POST params: `keep`, `q`
 - REQUEST params: (tidak ada)
 Example request:
 ```bash
-curl -s -X POST "https://<domain>/system/api.php?r=reports/activation&token=a.<aid>.<time>.<sha1>&q=<value>" 
+curl -s -X POST "https://<domain>/system/api.php?r=reports/activation&token=a.<aid>.<time>.<sha1>&p=1&q=<query>" 
   -d "keep=<value>" 
-  -d "q=<value>"
+  -d "q=<query>"
 ```
 Example response (JSON):
 ```json
@@ -2780,6 +3099,22 @@ Example response (JSON):
 
 ### `routers` (access: admin)
 - Default action: (tidak eksplisit / tergantung controller)
+
+#### `list` (default)
+- Route: `r=routers` (tanpa action)
+- Method: GET/POST (filter `name` via POST)
+- Path params: (tidak ada)
+- GET params: `p`
+- POST params: `name`
+- REQUEST params: (tidak ada)
+Example request:
+```bash
+curl -s "https://<domain>/system/api.php?r=routers&token=a.<aid>.<time>.<sha1>&p=1"
+```
+Example response (JSON):
+```json
+{"success": true, "message": "OK", "result": {}, "meta": {}}
+```
 
 #### `add`
 - Route: `r=routers/add`
@@ -2873,13 +3208,20 @@ Example response (JSON):
 - Default action: (tidak eksplisit / tergantung controller)
 - Actions: (tidak ada switch/action eksplisit)
 
+#### `search`
+- Route: `r=search_user`
+- Method: GET (raw HTML output)
+- Path params: (tidak ada)
+- GET params: `query`
+- POST params: (tidak ada)
+- REQUEST params: (tidak ada)
 Example request:
 ```bash
-curl -s "https://<domain>/system/api.php?r=search_user"
+curl -s "https://<domain>/system/api.php?r=search_user&query=<value>"
 ```
-Example response (JSON):
-```json
-{"success": true, "message": "OK", "result": {}, "meta": {}}
+Example response (non-JSON, HTML):
+```text
+<binary/pdf/csv/html output>
 ```
 
 ### `services` (access: admin)
@@ -2888,13 +3230,14 @@ Example response (JSON):
 #### `sync`
 - Route: `r=services/sync`
 - Method: GET
-- Path params: routes[2] => (direct)
+- Path params: routes[2] => $target
 - GET params: (tidak ada)
 - POST params: (tidak ada)
 - REQUEST params: (tidak ada)
+- Sub-actions (routes[2]): `hotspot`, `pppoe`, `vpn`
 Example request:
 ```bash
-curl -s "https://<domain>/system/api.php?r=services/sync/1&token=a.<aid>.<time>.<sha1>"
+curl -s "https://<domain>/system/api.php?r=services/sync/hotspot&token=a.<aid>.<time>.<sha1>"
 ```
 Example response (JSON):
 ```json
@@ -2905,12 +3248,12 @@ Example response (JSON):
 - Route: `r=services/hotspot`
 - Method: GET
 - Path params: (tidak ada)
-- GET params: (tidak ada)
+- GET params: `p`
 - POST params: (tidak ada)
 - REQUEST params: `bandwidth`, `device`, `name`, `router`, `status`, `type1`, `type2`, `type3`, `valid`
 Example request:
 ```bash
-curl -s "https://<domain>/system/api.php?r=services/hotspot&token=a.<aid>.<time>.<sha1>&bandwidth=<value>&device=<value>&name=<value>"
+curl -s "https://<domain>/system/api.php?r=services/hotspot&token=a.<aid>.<time>.<sha1>&p=1&bandwidth=<value>&device=<value>&name=<value>"
 # ... lihat daftar parameter di atas
 ```
 Example response (JSON):
@@ -2971,7 +3314,7 @@ Example response (JSON):
 - Method: POST (implicit; uses POST params)
 - Path params: (tidak ada)
 - GET params: (tidak ada)
-- POST params: `data_limit`, `data_unit`, `device`, `enabled`, `expired_date`, `id_bw`, `limit_type`, `name`, `plan_type`, `prepaid`, `price`, `radius`, `routers`, `sharedusers`, `time_limit`, `time_unit`, `typebp`, `validity`, `validity_unit`, `visibility`
+- POST params: `data_limit`, `data_unit`, `device`, `enabled`, `expired_date`, `id_bw`, `invoice_notification`, `limit_type`, `linked_plans`, `name`, `plan_type`, `prepaid`, `price`, `radius`, `reminder_enabled`, `routers`, `sharedusers`, `time_limit`, `time_unit`, `typebp`, `validity`, `validity_unit`, `visibility`, `visible_customers`
 - REQUEST params: (tidak ada)
 Example request:
 ```bash
@@ -2991,7 +3334,7 @@ Example response (JSON):
 - Method: POST (implicit; uses POST params)
 - Path params: (tidak ada)
 - GET params: (tidak ada)
-- POST params: `data_limit`, `data_unit`, `device`, `enabled`, `expired_date`, `id`, `id_bw`, `limit_type`, `name`, `on_login`, `on_logout`, `plan_expired`, `plan_type`, `prepaid`, `price`, `price_old`, `routers`, `sharedusers`, `time_limit`, `time_unit`, `typebp`, `validity`, `validity_unit`, `visibility`
+- POST params: `data_limit`, `data_unit`, `device`, `enabled`, `expired_date`, `id`, `id_bw`, `invoice_notification`, `limit_type`, `linked_plans`, `name`, `on_login`, `on_logout`, `plan_expired`, `plan_type`, `prepaid`, `price`, `price_old`, `reminder_enabled`, `routers`, `sharedusers`, `time_limit`, `time_unit`, `typebp`, `validity`, `validity_unit`, `visibility`, `visible_customers`
 - REQUEST params: (tidak ada)
 Example request:
 ```bash
@@ -3008,15 +3351,14 @@ Example response (JSON):
 
 #### `pppoe`
 - Route: `r=services/pppoe`
-- Method: GET/POST (uses POST and GET/REQUEST params)
+- Method: GET
 - Path params: (tidak ada)
-- GET params: (tidak ada)
-- POST params: `name`
+- GET params: `p`
+- POST params: (tidak ada)
 - REQUEST params: `bandwidth`, `device`, `name`, `router`, `status`, `type1`, `type2`, `type3`, `valid`
 Example request:
 ```bash
-curl -s -X POST "https://<domain>/system/api.php?r=services/pppoe&token=a.<aid>.<time>.<sha1>&bandwidth=<value>&device=<value>&name=<value>" 
-  -d "name=<value>" 
+curl -s "https://<domain>/system/api.php?r=services/pppoe&token=a.<aid>.<time>.<sha1>&p=1&bandwidth=<value>&device=<value>&name=<value>" 
   # ... lihat daftar parameter di atas
 ```
 Example response (JSON):
@@ -3077,7 +3419,7 @@ Example response (JSON):
 - Method: POST (implicit; uses POST params)
 - Path params: (tidak ada)
 - GET params: (tidak ada)
-- POST params: `device`, `enabled`, `expired_date`, `id_bw`, `name_plan`, `plan_type`, `pool_name`, `prepaid`, `price`, `radius`, `routers`, `validity`, `validity_unit`, `visibility`
+- POST params: `device`, `enabled`, `expired_date`, `id_bw`, `invoice_notification`, `linked_plans`, `name_plan`, `plan_type`, `pool_name`, `prepaid`, `price`, `radius`, `reminder_enabled`, `routers`, `validity`, `validity_unit`, `visibility`, `visible_customers`
 - REQUEST params: (tidak ada)
 Example request:
 ```bash
@@ -3097,7 +3439,7 @@ Example response (JSON):
 - Method: POST (implicit; uses POST params)
 - Path params: (tidak ada)
 - GET params: (tidak ada)
-- POST params: `device`, `enabled`, `expired_date`, `id`, `id_bw`, `name_plan`, `on_login`, `on_logout`, `plan_expired`, `plan_type`, `pool_name`, `prepaid`, `price`, `price_old`, `routers`, `validity`, `validity_unit`, `visibility`
+- POST params: `device`, `enabled`, `expired_date`, `id`, `id_bw`, `invoice_notification`, `linked_plans`, `name_plan`, `on_login`, `on_logout`, `plan_expired`, `plan_type`, `pool_name`, `prepaid`, `price`, `price_old`, `reminder_enabled`, `routers`, `validity`, `validity_unit`, `visibility`, `visible_customers`
 - REQUEST params: (tidak ada)
 Example request:
 ```bash
@@ -3114,15 +3456,18 @@ Example response (JSON):
 
 #### `balance`
 - Route: `r=services/balance`
-- Method: POST (implicit; uses POST params)
+- Method: GET/POST (filter via POST)
 - Path params: (tidak ada)
-- GET params: (tidak ada)
+- GET params: `p`
 - POST params: `name`
 - REQUEST params: (tidak ada)
-Example request:
+Example requests:
 ```bash
-curl -s -X POST "https://<domain>/system/api.php?r=services/balance&token=a.<aid>.<time>.<sha1>" 
-  -d "name=<value>"
+# List (GET, paging)
+curl -s "https://<domain>/system/api.php?r=services/balance&token=a.<aid>.<time>.<sha1>&p=1"
+
+# Filter by name (POST; p tetap query param karena Paginator membaca dari GET)
+curl -s -X POST "https://<domain>/system/api.php?r=services/balance&p=1&token=a.<aid>.<time>.<sha1>"   -d "name=<query>"
 ```
 Example response (JSON):
 ```json
@@ -3182,7 +3527,7 @@ Example response (JSON):
 - Method: POST (implicit; uses POST params)
 - Path params: (tidak ada)
 - GET params: (tidak ada)
-- POST params: `enabled`, `id`, `name`, `prepaid`, `price`, `price_old`, `visibility`
+- POST params: `enabled`, `id`, `invoice_notification`, `linked_plans`, `name`, `prepaid`, `price`, `price_old`, `reminder_enabled`, `visibility`, `visible_customers`
 - REQUEST params: (tidak ada)
 Example request:
 ```bash
@@ -3202,7 +3547,7 @@ Example response (JSON):
 - Method: POST (implicit; uses POST params)
 - Path params: (tidak ada)
 - GET params: (tidak ada)
-- POST params: `enabled`, `name`, `price`, `visibility`
+- POST params: `enabled`, `invoice_notification`, `linked_plans`, `name`, `price`, `reminder_enabled`, `visibility`, `visible_customers`
 - REQUEST params: (tidak ada)
 Example request:
 ```bash
@@ -3219,15 +3564,14 @@ Example response (JSON):
 
 #### `vpn`
 - Route: `r=services/vpn`
-- Method: GET/POST (uses POST and GET/REQUEST params)
+- Method: GET
 - Path params: (tidak ada)
-- GET params: (tidak ada)
-- POST params: `name`
+- GET params: `p`
+- POST params: (tidak ada)
 - REQUEST params: `bandwidth`, `device`, `name`, `router`, `status`, `type1`, `type2`, `type3`, `valid`
 Example request:
 ```bash
-curl -s -X POST "https://<domain>/system/api.php?r=services/vpn&token=a.<aid>.<time>.<sha1>&bandwidth=<value>&device=<value>&name=<value>" 
-  -d "name=<value>" 
+curl -s "https://<domain>/system/api.php?r=services/vpn&token=a.<aid>.<time>.<sha1>&p=1&bandwidth=<value>&device=<value>&name=<value>" 
   # ... lihat daftar parameter di atas
 ```
 Example response (JSON):
@@ -3288,7 +3632,7 @@ Example response (JSON):
 - Method: POST (implicit; uses POST params)
 - Path params: (tidak ada)
 - GET params: (tidak ada)
-- POST params: `device`, `enabled`, `expired_date`, `id_bw`, `name_plan`, `plan_type`, `pool_name`, `prepaid`, `price`, `radius`, `routers`, `validity`, `validity_unit`, `visibility`
+- POST params: `device`, `enabled`, `expired_date`, `id_bw`, `invoice_notification`, `linked_plans`, `name_plan`, `plan_type`, `pool_name`, `prepaid`, `price`, `radius`, `reminder_enabled`, `routers`, `validity`, `validity_unit`, `visibility`, `visible_customers`
 - REQUEST params: (tidak ada)
 Example request:
 ```bash
@@ -3308,7 +3652,7 @@ Example response (JSON):
 - Method: POST (implicit; uses POST params)
 - Path params: (tidak ada)
 - GET params: (tidak ada)
-- POST params: `device`, `enabled`, `expired_date`, `id`, `id_bw`, `name_plan`, `on_login`, `on_logout`, `plan_expired`, `plan_type`, `pool_name`, `prepaid`, `price`, `price_old`, `routers`, `validity`, `validity_unit`, `visibility`
+- POST params: `device`, `enabled`, `expired_date`, `id`, `id_bw`, `invoice_notification`, `linked_plans`, `name_plan`, `on_login`, `on_logout`, `plan_expired`, `plan_type`, `pool_name`, `prepaid`, `price`, `price_old`, `reminder_enabled`, `routers`, `validity`, `validity_unit`, `visibility`, `visible_customers`
 - REQUEST params: (tidak ada)
 Example request:
 ```bash
@@ -3395,6 +3739,22 @@ Example response (JSON):
 {"success": true, "message": "OK", "result": {}, "meta": {}}
 ```
 
+#### `api-unblock`
+- Route: `r=settings/api-unblock`
+- Method: GET (state-changing; unsafe)
+- Path params: (tidak ada)
+- GET params: `csrf_token`, `ip`
+- POST params: (tidak ada)
+- REQUEST params: (tidak ada)
+Example request:
+```bash
+curl -s "https://<domain>/system/api.php?r=settings/api-unblock&token=a.<aid>.<time>.<sha1>&ip=<value>"
+```
+Example response (JSON):
+```json
+{"success": true, "message": "OK", "result": {}, "meta": {}}
+```
+
 #### `localisation`
 - Route: `r=settings/localisation`
 - Method: GET
@@ -3435,12 +3795,12 @@ Example response (JSON):
 - Route: `r=settings/users`
 - Method: GET
 - Path params: (tidak ada)
-- GET params: (tidak ada)
+- GET params: `p`
 - POST params: (tidak ada)
 - REQUEST params: `search`
 Example request:
 ```bash
-curl -s "https://<domain>/system/api.php?r=settings/users&token=a.<aid>.<time>.<sha1>&search=<value>"
+curl -s "https://<domain>/system/api.php?r=settings/users&token=a.<aid>.<time>.<sha1>&p=1&search=<query>"
 ```
 Example response (JSON):
 ```json
@@ -3620,6 +3980,25 @@ Example response (JSON):
 {"success": true, "message": "OK", "result": {}, "meta": {}}
 ```
 
+#### `notifications-test`
+- Route: `r=settings/notifications-test`
+- Method: POST (implicit; returns non-standard JSON)
+- Path params: (tidak ada)
+- GET params: (tidak ada)
+- POST params: `csrf_token`, `message`, `phone`, `template`
+- REQUEST params: (tidak ada)
+Example request:
+```bash
+curl -s -X POST "https://<domain>/system/api.php?r=settings/notifications-test&token=a.<aid>.<time>.<sha1>" 
+  -d "phone=<value>" 
+  -d "template=<value>" 
+  -d "message=<value>"
+```
+Example response (non-standard JSON):
+```json
+{"ok": true, "message": "...", "csrf_token": "..."}
+```
+
 #### `dbstatus`
 - Route: `r=settings/dbstatus`
 - Method: GET
@@ -3638,14 +4017,14 @@ Example response (JSON):
 
 #### `dbbackup`
 - Route: `r=settings/dbbackup`
-- Method: GET
+- Method: POST (implicit; download file)
 - Path params: (tidak ada)
 - GET params: (tidak ada)
-- POST params: (tidak ada)
+- POST params: `tables[]`
 - REQUEST params: (tidak ada)
 Example request:
 ```bash
-curl -s "https://<domain>/system/api.php?r=settings/dbbackup&token=a.<aid>.<time>.<sha1>"
+curl -s -X POST "https://<domain>/system/api.php?r=settings/dbbackup&token=a.<aid>.<time>.<sha1>"   -d "tables[]=tbl_customers"   -d "tables[]=tbl_transactions"
 ```
 Example response (non-JSON, tergantung aksi):
 ```text
@@ -3654,18 +4033,18 @@ Example response (non-JSON, tergantung aksi):
 
 #### `dbrestore`
 - Route: `r=settings/dbrestore`
-- Method: GET
+- Method: POST (multipart/form-data)
 - Path params: (tidak ada)
 - GET params: (tidak ada)
-- POST params: (tidak ada)
+- POST params: `json`
 - REQUEST params: (tidak ada)
 Example request:
 ```bash
-curl -s "https://<domain>/system/api.php?r=settings/dbrestore&token=a.<aid>.<time>.<sha1>"
+curl -s -X POST "https://<domain>/system/api.php?r=settings/dbrestore&token=a.<aid>.<time>.<sha1>"   -F "json=@/path/to/phpnuxbill_backup.json"
 ```
-Example response (non-JSON, tergantung aksi):
-```text
-<binary/pdf/csv/html output>
+Example response (JSON):
+```json
+{"success": true, "message": "OK", "result": {}, "meta": {}}
 ```
 
 #### `language`
@@ -3737,7 +4116,7 @@ Example response (JSON):
 {"success": true, "message": "OK", "result": {}, "meta": {}}
 ```
 
-### `voucher` (access: mixed)
+### `voucher` (access: customer)
 - Default action: (tidak eksplisit / tergantung controller)
 
 #### `activation`
@@ -3777,12 +4156,12 @@ Example response (JSON):
 - Route: `r=voucher/list-activated`
 - Method: GET
 - Path params: (tidak ada)
-- GET params: (tidak ada)
+- GET params: `p`
 - POST params: (tidak ada)
 - REQUEST params: (tidak ada)
 Example request:
 ```bash
-curl -s "https://<domain>/system/api.php?r=voucher/list-activated&token=<admin_or_customer_token>"
+curl -s "https://<domain>/system/api.php?r=voucher/list-activated&token=<admin_or_customer_token>&p=1"
 ```
 Example response (JSON):
 ```json
@@ -3800,20 +4179,114 @@ Example request:
 ```bash
 curl -s "https://<domain>/system/api.php?r=voucher/invoice&token=<admin_or_customer_token>"
 ```
-Example response (non-JSON, tergantung aksi):
-```text
-<binary/pdf/csv/html output>
+Example response (JSON):
+```json
+{"success": true, "message": "OK", "result": {}, "meta": {}}
 ```
 
-### `widgets` (access: admin)
-- Default action: (tidak eksplisit / tergantung controller)
-- Actions: (tidak ada switch/action eksplisit)
-
+#### `invoice-view`
+- Route: `r=voucher/invoice`
+- Method: GET
+- Path params: routes[2] => $id
+- GET params: (tidak ada)
+- POST params: (tidak ada)
+- REQUEST params: (tidak ada)
 Example request:
 ```bash
-curl -s "https://<domain>/system/api.php?r=widgets&token=a.<aid>.<time>.<sha1>"
+curl -s "https://<domain>/system/api.php?r=voucher/invoice/123&token=<admin_or_customer_token>"
 ```
 Example response (JSON):
 ```json
 {"success": true, "message": "OK", "result": {}, "meta": {}}
 ```
+
+Catatan:
+- UI juga punya public invoice link: `r=voucher/invoice/<id>/<sign>` tanpa login, dengan `sign=md5(<id>.<db_pass>)`.
+
+### `widgets` (access: admin)
+- Default action: (tidak eksplisit / tergantung controller)
+- Actions: (tidak ada switch/action eksplisit)
+
+#### `list` (default)
+- Route: `r=widgets`
+- Method: GET
+- Path params: (tidak ada)
+- GET params: (tidak ada)
+- POST params: (tidak ada)
+- REQUEST params: `user`
+Example request:
+```bash
+curl -s "https://<domain>/system/api.php?r=widgets&token=a.<aid>.<time>.<sha1>&user=Admin"
+```
+Example response (JSON):
+```json
+{"success": true, "message": "widgets", "result": { }, "meta": { }}
+```
+
+#### `add`
+- Route: `r=widgets/add`
+- Method: GET/POST (state-changing; unsafe)
+- Path params: routes[2] => $position
+- GET params: (tidak ada)
+- POST params: `content`, `enabled`, `orders`, `position`, `tipeUser`, `title`, `widget`
+- REQUEST params: (tidak ada)
+Example request:
+```bash
+curl -s "https://<domain>/system/api.php?r=widgets/add/1&token=a.<aid>.<time>.<sha1>"
+```
+Example response (JSON):
+```json
+{"success": true, "message": "widgets/add", "result": { }, "meta": { }}
+```
+
+#### `edit`
+- Route: `r=widgets/edit`
+- Method: GET/POST (state-changing; unsafe)
+- Path params: routes[2] => $id
+- GET params: (tidak ada)
+- POST params: `content`, `enabled`, `id`, `orders`, `position`, `tipeUser`, `title`, `widget`
+- REQUEST params: (tidak ada)
+Example request:
+```bash
+curl -s "https://<domain>/system/api.php?r=widgets/edit/1&token=a.<aid>.<time>.<sha1>"
+```
+Example response (JSON):
+```json
+{"success": true, "message": "widgets/edit", "result": { }, "meta": { }}
+```
+
+#### `delete`
+- Route: `r=widgets/delete`
+- Method: GET (state-changing; unsafe)
+- Path params: routes[2] => $id
+- GET params: (tidak ada)
+- POST params: (tidak ada)
+- REQUEST params: (tidak ada)
+Example request:
+```bash
+curl -s "https://<domain>/system/api.php?r=widgets/delete/1&token=a.<aid>.<time>.<sha1>"
+```
+Example response (JSON):
+```json
+{"success": true, "message": "widgets/delete", "result": { }, "meta": { }}
+```
+
+#### `pos`
+- Route: `r=widgets/pos`
+- Method: POST (state-changing; unsafe)
+- Path params: (tidak ada)
+- GET params: (tidak ada)
+- POST params: `id[]`, `orders[]`
+- REQUEST params: (tidak ada)
+Example request:
+```bash
+curl -s -X POST "https://<domain>/system/api.php?r=widgets/pos&token=a.<aid>.<time>.<sha1>"   -d "id[]=1"   -d "orders[]=1"
+```
+Example response (JSON):
+```json
+{"success": true, "message": "widgets/pos", "result": { }, "meta": { }}
+```
+
+Catatan:
+- Controller `widgets` punya mode tambahan untuk menjalankan widget command: `r=widgets/<widget>/<command>`.
+- Semua aksi di controller ini bersifat administratif dan dapat mengubah data; jangan expose ke publik.

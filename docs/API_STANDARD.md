@@ -61,11 +61,38 @@ Kompatibilitas:
 
 Catatan keamanan:
 
+- Header `Authorization` kadang tidak diteruskan ke PHP (tergantung setup web server/proxy). Jika `Authorization: Bearer ...` tidak bekerja, gunakan `X-Admin-Api-Key` atau konfigurasi server agar `HTTP_AUTHORIZATION` diteruskan ke PHP.
 - Key disimpan hashed (HMAC-SHA256) + `last4` (tidak bisa dibaca balik).
 - Kombinasikan dengan allowlist IP/CIDR jika memungkinkan.
 - Set secret hashing yang stabil untuk admin API key. Disarankan set `$admin_api_key_secret` di `config.php`
   (jangan bergantung pada `db_pass` yang bisa kosong/berubah). Setelah mengganti secret ini, regenerate API key
   untuk memastikan hash tersimpan memakai secret terbaru.
+
+### 2.1.1 Admin API Key Per Role (RBAC)
+
+Admin API key selalu terikat ke **1 user admin** di `tbl_users` dan otomatis mewarisi role (`user_type`) user tsb.
+Artinya:
+
+- Jika key milik user `Admin`/`SuperAdmin`: request akan punya akses admin penuh (sesuai guard per-controller).
+- Jika key milik user `Agent`/`Sales`: request hanya bisa mengakses endpoint yang memang diizinkan untuk role tsb.
+- Jika key milik user `Report`: request umumnya hanya bisa akses laporan (read-only), dan akan `blocked` untuk aksi operasional.
+
+Cara validasi cepat (disarankan sebelum eksekusi automation):
+
+```bash
+curl -s -H "X-Admin-Api-Key: <ADMIN_API_KEY>" \
+  "https://<domain>/system/api.php?r=whoami/permissions"
+```
+
+Yang dicek dari JSON:
+
+- `result.identity.user_type` menunjukkan role key tersebut.
+- `result.permissions.auth.via_api_key == true` memastikan auth benar-benar via API key.
+
+Rekomendasi operasional:
+
+- Buat **service account** terpisah per kebutuhan integrasi (mis. `api_agent`, `api_report`) dan set role minimal (least privilege).
+- Jangan reuse 1 key untuk banyak integrasi/role; lebih mudah audit, rotasi, dan revokasi.
 
 ### 2.2 Token (legacy)
 
@@ -118,7 +145,9 @@ Untuk aksi yang membuat transaksi/recharge, standar yang disarankan:
 ## 4) OpenAPI / Swagger
 
 - Spec tersedia di `docs/openapi.yaml` dan `docs/openapi.json`.
+- Contoh request per endpoint tersedia di `docs/API_EXAMPLES.md` (generated dari OpenAPI).
 - Generator: `python3 scripts/generate_openapi.py` (sumber utama tetap `docs/api.md`).
+- Generator contoh: `python3 scripts/generate_api_examples.py`.
 
 ## 5) Rekomendasi Upgrade Keamanan Lanjutan (opsional)
 

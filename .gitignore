@@ -57,6 +57,7 @@ docs/*
 !docs/*.html
 !docs/postman*
 !docs/API_STANDARD.md
+!docs/API_EXAMPLES.md
 !docs/api.md
 !docs/OPENAPI.md
 !docs/openapi.yaml

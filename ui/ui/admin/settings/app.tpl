@@ -1312,9 +1312,27 @@
                     </div>
                     <p class="col-md-4 help-block">{Lang::T('One IP/CIDR per line')}</p>
                 </div>
-                <div class="form-group">
+                <div class="form-group" id="api-key-blocks">
                     <label class="col-md-3 control-label">{Lang::T('Blocked IPs')}</label>
                     <div class="col-md-9">
+                        <div class="row" style="margin-bottom: 10px;">
+                            <div class="col-sm-4">
+                                <input type="text" class="form-control input-sm" name="api_block_add_ip"
+                                    placeholder="{Lang::T('IP')}" autocomplete="off">
+                            </div>
+                            <div class="col-sm-5">
+                                <input type="datetime-local" class="form-control input-sm" name="api_block_add_blocked_until"
+                                    value="{$api_block_default_until|escape}">
+                            </div>
+                            <div class="col-sm-3">
+                                <button type="submit" class="btn btn-xs btn-success" formnovalidate
+                                    formaction="{Text::url('')}settings/api-block-add"
+                                    data-toggle="tooltip" title="{Lang::T('Add')}">
+                                    <span class="fa fa-plus"></span>
+                                </button>
+                            </div>
+                        </div>
+
                         {if isset($api_key_blocks) && $api_key_blocks|@count > 0}
                             <div class="table-responsive">
                                 <table class="table table-bordered">
@@ -1330,14 +1348,48 @@
                                         {foreach $api_key_blocks as $block}
                                             <tr>
                                                 <td>{$block.ip|escape}</td>
-                                                <td>{$block.blocked_until_human|escape}</td>
-                                                <td>{$block.fail_count|escape}</td>
                                                 <td>
-                                                    <a class="btn btn-xs btn-danger"
-                                                        href="{Text::url('settings/api-unblock&ip=')}{ $block.ip|escape:'url' }&csrf_token={$csrf_token}"
-                                                        onclick="return confirm('{Lang::T('Unblock this IP?')}');">
-                                                        {Lang::T('Unblock')}
-                                                    </a>
+                                                    {if isset($api_block_edit_ip) && $api_block_edit_ip eq $block.ip}
+                                                        <input type="datetime-local" class="form-control input-sm" name="api_block_edit_blocked_until"
+                                                            value="{$block.blocked_until_input|escape}">
+                                                    {else}
+                                                        {$block.blocked_until_human|escape}
+                                                    {/if}
+                                                </td>
+                                                <td>
+                                                    {if isset($api_block_edit_ip) && $api_block_edit_ip eq $block.ip}
+                                                        <input type="number" class="form-control input-sm" name="api_block_edit_fail_count"
+                                                            value="{$block.fail_count|escape}" min="0" step="1">
+                                                    {else}
+                                                        {$block.fail_count|escape}
+                                                    {/if}
+                                                </td>
+                                                <td>
+                                                    {if isset($api_block_edit_ip) && $api_block_edit_ip eq $block.ip}
+                                                        <input type="hidden" name="api_block_edit_ip" value="{$block.ip|escape}">
+                                                        <button type="submit" class="btn btn-xs btn-primary" formnovalidate
+                                                            formaction="{Text::url('')}settings/api-block-edit"
+                                                            data-toggle="tooltip" title="{Lang::T('Save')}">
+                                                            <span class="fa fa-check"></span>
+                                                        </button>
+                                                        <a class="btn btn-xs btn-default"
+                                                            href="{Text::url('settings/app')}#api-key-blocks"
+                                                            data-toggle="tooltip" title="{Lang::T('Cancel')}">
+                                                            <span class="fa fa-times"></span>
+                                                        </a>
+                                                    {else}
+                                                        <a class="btn btn-xs btn-default"
+                                                            href="{Text::url('settings/app&api_block_edit=')}{ $block.ip|escape:'url' }#api-key-blocks"
+                                                            data-toggle="tooltip" title="{Lang::T('Edit')}">
+                                                            <span class="fa fa-pencil"></span>
+                                                        </a>
+                                                        <a class="btn btn-xs btn-danger"
+                                                            href="{Text::url('settings/api-unblock&ip=')}{ $block.ip|escape:'url' }&csrf_token={$csrf_token}#api-key-blocks"
+                                                            onclick="return ask(this, '{Lang::T('Unblock this IP?')}');"
+                                                            data-toggle="tooltip" title="{Lang::T('Unblock')}">
+                                                            <span class="fa fa-unlock"></span>
+                                                        </a>
+                                                    {/if}
                                                 </td>
                                             </tr>
                                         {/foreach}
@@ -1649,20 +1701,34 @@
                 }
             });
 
-            var form = document.querySelector('form');
-            if (form) {
-                form.addEventListener('submit', function(event) {
-                    if (sectionTimeoutCheckbox.checked && (!timeoutDurationField.value || isNaN(
-                            timeoutDurationField.value))) {
-                        event.preventDefault();
-                        alert('Please enter a valid session timeout duration.');
-                        timeoutDurationField.focus();
-                    }
-                });
-            }
-        }
-    });
-</script>
+	            var form = document.querySelector('form');
+	            if (form) {
+	                form.addEventListener('submit', function(event) {
+	                    // This page has multiple submit buttons that override the action via
+	                    // `formaction` (e.g. Blocked IPs CRUD). Only validate when saving the
+	                    // main settings form (settings/app-post).
+	                    var submitter = event.submitter || document.activeElement;
+	                    var targetAction = form.getAttribute('action') || '';
+	                    if (submitter && submitter.getAttribute) {
+	                        var fa = submitter.getAttribute('formaction');
+	                        if (fa) {
+	                            targetAction = fa;
+	                        }
+	                    }
+	                    if (targetAction.indexOf('settings/app-post') === -1) {
+	                        return;
+	                    }
+	                    if (sectionTimeoutCheckbox.checked && (!timeoutDurationField.value || isNaN(
+	                            timeoutDurationField.value))) {
+	                        event.preventDefault();
+	                        alert('Please enter a valid session timeout duration.');
+	                        timeoutDurationField.focus();
+	                    }
+	                });
+	            }
+	        }
+	    });
+	</script>
 
 <script>
     document.addEventListener("DOMContentLoaded", function() {

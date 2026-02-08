@@ -134,6 +134,9 @@ switch ($action) {
             $d->value = 'yes';
             $d->save();
         }
+        if (!empty($isApi)) {
+            showResult(true, 'ok', ['url' => APP_URL . '/docs']);
+        }
         r2(APP_URL . '/docs');
         break;
     case 'devices':
@@ -298,6 +301,12 @@ switch ($action) {
             $config['mikrotik_sms_command'] = "/tool sms send";
         }
         $ui->assign('template_files', $templates);
+        $api_block_edit_ip = trim((string) _get('api_block_edit'));
+        if ($api_block_edit_ip !== '' && !filter_var($api_block_edit_ip, FILTER_VALIDATE_IP)) {
+            $api_block_edit_ip = '';
+        }
+        $ui->assign('api_block_edit_ip', $api_block_edit_ip);
+        $ui->assign('api_block_default_until', date('Y-m-d\\TH:i', time() + 3600));
         $api_key_blocks = [];
         $block_dir = $CACHE_PATH . DIRECTORY_SEPARATOR . 'admin_api_key_backoff';
         if (is_dir($block_dir)) {
@@ -327,6 +336,7 @@ switch ($action) {
                     'ip' => $ip,
                     'blocked_until' => $blocked_until,
                     'blocked_until_human' => date('Y-m-d H:i:s', $blocked_until),
+                    'blocked_until_input' => date('Y-m-d\\TH:i', $blocked_until),
                     'fail_count' => (int) ($decoded['fail_count'] ?? 0),
                     'backoff_attempts' => (int) ($decoded['backoff_attempts'] ?? ($decoded['attempts'] ?? 0)),
                 ];
@@ -569,25 +579,125 @@ switch ($action) {
         }
         break;
 
-    case 'api-unblock':
-        if (!in_array($admin['user_type'], ['SuperAdmin', 'Admin'])) {
-            _alert(Lang::T('You do not have permission to access this page'), 'danger', "dashboard");
-        }
-        $csrf_token = _get('csrf_token');
-        if (!Csrf::check($csrf_token)) {
-            r2(getUrl('settings/app'), 'e', Lang::T('Invalid or Expired CSRF Token') . ".");
-        }
-        Csrf::generateAndStoreToken();
-        $ip = trim((string) _get('ip'));
-        if ($ip === '') {
-            r2(getUrl('settings/app'), 'e', Lang::T('IP Address is required'));
-        }
-        if (class_exists('Admin')) {
-            Admin::clearApiKeyBlock($ip);
-        }
-        _log('[' . $admin['username'] . ']: Unblocked API key IP ' . $ip, $admin['user_type'], $admin['id']);
-        r2(getUrl('settings/app'), 's', Lang::T('IP unblocked'));
-        break;
+	    case 'api-block-add':
+	        if ($_app_stage == 'Demo') {
+	            r2(getUrl('settings/app') . '#api-key-blocks', 'e', 'You cannot perform this action in Demo mode');
+	        }
+	        if (!in_array($admin['user_type'], ['SuperAdmin', 'Admin'])) {
+	            _alert(Lang::T('You do not have permission to access this page'), 'danger', "dashboard");
+	        }
+	        $csrf_token = _post('csrf_token');
+	        if (!Csrf::check($csrf_token)) {
+	            r2(getUrl('settings/app') . '#api-key-blocks', 'e', Lang::T('Invalid or Expired CSRF Token') . ".");
+	        }
+	        Csrf::generateAndStoreToken();
+	        $ip = trim((string) _post('api_block_add_ip'));
+	        if ($ip === '') {
+	            r2(getUrl('settings/app') . '#api-key-blocks', 'e', Lang::T('IP Address is required'));
+	        }
+	        if (!filter_var($ip, FILTER_VALIDATE_IP)) {
+	            r2(getUrl('settings/app') . '#api-key-blocks', 'e', Lang::T('Invalid IP Address'));
+	        }
+
+	        $until_raw = trim((string) _post('api_block_add_blocked_until'));
+	        if ($until_raw === '') {
+	            r2(getUrl('settings/app') . '#api-key-blocks', 'e', Lang::T('Blocked Until') . ' ' . Lang::T('is required'));
+	        }
+	        $until_ts = strtotime($until_raw);
+	        if ($until_ts === false) {
+	            r2(getUrl('settings/app') . '#api-key-blocks', 'e', Lang::T('Invalid value'));
+	        }
+	        if ($until_ts <= time()) {
+	            r2(getUrl('settings/app') . '#api-key-blocks', 'e', Lang::T('Blocked Until') . ' must be in the future');
+	        }
+
+	        if (!class_exists('Admin') || !Admin::saveApiKeyBlockState($ip, ['blocked_until' => $until_ts, 'fail_count' => 0])) {
+	            r2(getUrl('settings/app') . '#api-key-blocks', 'e', Lang::T('Failed to save blocked IP record'));
+	        }
+	        _log(
+	            '[' . $admin['username'] . ']: Blocked API key IP ' . $ip . ' until ' . date('Y-m-d H:i:s', $until_ts),
+	            $admin['user_type'],
+	            $admin['id']
+	        );
+	        r2(getUrl('settings/app') . '#api-key-blocks', 's', Lang::T('Settings Saved Successfully'));
+	        break;
+
+	    case 'api-block-edit':
+	        if ($_app_stage == 'Demo') {
+	            r2(getUrl('settings/app') . '#api-key-blocks', 'e', 'You cannot perform this action in Demo mode');
+	        }
+	        if (!in_array($admin['user_type'], ['SuperAdmin', 'Admin'])) {
+	            _alert(Lang::T('You do not have permission to access this page'), 'danger', "dashboard");
+	        }
+	        $csrf_token = _post('csrf_token');
+	        if (!Csrf::check($csrf_token)) {
+	            r2(getUrl('settings/app') . '#api-key-blocks', 'e', Lang::T('Invalid or Expired CSRF Token') . ".");
+	        }
+	        Csrf::generateAndStoreToken();
+	        $ip = trim((string) _post('api_block_edit_ip'));
+	        if ($ip === '') {
+	            r2(getUrl('settings/app') . '#api-key-blocks', 'e', Lang::T('IP Address is required'));
+	        }
+	        if (!filter_var($ip, FILTER_VALIDATE_IP)) {
+	            r2(getUrl('settings/app') . '#api-key-blocks', 'e', Lang::T('Invalid IP Address'));
+	        }
+
+	        $until_raw = trim((string) _post('api_block_edit_blocked_until'));
+	        if ($until_raw === '') {
+	            r2(getUrl('settings/app') . '#api-key-blocks', 'e', Lang::T('Blocked Until') . ' ' . Lang::T('is required'));
+	        }
+	        $until_ts = strtotime($until_raw);
+	        if ($until_ts === false) {
+	            r2(getUrl('settings/app') . '#api-key-blocks', 'e', Lang::T('Invalid value'));
+	        }
+
+	        $fail_count_raw = trim((string) _post('api_block_edit_fail_count'));
+	        $fail_count = ($fail_count_raw === '' || !is_numeric($fail_count_raw)) ? 0 : (int) $fail_count_raw;
+	        if ($fail_count < 0) {
+	            $fail_count = 0;
+	        }
+
+	        if ($until_ts <= time()) {
+	            if (class_exists('Admin')) {
+	                Admin::clearApiKeyBlock($ip);
+	            }
+	            _log('[' . $admin['username'] . ']: Cleared API key IP block record ' . $ip, $admin['user_type'], $admin['id']);
+	            r2(getUrl('settings/app') . '#api-key-blocks', 's', Lang::T('IP unblocked'));
+	        }
+
+	        if (!class_exists('Admin') || !Admin::saveApiKeyBlockState($ip, ['blocked_until' => $until_ts, 'fail_count' => $fail_count])) {
+	            r2(getUrl('settings/app') . '#api-key-blocks', 'e', Lang::T('Failed to save blocked IP record'));
+	        }
+	        _log(
+	            '[' . $admin['username'] . ']: Updated API key IP block record ' . $ip . ' until ' . date('Y-m-d H:i:s', $until_ts),
+	            $admin['user_type'],
+	            $admin['id']
+	        );
+	        r2(getUrl('settings/app') . '#api-key-blocks', 's', Lang::T('Settings Saved Successfully'));
+	        break;
+
+	    case 'api-unblock':
+	        if (!in_array($admin['user_type'], ['SuperAdmin', 'Admin'])) {
+	            _alert(Lang::T('You do not have permission to access this page'), 'danger', "dashboard");
+	        }
+	        $csrf_token = _get('csrf_token');
+	        if (!Csrf::check($csrf_token)) {
+	            r2(getUrl('settings/app') . '#api-key-blocks', 'e', Lang::T('Invalid or Expired CSRF Token') . ".");
+	        }
+	        Csrf::generateAndStoreToken();
+	        $ip = trim((string) _get('ip'));
+	        if ($ip === '') {
+	            r2(getUrl('settings/app') . '#api-key-blocks', 'e', Lang::T('IP Address is required'));
+	        }
+	        if (!filter_var($ip, FILTER_VALIDATE_IP)) {
+	            r2(getUrl('settings/app') . '#api-key-blocks', 'e', Lang::T('Invalid IP Address'));
+	        }
+	        if (class_exists('Admin')) {
+	            Admin::clearApiKeyBlock($ip);
+	        }
+	        _log('[' . $admin['username'] . ']: Unblocked API key IP ' . $ip, $admin['user_type'], $admin['id']);
+	        r2(getUrl('settings/app') . '#api-key-blocks', 's', Lang::T('IP unblocked'));
+	        break;
 
     case 'localisation':
         if (!in_array($admin['user_type'], ['SuperAdmin', 'Admin'])) {

@@ -4,6 +4,7 @@ Repo ini sudah punya dokumentasi endpoint di `docs/api.md`. Untuk kebutuhan stan
 
 - `docs/openapi.yaml`
 - `docs/openapi.json`
+- `docs/API_EXAMPLES.md` (contoh `curl` per endpoint, di-generate dari OpenAPI)
 
 ## Cara Pakai
 
@@ -38,9 +39,12 @@ Kompatibilitas (tetap diterima oleh sistem):
 - `X-API-Key: <ADMIN_API_KEY>`
 - `Authorization: Bearer <ADMIN_API_KEY>`
 
+Catatan: header `Authorization` kadang tidak diteruskan ke PHP (tergantung setup web server/proxy). Jika `Authorization: Bearer ...` tidak bekerja, gunakan `X-Admin-Api-Key` atau konfigurasi server agar `HTTP_AUTHORIZATION` diteruskan ke PHP.
+
 Untuk token login (admin/customer), selain query `token=...`, sekarang juga bisa lewat header:
 
-- `X-Auth-Token: a.<...>` atau `X-Auth-Token: c.<...>`
+- `X-Token: a.<...>` atau `X-Token: c.<...>` (disarankan)
+- `X-Auth-Token: a.<...>` atau `X-Auth-Token: c.<...>` (alias legacy)
 
 Catatan: token via header ini dibuat untuk menghindari token bocor di URL/log.
 
@@ -62,4 +66,10 @@ Jika `docs/api.md` berubah, regenerate OpenAPI:
 
 ```bash
 python3 scripts/generate_openapi.py
+```
+
+Regenerate contoh request (`docs/API_EXAMPLES.md`):
+
+```bash
+python3 scripts/generate_api_examples.py
 ```
