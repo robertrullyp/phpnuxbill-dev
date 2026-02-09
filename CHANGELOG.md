@@ -2,6 +2,17 @@
 
 # CHANGELOG
 
+## 2026.2.9
+
+- **GenieACS Integration:** Added ACS settings panel (`ACS Integration`) and device assignment on customer add/edit for PPPoE/Other service types.
+- **Customer Dashboard:** Added customer-side WiFi management for eligible active PPPoE plans with assigned GenieACS device (edit SSID/password from dashboard).
+- **ACS Sync Reliability:** Updated device detail fetch flow to support GenieACS deployments that reject `GET /devices/{id}` (HTTP 405) by using query-based fetch.
+- **PPPoE Credential Sync:** Limited PPP sync target to WAN connections with names containing `Internet`, and synchronized WLAN5 automatically when WLAN5 parameters are present.
+- **UX:** Refined customer WiFi editor into compact action-button workflow (`Edit WiFi` / `Save Changes` / `Cancel`) with no inline edit icons in SSID/password rows.
+- **API/Docs:** Synced API examples/spec references and release metadata for production rollout.
+- **Maintenance:** Fixed `customers/edit/{id}` flow to allow direct GET navigation while preserving CSRF validation for POST-triggered entry points.
+- Version bumped to `2026.2.9`.
+
 ## 2026.2.8
 
 - **Security (RBAC):** Hardened admin-user create/edit flows with a strict role-assignment matrix and root-parent validation to block privilege escalation via manual requests.

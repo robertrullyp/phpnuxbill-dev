@@ -117,6 +117,46 @@
                             </td>
                         </tr>
                     {/if}
+                    {if $_bill['genieacs_eligible'] && $genieacs['enabled']}
+                        {if $genieacs['can_manage']}
+                            <tr>
+                                <td class="small text-primary text-uppercase text-normal">WiFi SSID</td>
+                                <td class="small mb15">
+                                    <span id="wifi_ssid_text_{$_bill['id']}">
+                                        {if $genieacs['ssid'] neq ''}{$genieacs['ssid']|escape}{else}-{/if}
+                                    </span>
+                                    <div id="wifi_ssid_edit_wrap_{$_bill['id']}" style="display: none; margin-top: 6px;">
+                                        <input type="text" class="form-control input-sm" id="wifi_ssid_input_{$_bill['id']}"
+                                            maxlength="64" value="{$genieacs['ssid']|escape}" placeholder="SSID">
+                                    </div>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td class="small text-primary text-uppercase text-normal">WiFi Password</td>
+                                <td class="small mb15">
+                                    <span id="wifi_password_text_{$_bill['id']}">
+                                        {if $genieacs['password'] neq ''}{$genieacs['password']|escape}{else}-{/if}
+                                    </span>
+                                    <div id="wifi_password_edit_wrap_{$_bill['id']}" style="display: none; margin-top: 6px;">
+                                        <input type="text" class="form-control input-sm"
+                                            id="wifi_password_input_{$_bill['id']}" minlength="8" maxlength="63"
+                                            value="{$genieacs['password']|escape}" placeholder="WiFi Password">
+                                    </div>
+                                </td>
+                            </tr>
+                            {if $genieacs['error'] neq ''}
+                                <tr>
+                                    <td class="small text-warning text-uppercase text-normal">GenieACS</td>
+                                    <td class="small mb15 text-warning">{$genieacs['error']|escape}</td>
+                                </tr>
+                            {/if}
+                        {else}
+                            <tr>
+                                <td class="small text-warning text-uppercase text-normal">GenieACS</td>
+                                <td class="small mb15 text-warning">{Lang::T('Device not assigned. Contact admin.')}</td>
+                            </tr>
+                        {/if}
+                    {/if}
                     <tr>
                         <td class="small text-primary text-uppercase text-normal">
                             {if $_bill['status'] == 'on' && $_bill['prepaid'] != 'YES'}
@@ -131,15 +171,43 @@
                                     href="{Text::url('home&extend=', $_bill['id'], '&stoken=', App::getToken())}"
                                     onclick="return ask(this, '{Text::toHex($_c['extend_confirmation'])}')">{Lang::T('Extend')}</a>
                             {/if}
-                            <a class="btn btn-primary pull-right btn-sm"
-                                href="{Text::url('home&recharge=', $_bill['id'], '&stoken=', App::getToken())}"
-                                onclick="return ask(this, '{Lang::T('Recharge')}?')">{Lang::T('Recharge')}</a>
-                            <a class="btn btn-warning text-black pull-right btn-sm"
-                                href="{Text::url('home&sync=', $_bill['id'], '&stoken=', App::getToken())}"
-                                onclick="return ask(this, '{Lang::T('Sync account if you failed login to internet')}?')"
-                                data-toggle="tooltip" data-placement="top"
-                                title="{Lang::T('Sync account if you failed login to internet')}"><span
-                                    class="glyphicon glyphicon-refresh" aria-hidden="true"></span> {Lang::T('Sync')}</a>
+                            <div class="btn-group pull-right" role="group" aria-label="Plan actions">
+                                <a class="btn btn-primary btn-sm"
+                                    href="{Text::url('home&recharge=', $_bill['id'], '&stoken=', App::getToken())}"
+                                    onclick="return ask(this, '{Lang::T('Recharge')}?')">{Lang::T('Recharge')}</a>
+                                {if $_bill['genieacs_eligible'] && $genieacs['enabled'] && $genieacs['can_manage']}
+                                    <button type="button" class="btn btn-info btn-sm"
+                                        id="wifi_edit_btn_{$_bill['id']}"
+                                        data-label-edit="Edit WiFi"
+                                        data-label-save="{Lang::T('Save Changes')}"
+                                        onclick="return handleWifiEditAction('{$_bill['id']}');">
+                                        <span class="glyphicon glyphicon-pencil" aria-hidden="true"></span> Edit WiFi
+                                    </button>
+                                    <button type="button" class="btn btn-default btn-sm"
+                                        id="wifi_cancel_btn_{$_bill['id']}" style="display: none;"
+                                        onclick="return cancelWifiEdit('{$_bill['id']}');">
+                                        {Lang::T('Cancel')}
+                                    </button>
+                                    <form method="post" action="{Text::url('home')}"
+                                        id="wifi_update_form_{$_bill['id']}" style="display: inline-block;">
+                                        <input type="hidden" name="csrf_token" value="{$csrf_token|escape}">
+                                        <input type="hidden" name="send" value="genieacs_wifi_update">
+                                        <input type="hidden" name="device_id" value="{$genieacs['device_id']|escape}">
+                                        <input type="hidden" name="ssid_path" value="{$genieacs['ssid_path']|escape}">
+                                        <input type="hidden" name="password_path" value="{$genieacs['password_path']|escape}">
+                                        <input type="hidden" name="wifi_ssid" id="wifi_ssid_hidden_{$_bill['id']}"
+                                            value="{$genieacs['ssid']|escape}">
+                                        <input type="hidden" name="wifi_password" id="wifi_password_hidden_{$_bill['id']}"
+                                            value="{$genieacs['password']|escape}">
+                                    </form>
+                                {/if}
+                                <a class="btn btn-warning text-black btn-sm"
+                                    href="{Text::url('home&sync=', $_bill['id'], '&stoken=', App::getToken())}"
+                                    onclick="return ask(this, '{Lang::T('Sync account if you failed login to internet')}?')"
+                                    data-toggle="tooltip" data-placement="top"
+                                    title="{Lang::T('Sync account if you failed login to internet')}"><span
+                                        class="glyphicon glyphicon-refresh" aria-hidden="true"></span> {Lang::T('Sync')}</a>
+                            </div>
                         </td>
                     </tr>
                 </table>
@@ -162,4 +230,109 @@
             </script>
         {/if}
     {/foreach}
+    <script>
+        function setWifiEditButtonState(billId, isEditing) {
+            var editButton = document.getElementById('wifi_edit_btn_' + billId);
+            var cancelButton = document.getElementById('wifi_cancel_btn_' + billId);
+            if (!editButton) {
+                return;
+            }
+            var editLabel = editButton.getAttribute('data-label-edit') || 'Edit WiFi';
+            var saveLabel = editButton.getAttribute('data-label-save') || 'Save';
+            if (isEditing) {
+                editButton.className = 'btn btn-success btn-sm';
+                editButton.innerHTML = '<span class="glyphicon glyphicon-floppy-disk" aria-hidden="true"></span> ' + saveLabel;
+                if (cancelButton) {
+                    cancelButton.style.display = 'inline-block';
+                }
+            } else {
+                editButton.className = 'btn btn-info btn-sm';
+                editButton.innerHTML = '<span class="glyphicon glyphicon-pencil" aria-hidden="true"></span> ' + editLabel;
+                if (cancelButton) {
+                    cancelButton.style.display = 'none';
+                }
+            }
+        }
+
+        function toggleWifiEdit(billId) {
+            var ssidWrap = document.getElementById('wifi_ssid_edit_wrap_' + billId);
+            var passwordWrap = document.getElementById('wifi_password_edit_wrap_' + billId);
+            if (!ssidWrap || !passwordWrap) {
+                return false;
+            }
+            var isOpen = ssidWrap.style.display !== 'none';
+            ssidWrap.style.display = isOpen ? 'none' : 'block';
+            passwordWrap.style.display = isOpen ? 'none' : 'block';
+            setWifiEditButtonState(billId, !isOpen);
+            return false;
+        }
+
+        function handleWifiEditAction(billId) {
+            var ssidWrap = document.getElementById('wifi_ssid_edit_wrap_' + billId);
+            if (!ssidWrap) {
+                return false;
+            }
+            var isOpen = ssidWrap.style.display !== 'none';
+            if (!isOpen) {
+                return toggleWifiEdit(billId);
+            }
+            return submitWifiUpdate(billId);
+        }
+
+        function closeWifiEdit(billId) {
+            var ssidWrap = document.getElementById('wifi_ssid_edit_wrap_' + billId);
+            var passwordWrap = document.getElementById('wifi_password_edit_wrap_' + billId);
+            if (!ssidWrap || !passwordWrap) {
+                return false;
+            }
+            ssidWrap.style.display = 'none';
+            passwordWrap.style.display = 'none';
+            setWifiEditButtonState(billId, false);
+            return false;
+        }
+
+        function cancelWifiEdit(billId) {
+            var ssidInput = document.getElementById('wifi_ssid_input_' + billId);
+            var passwordInput = document.getElementById('wifi_password_input_' + billId);
+            var ssidHidden = document.getElementById('wifi_ssid_hidden_' + billId);
+            var passwordHidden = document.getElementById('wifi_password_hidden_' + billId);
+            if (ssidInput && ssidHidden) {
+                ssidInput.value = ssidHidden.value || '';
+            }
+            if (passwordInput && passwordHidden) {
+                passwordInput.value = passwordHidden.value || '';
+            }
+            return closeWifiEdit(billId);
+        }
+
+        function submitWifiUpdate(billId) {
+            var ssidInput = document.getElementById('wifi_ssid_input_' + billId);
+            var passwordInput = document.getElementById('wifi_password_input_' + billId);
+            var ssidHidden = document.getElementById('wifi_ssid_hidden_' + billId);
+            var passwordHidden = document.getElementById('wifi_password_hidden_' + billId);
+            var form = document.getElementById('wifi_update_form_' + billId);
+            if (!ssidInput || !passwordInput || !ssidHidden || !passwordHidden || !form) {
+                return false;
+            }
+
+            var ssid = (ssidInput.value || '').trim();
+            var password = passwordInput.value || '';
+            if (ssid.length < 1 || ssid.length > 64) {
+                alert('SSID must be between 1 and 64 characters');
+                ssidInput.focus();
+                return false;
+            }
+            if (password.length < 8 || password.length > 63) {
+                alert('WiFi password must be between 8 and 63 characters');
+                passwordInput.focus();
+                return false;
+            }
+
+            ssidHidden.value = ssid;
+            passwordHidden.value = password;
+            closeWifiEdit(billId);
+            form.submit();
+            return false;
+        }
+    </script>
 {/if}

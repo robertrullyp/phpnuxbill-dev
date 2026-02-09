@@ -12,19 +12,23 @@ $ui->assign('_system_menu', 'plan');
 $action = $routes['1'];
 $ui->assign('_admin', $admin);
 
-$appUrl = APP_URL;
+$appPath = (string) parse_url(APP_URL, PHP_URL_PATH);
+$appPath = rtrim($appPath, '/');
+$customerSelect2Url = ($appPath === '' ? '' : $appPath) . '/?_route=autoload/customer_select2';
+$customerSelect2UrlJs = json_encode($customerSelect2Url, JSON_UNESCAPED_SLASHES);
 
 $select2_customer = <<<EOT
 <script>
 document.addEventListener("DOMContentLoaded", function(event) {
+    var customerSelect2Url = {$customerSelect2UrlJs};
     $('#personSelect').select2({
         theme: "bootstrap",
         ajax: {
             url: function(params) {
                 if(params.term != undefined){
-                    return '{$appUrl}/?_route=autoload/customer_select2&s='+params.term;
+                    return customerSelect2Url + '&s=' + encodeURIComponent(params.term);
                 }else{
-                    return '{$appUrl}/?_route=autoload/customer_select2';
+                    return customerSelect2Url;
                 }
             }
         }

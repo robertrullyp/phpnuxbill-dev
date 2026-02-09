@@ -21,6 +21,76 @@ $leafletpickerHeader = <<<EOT
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.3/dist/leaflet.css">
 EOT;
 
+$getGenieAcsFormData = function ($customerId = 0) use ($config) {
+    $customerId = (int) $customerId;
+    $enabled = class_exists('GenieACS') && GenieACS::isEnabled($config);
+    $devices = [];
+    $error = '';
+    $selectedDeviceId = '';
+    $selectedDeviceLabel = '';
+
+    if ($customerId > 0 && class_exists('GenieACS')) {
+        $selectedDeviceId = GenieACS::getAssignedDeviceId($customerId);
+        $selectedDeviceLabel = GenieACS::getAssignedDeviceLabel($customerId, $selectedDeviceId);
+    }
+
+    if ($enabled && class_exists('GenieACS')) {
+        $discovery = GenieACS::discoverDevices($config, '', 0);
+        $devices = $discovery['devices'] ?? [];
+        if (empty($discovery['success'])) {
+            $error = (string) ($discovery['error'] ?? '');
+        }
+    }
+
+    if ($selectedDeviceId !== '') {
+        $knownIds = array_column($devices, 'id');
+        if (!in_array($selectedDeviceId, $knownIds, true)) {
+            $devices[] = [
+                'id' => $selectedDeviceId,
+                'text' => ($selectedDeviceLabel !== '' ? $selectedDeviceLabel : $selectedDeviceId) . ' (Saved)',
+            ];
+        }
+    }
+
+    return [
+        'enabled' => $enabled,
+        'devices' => $devices,
+        'error' => $error,
+        'selected_device_id' => $selectedDeviceId,
+        'selected_device_label' => $selectedDeviceLabel,
+    ];
+};
+
+$syncGenieAcsPppCredentials = function ($customerId, $serviceSupportsGenieAcs, $deviceId, $pppoeUsername, $pppoePassword) use ($config) {
+    $customerId = (int) $customerId;
+    $deviceId = trim((string) $deviceId);
+    if (
+        $customerId < 1 ||
+        !$serviceSupportsGenieAcs ||
+        !class_exists('GenieACS') ||
+        $deviceId === ''
+    ) {
+        return '';
+    }
+
+    $syncResult = GenieACS::syncPppoeCredentials($config, $deviceId, $pppoeUsername, $pppoePassword);
+    if (empty($syncResult['success'])) {
+        $syncError = trim((string) ($syncResult['error'] ?? 'Unknown error.'));
+        if ($syncError === '') {
+            $syncError = 'Unknown error.';
+        }
+        _log('GenieACS PPP sync failed for customer #' . $customerId . ' (device ' . $deviceId . '): ' . $syncError);
+        return 'GenieACS PPP sync warning: ' . $syncError;
+    }
+
+    $syncWarning = trim((string) ($syncResult['warning'] ?? ''));
+    if ($syncWarning !== '') {
+        return 'GenieACS PPP sync warning: ' . $syncWarning;
+    }
+
+    return '';
+};
+
 switch ($action) {
     case 'csv':
         if (!in_array($admin['user_type'], ['SuperAdmin', 'Admin'])) {
@@ -162,6 +232,12 @@ switch ($action) {
         $ui->assign('am_users', _customer_am_rows());
         $ui->assign('selected_account_manager_id', 0);
         $ui->assign('selected_account_manager_mode', 'all');
+        $genieAcsFormData = $getGenieAcsFormData(0);
+        $ui->assign('genieacs_enabled', $genieAcsFormData['enabled']);
+        $ui->assign('genieacs_devices', $genieAcsFormData['devices']);
+        $ui->assign('genieacs_error', $genieAcsFormData['error']);
+        $ui->assign('genieacs_selected_device_id', $genieAcsFormData['selected_device_id']);
+        $ui->assign('genieacs_selected_device_label', $genieAcsFormData['selected_device_label']);
         run_hook('view_add_customer'); #HOOK
         $ui->assign('csrf_token',  Csrf::generateAndStoreToken());
         $ui->display('admin/customers/add.tpl');
@@ -420,14 +496,16 @@ switch ($action) {
             _alert(Lang::T('You do not have permission to access this page'), 'danger', "dashboard");
         }
         $id = $routes['2'];
-        if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+        $requestMethod = strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? 'GET'));
+        if ($requestMethod === 'POST') {
+            $csrf_token = _post('csrf_token');
+            if (!Csrf::check($csrf_token)) {
+                r2(getUrl('customers/view/') . $id, 'e', Lang::T('Invalid or Expired CSRF Token') . ".");
+            }
+            Csrf::generateAndStoreToken();
+        } elseif ($requestMethod !== 'GET') {
             r2(getUrl('customers/view/') . $id, 'e', Lang::T('Invalid request method'));
         }
-        $csrf_token = _post('csrf_token');
-        if (!Csrf::check($csrf_token)) {
-            r2(getUrl('customers/view/') . $id, 'e', Lang::T('Invalid or Expired CSRF Token') . ".");
-        }
-        Csrf::generateAndStoreToken();
         run_hook('edit_customer'); #HOOK
         $d = ORM::for_table('tbl_customers')->find_one($id);
         // Fetch the Customers Attributes values from the tbl_customers_fields table
@@ -453,12 +531,18 @@ switch ($action) {
                 }
             }
             $selectedAccountManagerId = _customer_am_id($d);
+            $genieAcsFormData = $getGenieAcsFormData((int) $id);
             $ui->assign('d', $d);
             $ui->assign('customer_am_enabled', _customer_am_column_exists());
             $ui->assign('can_edit_customer_am', _customer_can_edit_assignment($admin));
             $ui->assign('am_users', _customer_am_rows());
             $ui->assign('selected_account_manager_id', $selectedAccountManagerId);
             $ui->assign('selected_account_manager_mode', $selectedAccountManagerId > 0 ? 'list' : 'all');
+            $ui->assign('genieacs_enabled', $genieAcsFormData['enabled']);
+            $ui->assign('genieacs_devices', $genieAcsFormData['devices']);
+            $ui->assign('genieacs_error', $genieAcsFormData['error']);
+            $ui->assign('genieacs_selected_device_id', $genieAcsFormData['selected_device_id']);
+            $ui->assign('genieacs_selected_device_label', $genieAcsFormData['selected_device_label']);
             $ui->assign('statuses', ORM::for_table('tbl_customers')->getEnum("status"));
             $ui->assign('customFields', $customFields);
             $ui->assign('xheader', $leafletpickerHeader);
@@ -538,6 +622,13 @@ switch ($action) {
         $service_type = _post('service_type');
         $account_type = _post('account_type');
         $coordinates = _post('coordinates');
+        $genieacs_device_id = trim((string) _post('genieacs_device_id'));
+        $genieacs_device_label = trim((string) _post('genieacs_device_label'));
+        $service_supports_genieacs = in_array(strtoupper((string) $service_type), ['PPPOE', 'OTHERS'], true);
+        if (!$service_supports_genieacs) {
+            $genieacs_device_id = '';
+            $genieacs_device_label = '';
+        }
         //post Customers Attributes
         $custom_field_names = (array) $_POST['custom_field_name'];
         $custom_field_values = (array) $_POST['custom_field_value'];
@@ -574,6 +665,12 @@ switch ($action) {
         }
         if (ORM::for_table('tbl_customers')->where('phonenumber', Lang::phoneFormat($phonenumber))->find_one()) {
             $msg .= Lang::T('Phone number already exists') . '<br>';
+        }
+        if ($service_supports_genieacs && strlen($genieacs_device_id) > 190) {
+            $msg .= Lang::T('GenieACS device ID is too long') . '<br>';
+        }
+        if ($service_supports_genieacs && strlen($genieacs_device_label) > 255) {
+            $msg .= Lang::T('GenieACS device label is too long') . '<br>';
         }
         if (_customer_am_column_exists()) {
             if ($account_manager_mode === 'list') {
@@ -616,6 +713,21 @@ switch ($action) {
 
             // Retrieve the customer ID of the newly created customer
             $customerId = $d->id();
+            $genieacsSyncNotice = '';
+            if (class_exists('GenieACS')) {
+                if ($service_supports_genieacs && $genieacs_device_id !== '') {
+                    GenieACS::setAssignedDevice($customerId, $genieacs_device_id, $genieacs_device_label);
+                    $genieacsSyncNotice = $syncGenieAcsPppCredentials(
+                        $customerId,
+                        $service_supports_genieacs,
+                        $genieacs_device_id,
+                        $pppoe_username,
+                        $pppoe_password
+                    );
+                } else {
+                    GenieACS::clearAssignedDevice($customerId);
+                }
+            }
             // Save Customers Attributes details
             if (!empty($custom_field_names) && !empty($custom_field_values)) {
                 $totalFields = min(count($custom_field_names), count($custom_field_values));
@@ -682,7 +794,11 @@ switch ($action) {
                     }
                 }
             }
-            r2(getUrl('customers/list'), 's', Lang::T('Account Created Successfully'));
+            $successMessage = Lang::T('Account Created Successfully');
+            if ($genieacsSyncNotice !== '') {
+                $successMessage .= '<br>' . $genieacsSyncNotice;
+            }
+            r2(getUrl('customers/list'), 's', $successMessage);
         } else {
             r2(getUrl('customers/add'), 'e', $msg);
         }
@@ -712,6 +828,13 @@ switch ($action) {
         $service_type = _post('service_type');
         $coordinates = _post('coordinates');
         $status = _post('status');
+        $genieacs_device_id = trim((string) _post('genieacs_device_id'));
+        $genieacs_device_label = trim((string) _post('genieacs_device_label'));
+        $service_supports_genieacs = in_array(strtoupper((string) $service_type), ['PPPOE', 'OTHERS'], true);
+        if (!$service_supports_genieacs) {
+            $genieacs_device_id = '';
+            $genieacs_device_label = '';
+        }
         //additional information
         $city = _post('city');
         $district = _post('district');
@@ -731,6 +854,12 @@ switch ($action) {
 
         if (!Validator::PhoneWithCountry($phonenumber_raw)) {
             $msg .= Lang::T('Invalid phone number; start with 62 or 0') . '<br>';
+        }
+        if ($service_supports_genieacs && strlen($genieacs_device_id) > 190) {
+            $msg .= Lang::T('GenieACS device ID is too long') . '<br>';
+        }
+        if ($service_supports_genieacs && strlen($genieacs_device_label) > 255) {
+            $msg .= Lang::T('GenieACS device label is too long') . '<br>';
         }
 
         $c = ORM::for_table('tbl_customers')->find_one($id);
@@ -889,6 +1018,21 @@ switch ($action) {
                 $c->account_manager_id = $account_manager_id;
             }
             $c->save();
+            $genieacsSyncNotice = '';
+            if (class_exists('GenieACS')) {
+                if ($service_supports_genieacs && $genieacs_device_id !== '') {
+                    GenieACS::setAssignedDevice($c['id'], $genieacs_device_id, $genieacs_device_label);
+                    $genieacsSyncNotice = $syncGenieAcsPppCredentials(
+                        $c['id'],
+                        $service_supports_genieacs,
+                        $genieacs_device_id,
+                        $pppoe_username,
+                        $pppoe_password
+                    );
+                } else {
+                    GenieACS::clearAssignedDevice($c['id']);
+                }
+            }
 
 
             // Update Customers Attributes values in tbl_customers_fields table
@@ -971,7 +1115,11 @@ switch ($action) {
                     $tur->save();
                 }
             }
-            r2(getUrl('customers/view/') . $id, 's', 'User Updated Successfully');
+            $successMessage = 'User Updated Successfully';
+            if ($genieacsSyncNotice !== '') {
+                $successMessage .= '<br>' . $genieacsSyncNotice;
+            }
+            r2(getUrl('customers/view/') . $id, 's', $successMessage);
         } else {
             r2(getUrl('customers/edit/') . $id, 'e', $msg);
         }

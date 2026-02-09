@@ -155,6 +155,37 @@
                             <span class="help-block">{Lang::T('Also Working for freeradius')}</span>
                         </div>
                     </div>
+                    <div id="genieacs-device-wrap">
+                        <div class="form-group">
+                            <label class="col-md-3 control-label">GenieACS Device</label>
+                            <div class="col-md-9">
+                                {if $genieacs_enabled}
+                                    <select class="form-control select2" id="genieacs_device_id" name="genieacs_device_id"
+                                        style="width: 100%">
+                                        <option value="">- {Lang::T('Select')} -</option>
+                                        {foreach $genieacs_devices as $gDevice}
+                                            <option value="{$gDevice['id']|escape}"
+                                                data-label="{$gDevice['text']|escape}"
+                                                {if $genieacs_selected_device_id eq $gDevice['id']}selected{/if}>
+                                                {$gDevice['text']|escape}
+                                            </option>
+                                        {/foreach}
+                                    </select>
+                                    {if !empty($genieacs_error)}
+                                        <span class="help-block text-warning">{$genieacs_error|escape}</span>
+                                    {/if}
+                                {else}
+                                    <input type="text" class="form-control"
+                                        value="{Lang::T('GenieACS integration disabled in Settings > App')}" disabled>
+                                {/if}
+                                <input type="hidden" id="genieacs_device_label" name="genieacs_device_label"
+                                    value="{$genieacs_selected_device_label|default:''|escape}">
+                                <span class="help-block">
+                                    {Lang::T('Auto-discovered from GenieACS Devices list. Available for PPPoE/Other service type.')}
+                                </span>
+                            </div>
+                        </div>
+                    </div>
                     <span class="help-block">
                         {Lang::T('User Cannot change this, only admin. if it Empty it will use Customer Credentials')}
                     </span>
@@ -257,6 +288,10 @@
             var accountManagerMode = document.getElementById('account_manager_mode');
             var accountManagerListWrap = document.getElementById('account-manager-list-wrap');
             var accountManagerSelect = document.getElementById('account_manager_id');
+            var serviceTypeSelect = document.getElementById('service_type');
+            var genieAcsDeviceWrap = document.getElementById('genieacs-device-wrap');
+            var genieAcsDeviceSelect = document.getElementById('genieacs_device_id');
+            var genieAcsDeviceLabel = document.getElementById('genieacs_device_label');
 
             function toggleAccountManagerList() {
                 if (!accountManagerMode || !accountManagerListWrap || !accountManagerSelect) {
@@ -281,12 +316,60 @@
                 }
             }
 
+            function isGenieAcsServiceType(value) {
+                var normalized = (value || '').toLowerCase();
+                return normalized === 'pppoe' || normalized === 'others';
+            }
+
+            function syncGenieAcsLabel() {
+                if (!genieAcsDeviceSelect || !genieAcsDeviceLabel) {
+                    return;
+                }
+                var option = genieAcsDeviceSelect.options[genieAcsDeviceSelect.selectedIndex];
+                if (!option || genieAcsDeviceSelect.value === '') {
+                    genieAcsDeviceLabel.value = '';
+                    return;
+                }
+                genieAcsDeviceLabel.value = option.getAttribute('data-label') || option.text || '';
+            }
+
+            function toggleGenieAcsFields() {
+                if (!serviceTypeSelect || !genieAcsDeviceWrap) {
+                    return;
+                }
+                var show = isGenieAcsServiceType(serviceTypeSelect.value);
+                genieAcsDeviceWrap.style.display = show ? 'block' : 'none';
+                if (genieAcsDeviceSelect) {
+                    genieAcsDeviceSelect.disabled = !show;
+                    if (!show) {
+                        genieAcsDeviceSelect.value = '';
+                        if (window.jQuery && jQuery(genieAcsDeviceSelect).hasClass('select2-hidden-accessible')) {
+                            jQuery(genieAcsDeviceSelect).val('').trigger('change.select2');
+                        }
+                    }
+                }
+                if (!show && genieAcsDeviceLabel) {
+                    genieAcsDeviceLabel.value = '';
+                }
+            }
+
             toggleMethodSection();
             toggleAccountManagerList();
+            toggleGenieAcsFields();
+            syncGenieAcsLabel();
 
             sendWelcomeCheckbox.addEventListener('change', toggleMethodSection);
             if (accountManagerMode) {
                 accountManagerMode.addEventListener('change', toggleAccountManagerList);
+            }
+            if (serviceTypeSelect) {
+                serviceTypeSelect.addEventListener('change', toggleGenieAcsFields);
+            }
+            if (genieAcsDeviceSelect) {
+                genieAcsDeviceSelect.addEventListener('change', syncGenieAcsLabel);
+                if (window.jQuery && jQuery(genieAcsDeviceSelect).hasClass('select2-hidden-accessible')) {
+                    jQuery(genieAcsDeviceSelect).on('change', syncGenieAcsLabel);
+                }
             }
             document.querySelector('form').addEventListener('submit', function(event) {
                 if (sendWelcomeCheckbox.checked) {

@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: PHPNuxBill Internal API
-  version: 2026.01.31
+  version: 2026.2.9
   description: 'Generated from `docs/api.md`.
 
 
@@ -7364,6 +7364,10 @@ paths:
                   type: string
                 using:
                   type: string
+                note:
+                  type: string
+                  maxLength: 256
+                  description: Optional note for transaction.
               additionalProperties: true
           multipart/form-data:
             schema:
@@ -7382,6 +7386,10 @@ paths:
                   type: string
                 using:
                   type: string
+                note:
+                  type: string
+                  maxLength: 256
+                  description: Optional note for transaction.
               additionalProperties: true
   /plan/recharge-post:
     post:
@@ -7449,6 +7457,10 @@ paths:
                   type: string
                 using:
                   type: string
+                note:
+                  type: string
+                  maxLength: 256
+                  description: Optional note for transaction.
               additionalProperties: true
           multipart/form-data:
             schema:
@@ -7469,6 +7481,10 @@ paths:
                   type: string
                 using:
                   type: string
+                note:
+                  type: string
+                  maxLength: 256
+                  description: Optional note for transaction.
               additionalProperties: true
   /plan/view/{id}/{p3}:
     get:

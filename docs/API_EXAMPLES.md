@@ -5113,6 +5113,7 @@ curl -s \
   -d "plan=<value>" \
   -d "server=<value>" \
   -d "using=<value>" \
+  -d "note=<optional_note>" \
   "https://<domain>/system/api.php/plan/recharge-confirm"
 ```
 
@@ -5125,6 +5126,7 @@ curl -s \
   -d "plan=<value>" \
   -d "server=<value>" \
   -d "using=<value>" \
+  -d "note=<optional_note>" \
   "https://<domain>/system/api.php/plan/recharge-confirm"
 ```
 
@@ -5137,6 +5139,7 @@ curl -s \
   -d "plan=<value>" \
   -d "server=<value>" \
   -d "using=<value>" \
+  -d "note=<optional_note>" \
   "https://<domain>/system/api.php/plan/recharge-confirm"
 ```
 
@@ -5149,6 +5152,7 @@ curl -s \
   -d "plan=<value>" \
   -d "server=<value>" \
   -d "using=<value>" \
+  -d "note=<optional_note>" \
   "https://<domain>/system/api.php/plan/recharge-confirm"
 ```
 
@@ -5160,6 +5164,7 @@ curl -s \
   -d "plan=<value>" \
   -d "server=<value>" \
   -d "using=<value>" \
+  -d "note=<optional_note>" \
   "https://<domain>/system/api.php?r=plan/recharge-confirm&token=a.<aid>.<time>.<sha1>"
 ```
 
@@ -5178,6 +5183,7 @@ curl -s \
   -d "server=<value>" \
   -d "svoucher=<value>" \
   -d "using=<value>" \
+  -d "note=<optional_note>" \
   "https://<domain>/system/api.php/plan/recharge-post"
 ```
 
@@ -5191,6 +5197,7 @@ curl -s \
   -d "server=<value>" \
   -d "svoucher=<value>" \
   -d "using=<value>" \
+  -d "note=<optional_note>" \
   "https://<domain>/system/api.php/plan/recharge-post"
 ```
 
@@ -5204,6 +5211,7 @@ curl -s \
   -d "server=<value>" \
   -d "svoucher=<value>" \
   -d "using=<value>" \
+  -d "note=<optional_note>" \
   "https://<domain>/system/api.php/plan/recharge-post"
 ```
 
@@ -5217,6 +5225,7 @@ curl -s \
   -d "server=<value>" \
   -d "svoucher=<value>" \
   -d "using=<value>" \
+  -d "note=<optional_note>" \
   "https://<domain>/system/api.php/plan/recharge-post"
 ```
 
@@ -5229,6 +5238,7 @@ curl -s \
   -d "server=<value>" \
   -d "svoucher=<value>" \
   -d "using=<value>" \
+  -d "note=<optional_note>" \
   "https://<domain>/system/api.php?r=plan/recharge-post&token=a.<aid>.<time>.<sha1>"
 ```
 

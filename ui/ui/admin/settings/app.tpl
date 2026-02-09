@@ -161,6 +161,47 @@
     </div>
 
     <div class="panel" id="accordion" role="tablist" aria-multiselectable="true">
+        <div class="panel-heading" role="tab" id="AcsIntegration">
+            <h3 class="panel-title">
+                <a role="button" data-toggle="collapse" data-parent="#accordion" href="#collapseAcsIntegration"
+                    aria-expanded="true" aria-controls="collapseAcsIntegration">
+                    ACS Integration
+                </a>
+            </h3>
+        </div>
+        <div id="collapseAcsIntegration" class="panel-collapse collapse" role="tabpanel"
+            aria-labelledby="headingAcsIntegration">
+            <div class="panel-body">
+                <div class="form-group">
+                    <label class="col-md-3 control-label">{Lang::T('Enable Integration')}</label>
+                    <div class="col-md-5">
+                        <select name="genieacs_enable" id="genieacs_enable" class="form-control">
+                            <option value="no" {if ($_c['genieacs_enable']|default:'no')=='no' }selected="selected" {/if}>
+                                {Lang::T('Disable')}
+                            </option>
+                            <option value="yes" {if ($_c['genieacs_enable']|default:'no')=='yes' }selected="selected" {/if}>
+                                {Lang::T('Enable')}
+                            </option>
+                        </select>
+                    </div>
+                    <span class="help-block col-md-4">GenieACS (TR-069/TR-181)</span>
+                </div>
+                <div class="form-group" id="genieacs_url_wrap">
+                    <label class="col-md-3 control-label">GenieACS URL</label>
+                    <div class="col-md-5">
+                        <input type="url" class="form-control" id="genieacs_url" name="genieacs_url"
+                            value="{($_c['genieacs_url']|default:'')|escape}" placeholder="http://localhost:7557">
+                    </div>
+                    <span class="help-block col-md-4">{Lang::T('Example')}: http://localhost:7557</span>
+                </div>
+                <button class="btn btn-success btn-block js-settings-submit" type="button">
+                    {Lang::T('Save Changes')}
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <div class="panel" id="accordion" role="tablist" aria-multiselectable="true">
         <div class="panel-heading" role="tab" id="LoginPage">
             <h3 class="panel-title">
                 <a role="button" data-toggle="collapse" data-parent="#accordion" href="#collapseLoginPage"
@@ -1668,6 +1709,21 @@
         var turnstileAdmin = document.getElementById('turnstile_admin_enabled');
         var turnstileClient = document.getElementById('turnstile_client_enabled');
         var turnstileSiteKey = document.querySelector('input[name="turnstile_site_key"]');
+        var genieAcsEnable = document.getElementById('genieacs_enable');
+        var genieAcsUrlWrap = document.getElementById('genieacs_url_wrap');
+        var genieAcsUrl = document.getElementById('genieacs_url');
+
+        function toggleGenieAcsUrlRequirement() {
+            if (!genieAcsEnable || !genieAcsUrlWrap || !genieAcsUrl) {
+                return;
+            }
+            var enabled = genieAcsEnable.value === 'yes';
+            genieAcsUrlWrap.style.display = enabled ? '' : 'none';
+            genieAcsUrl.required = enabled;
+            if (!enabled) {
+                genieAcsUrl.value = genieAcsUrl.value.trim();
+            }
+        }
 
         function requireTurnstileSiteKey() {
             if (!turnstileSiteKey || !turnstileAdmin || !turnstileClient) {
@@ -1683,6 +1739,10 @@
         }
         if (turnstileClient) {
             turnstileClient.addEventListener('change', requireTurnstileSiteKey);
+        }
+        toggleGenieAcsUrlRequirement();
+        if (genieAcsEnable) {
+            genieAcsEnable.addEventListener('change', toggleGenieAcsUrlRequirement);
         }
 
         if (sectionTimeoutCheckbox && timeoutDurationInput && timeoutDurationField) {

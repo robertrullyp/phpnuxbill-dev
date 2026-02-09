@@ -113,6 +113,62 @@ if (_post('send') == 'balance') {
         }
     }
     r2(getUrl('home'), 'w', Lang::T('Your friend do not have active package'));
+} else if (_post('send') == 'genieacs_wifi_update') {
+    $csrf_token = _post('csrf_token');
+    if (!Csrf::check($csrf_token)) {
+        r2(getUrl('home'), 'e', Lang::T('Invalid or Expired CSRF Token') . '.');
+    }
+    Csrf::generateAndStoreToken();
+
+    if (!class_exists('GenieACS') || !GenieACS::isEnabled($config)) {
+        r2(getUrl('home'), 'e', Lang::T('GenieACS integration is disabled'));
+    }
+
+    $assignedDeviceId = GenieACS::getAssignedDeviceId($user['id']);
+    if ($assignedDeviceId === '') {
+        r2(getUrl('home'), 'e', Lang::T('Device not assigned. Contact admin.'));
+    }
+
+    $deviceId = trim((string) _post('device_id'));
+    if ($deviceId !== '' && $deviceId !== $assignedDeviceId) {
+        r2(getUrl('home'), 'e', Lang::T('Invalid device assignment'));
+    }
+
+    $bills = User::_billing();
+    if (!GenieACS::hasEligiblePppoeBill($bills)) {
+        r2(getUrl('home'), 'e', Lang::T('No active PPPoE package'));
+    }
+
+    $ssid = trim((string) _post('wifi_ssid'));
+    $password = trim((string) _post('wifi_password'));
+    if ($ssid === '' || strlen($ssid) > 64) {
+        r2(getUrl('home'), 'e', Lang::T('SSID must be between 1 and 64 characters'));
+    }
+    $passwordLength = strlen($password);
+    if ($passwordLength < 8 || $passwordLength > 63) {
+        r2(getUrl('home'), 'e', Lang::T('WiFi password must be between 8 and 63 characters'));
+    }
+
+    $ssidPath = trim((string) _post('ssid_path'));
+    $passwordPath = trim((string) _post('password_path'));
+    if (!preg_match('/^(InternetGatewayDevice|Device)\./', $ssidPath)) {
+        $ssidPath = '';
+    }
+    if (!preg_match('/^(InternetGatewayDevice|Device)\./', $passwordPath)) {
+        $passwordPath = '';
+    }
+
+    $update = GenieACS::updateWifiCredentials($config, $assignedDeviceId, $ssid, $password, $ssidPath, $passwordPath);
+    if (empty($update['success'])) {
+        $error = trim((string) ($update['error'] ?? ''));
+        if ($error === '') {
+            $error = Lang::T('Failed to update WiFi settings');
+        }
+        r2(getUrl('home'), 'e', $error);
+    }
+
+    GenieACS::saveWifiCache($user['id'], $ssid, $password);
+    r2(getUrl('home'), 's', Lang::T('WiFi settings updated successfully'));
 }
 
 

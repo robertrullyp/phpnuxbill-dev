@@ -931,6 +931,23 @@ switch ($action) {
             $_POST['admin_api_key_backoff_reset_window'] = $backoff_reset;
             $_POST['admin_api_key_allowlist'] = trim((string) _post('admin_api_key_allowlist', ''));
 
+            $_POST['genieacs_enable'] = _post('genieacs_enable', 'no') === 'yes' ? 'yes' : 'no';
+            $genieacs_url = trim((string) _post('genieacs_url', ''));
+            if ($genieacs_url !== '' && !preg_match('/^https?:\/\//i', $genieacs_url)) {
+                r2(getUrl('settings/app'), 'e', 'GenieACS URL must start with http:// or https://');
+            }
+            if ($genieacs_url !== '') {
+                $parsed_genieacs = parse_url($genieacs_url);
+                if (empty($parsed_genieacs['scheme']) || empty($parsed_genieacs['host'])) {
+                    r2(getUrl('settings/app'), 'e', 'Invalid GenieACS URL');
+                }
+                $genieacs_url = rtrim($genieacs_url, '/');
+            }
+            if ($_POST['genieacs_enable'] === 'yes' && $genieacs_url === '') {
+                r2(getUrl('settings/app'), 'e', 'GenieACS URL is required when integration is enabled');
+            }
+            $_POST['genieacs_url'] = $genieacs_url;
+
             // hide dashboard
             $_POST['hide_mrc'] = _post('hide_mrc', 'no');
             $_POST['hide_tms'] = _post('hide_tms', 'no');

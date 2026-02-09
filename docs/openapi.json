@@ -2,7 +2,7 @@
   "openapi": "3.0.3",
   "info": {
     "title": "PHPNuxBill Internal API",
-    "version": "2026.01.31",
+    "version": "2026.2.9",
     "description": "Generated from `docs/api.md`.\n\nThis API is controller-based (not pure REST).\nLegacy calls use `/system/api.php?r=<route>`; the OpenAPI spec uses PATH_INFO style `/system/api.php/<route>`."
   },
   "servers": [
@@ -10524,6 +10524,11 @@
                   },
                   "using": {
                     "type": "string"
+                  },
+                  "note": {
+                    "type": "string",
+                    "maxLength": 256,
+                    "description": "Optional note for transaction."
                   }
                 },
                 "additionalProperties": true
@@ -10550,6 +10555,11 @@
                   },
                   "using": {
                     "type": "string"
+                  },
+                  "note": {
+                    "type": "string",
+                    "maxLength": 256,
+                    "description": "Optional note for transaction."
                   }
                 },
                 "additionalProperties": true
@@ -10647,6 +10657,11 @@
                   },
                   "using": {
                     "type": "string"
+                  },
+                  "note": {
+                    "type": "string",
+                    "maxLength": 256,
+                    "description": "Optional note for transaction."
                   }
                 },
                 "additionalProperties": true
@@ -10676,6 +10691,11 @@
                   },
                   "using": {
                     "type": "string"
+                  },
+                  "note": {
+                    "type": "string",
+                    "maxLength": 256,
+                    "description": "Optional note for transaction."
                   }
                 },
                 "additionalProperties": true

@@ -241,5 +241,6 @@
   ],
   "2026.2.8": [
     "ALTER TABLE `tbl_customers` ADD `account_manager_id` INT NOT NULL DEFAULT '0' COMMENT '0 means all users can access' AFTER `created_by`;"
-  ]
+  ],
+  "2026.2.9": []
 }

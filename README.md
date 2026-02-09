@@ -17,8 +17,8 @@ Important notes:
 
 ## Current Release
 
-- **Version:** `2026.2.8`
-- **Focus:** Hierarchical role hardening (`SuperAdmin > Admin > Agent > Sales/Report`), router access inheritance (`All/List`), and customer Account Manager assignment (`All/List`).
+- **Version:** `2026.2.9`
+- **Focus:** GenieACS integration (ACS settings, device assignment, customer WiFi edit on dashboard), PPP sync targeting WAN `Internet` connection profiles, and release hardening for customer edit/navigation + ACS compatibility.
 
 ## What's New in This Fork
 

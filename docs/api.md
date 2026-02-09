@@ -2170,14 +2170,18 @@ Example response (JSON):
 - Method: POST (implicit; uses POST params)
 - Path params: (tidak ada)
 - GET params: (tidak ada)
-- POST params: `csrf_token`, `id_customer`, `plan`, `server`, `using`
+- POST params: `csrf_token`, `id_customer`, `plan`, `server`, `using`, `note` (opsional, max 256 karakter)
 - REQUEST params: (tidak ada)
+- Catatan: pada mode API, `csrf_token` diabaikan (CSRF bypass saat `isApi=true`).
 Example request:
 ```bash
 curl -s -X POST "https://<domain>/system/api.php?r=plan/recharge-confirm&token=a.<aid>.<time>.<sha1>" 
   -d "csrf_token=<value>" 
   -d "id_customer=<value>" 
   -d "plan=<value>" 
+  -d "server=<value>" 
+  -d "using=<value>" 
+  -d "note=<optional_note>" 
   # ... lihat daftar parameter di atas
 ```
 Example response (JSON):
@@ -2190,14 +2194,19 @@ Example response (JSON):
 - Method: POST (implicit; uses POST params)
 - Path params: (tidak ada)
 - GET params: (tidak ada)
-- POST params: `csrf_token`, `id_customer`, `plan`, `server`, `svoucher`, `using`
+- POST params: `csrf_token`, `id_customer`, `plan`, `server`, `svoucher`, `using`, `note` (opsional, max 256 karakter)
 - REQUEST params: (tidak ada)
+- Catatan: pada mode API, `csrf_token` diabaikan (CSRF bypass saat `isApi=true`).
 Example request:
 ```bash
 curl -s -X POST "https://<domain>/system/api.php?r=plan/recharge-post&token=a.<aid>.<time>.<sha1>" 
   -d "csrf_token=<value>" 
   -d "id_customer=<value>" 
   -d "plan=<value>" 
+  -d "server=<value>" 
+  -d "svoucher=<value>" 
+  -d "using=<value>" 
+  -d "note=<optional_note>" 
   # ... lihat daftar parameter di atas
 ```
 Example response (JSON):
