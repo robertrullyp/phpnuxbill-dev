@@ -256,6 +256,509 @@ function _admin($login = true)
     }
 }
 
+function _router_access_user_row($user)
+{
+    if ($user instanceof ORM) {
+        return $user->as_array();
+    }
+    if (is_array($user)) {
+        return $user;
+    }
+    return [];
+}
+
+function _router_access_parse_user_data($raw)
+{
+    if (is_array($raw)) {
+        return $raw;
+    }
+    if (!is_string($raw)) {
+        return [];
+    }
+    $raw = trim($raw);
+    if ($raw === '') {
+        return [];
+    }
+    $decoded = json_decode($raw, true);
+    return is_array($decoded) ? $decoded : [];
+}
+
+function _router_access_normalize_ids($value)
+{
+    if (is_string($value)) {
+        $value = trim($value);
+        if ($value === '') {
+            return [];
+        }
+        $decoded = json_decode($value, true);
+        if (is_array($decoded)) {
+            $value = $decoded;
+        } else {
+            $value = preg_split('/[\s,]+/', $value);
+        }
+    }
+    if (!is_array($value)) {
+        return [];
+    }
+    $ids = [];
+    foreach ($value as $item) {
+        $id = (int) $item;
+        if ($id > 0) {
+            $ids[$id] = $id;
+        }
+    }
+    return array_values($ids);
+}
+
+function _router_access_all_router_rows($enabledOnly = false)
+{
+    static $cache = [];
+    $key = $enabledOnly ? 'enabled' : 'all';
+    if (isset($cache[$key])) {
+        return $cache[$key];
+    }
+
+    $query = ORM::for_table('tbl_routers')->order_by_asc('name');
+    if ($enabledOnly) {
+        $query->where('enabled', '1');
+    }
+    $cache[$key] = $query->find_array();
+    return $cache[$key];
+}
+
+function _router_access_router_maps($enabledOnly = false)
+{
+    static $cache = [];
+    $key = $enabledOnly ? 'enabled' : 'all';
+    if (isset($cache[$key])) {
+        return $cache[$key];
+    }
+    $idToName = [];
+    $nameToId = [];
+    foreach (_router_access_all_router_rows($enabledOnly) as $row) {
+        $id = (int) ($row['id'] ?? 0);
+        $name = trim((string) ($row['name'] ?? ''));
+        if ($id > 0 && $name !== '') {
+            $idToName[$id] = $name;
+            $nameToId[$name] = $id;
+        }
+    }
+    $cache[$key] = [$idToName, $nameToId];
+    return $cache[$key];
+}
+
+function _router_access_all_router_ids($enabledOnly = false)
+{
+    [$idToName, $nameToId] = _router_access_router_maps($enabledOnly);
+    return array_keys($idToName);
+}
+
+function _router_access_user_by_id($id)
+{
+    static $cache = [];
+    $id = (int) $id;
+    if ($id < 1) {
+        return null;
+    }
+    if (array_key_exists($id, $cache)) {
+        return $cache[$id];
+    }
+    $row = ORM::for_table('tbl_users')->find_one($id);
+    $cache[$id] = $row ? $row->as_array() : null;
+    return $cache[$id];
+}
+
+function _router_access_assignment($user)
+{
+    $user = _router_access_user_row($user);
+    $data = _router_access_parse_user_data($user['data'] ?? '');
+
+    $mode = strtolower(trim((string) ($data['router_assignment_mode'] ?? ($data['router_access_mode'] ?? 'all'))));
+    if (!in_array($mode, ['all', 'list'], true)) {
+        $mode = 'all';
+    }
+
+    $ids = _router_access_normalize_ids($data['router_assignment_ids'] ?? ($data['router_access_ids'] ?? []));
+
+    return [
+        'mode' => $mode,
+        'ids' => $ids,
+    ];
+}
+
+function _router_access_parent_user($user)
+{
+    $user = _router_access_user_row($user);
+    $root = (int) ($user['root'] ?? 0);
+    $id = (int) ($user['id'] ?? 0);
+    if ($root < 1 || ($id > 0 && $root === $id)) {
+        return null;
+    }
+    return _router_access_user_by_id($root);
+}
+
+function _router_access_allowed_ids_for_user($user, $enabledOnly = true, $depth = 0, &$stack = [])
+{
+    $row = _router_access_user_row($user);
+    if (empty($row)) {
+        return [];
+    }
+
+    $uid = (int) ($row['id'] ?? 0);
+    $role = trim((string) ($row['user_type'] ?? ''));
+    $allIds = _router_access_all_router_ids($enabledOnly);
+
+    if ($role === 'SuperAdmin') {
+        return $allIds;
+    }
+    if ($depth > 8) {
+        return [];
+    }
+
+    $memoSource = [
+        'id' => $uid,
+        'role' => $role,
+        'root' => (int) ($row['root'] ?? 0),
+        'assignment' => _router_access_assignment($row),
+        'enabled' => $enabledOnly ? 1 : 0,
+    ];
+    $memoKey = md5(json_encode($memoSource));
+    static $memo = [];
+    if (isset($memo[$memoKey])) {
+        return $memo[$memoKey];
+    }
+
+    if ($uid > 0) {
+        if (isset($stack[$uid])) {
+            return [];
+        }
+        $stack[$uid] = true;
+    }
+
+    $parent = _router_access_parent_user($row);
+    if ($parent) {
+        $parentIds = _router_access_allowed_ids_for_user($parent, $enabledOnly, $depth + 1, $stack);
+    } else {
+        // Hardened behavior: non-super users without valid parent have no router scope.
+        $parentIds = [];
+    }
+
+    $assignment = _router_access_assignment($row);
+    if ($assignment['mode'] === 'list') {
+        $allowed = array_values(array_intersect($parentIds, $assignment['ids']));
+    } else {
+        $allowed = $parentIds;
+    }
+
+    if ($uid > 0) {
+        unset($stack[$uid]);
+    }
+
+    $memo[$memoKey] = $allowed;
+    return $allowed;
+}
+
+function _router_get_accessible_router_ids($admin = null, $enabledOnly = true)
+{
+    $user = _router_access_user_row($admin);
+    if (empty($user)) {
+        $current = Admin::_info();
+        $user = _router_access_user_row($current);
+    }
+    if (empty($user)) {
+        return [];
+    }
+    $stack = [];
+    return _router_access_allowed_ids_for_user($user, $enabledOnly, 0, $stack);
+}
+
+function _router_get_accessible_router_names($admin = null, $enabledOnly = true)
+{
+    [$idToName, $nameToId] = _router_access_router_maps($enabledOnly);
+    $ids = _router_get_accessible_router_ids($admin, $enabledOnly);
+    $names = [];
+    foreach ($ids as $id) {
+        $id = (int) $id;
+        if (isset($idToName[$id])) {
+            $names[] = $idToName[$id];
+        }
+    }
+    return $names;
+}
+
+function _router_get_accessible_routers($admin = null, $enabledOnly = true)
+{
+    $user = _router_access_user_row($admin);
+    if (empty($user)) {
+        $current = Admin::_info();
+        $user = _router_access_user_row($current);
+    }
+
+    if (empty($user)) {
+        return [];
+    }
+
+    $query = ORM::for_table('tbl_routers')->order_by_asc('name');
+    if ($enabledOnly) {
+        $query->where('enabled', '1');
+    }
+
+    if (($user['user_type'] ?? '') === 'SuperAdmin') {
+        return $query->find_many();
+    }
+
+    $ids = _router_get_accessible_router_ids($user, $enabledOnly);
+    if (empty($ids)) {
+        return [];
+    }
+    return $query->where_in('id', $ids)->find_many();
+}
+
+function _router_can_access_router($router, $admin = null, $allowSpecial = [])
+{
+    $router = trim((string) $router);
+    if ($router === '') {
+        return false;
+    }
+
+    $allow = [];
+    foreach ((array) $allowSpecial as $special) {
+        $special = trim((string) $special);
+        if ($special !== '') {
+            $allow[$special] = true;
+        }
+    }
+    if (isset($allow[$router])) {
+        return true;
+    }
+
+    if (ctype_digit($router)) {
+        $allowedIds = _router_get_accessible_router_ids($admin, false);
+        return in_array((int) $router, $allowedIds, true);
+    }
+
+    $allowedNames = _router_get_accessible_router_names($admin, false);
+    return in_array($router, $allowedNames, true);
+}
+
+function _router_filter_allowed_names($routers, $admin = null, $allowSpecial = [])
+{
+    $routers = is_array($routers) ? $routers : [];
+    $result = [];
+    foreach ($routers as $router) {
+        $router = trim((string) $router);
+        if ($router === '') {
+            continue;
+        }
+        if (_router_can_access_router($router, $admin, $allowSpecial)) {
+            $result[$router] = $router;
+        }
+    }
+    return array_values($result);
+}
+
+function _customer_access_user_row($user)
+{
+    if ($user instanceof ORM) {
+        return $user->as_array();
+    }
+    if (is_array($user)) {
+        return $user;
+    }
+    return [];
+}
+
+function _customer_am_column_exists()
+{
+    static $checked = false;
+    static $exists = false;
+    if ($checked) {
+        return $exists;
+    }
+
+    try {
+        $db = ORM::get_db();
+        if ($db) {
+            $stmt = $db->query("SHOW COLUMNS FROM `tbl_customers` LIKE 'account_manager_id'");
+            $exists = (bool) ($stmt ? $stmt->fetch(PDO::FETCH_ASSOC) : false);
+        }
+    } catch (Throwable $e) {
+        $exists = false;
+    }
+
+    $checked = true;
+    return $exists;
+}
+
+function _customer_am_allowed_roles()
+{
+    return ['SuperAdmin', 'Admin', 'Agent', 'Sales'];
+}
+
+function _customer_am_user_by_id($id)
+{
+    static $cache = [];
+    $id = (int) $id;
+    if ($id < 1) {
+        return null;
+    }
+    if (array_key_exists($id, $cache)) {
+        return $cache[$id];
+    }
+
+    $row = ORM::for_table('tbl_users')->find_one($id);
+    $cache[$id] = $row ? $row->as_array() : null;
+    return $cache[$id];
+}
+
+function _customer_am_rows()
+{
+    static $rows = null;
+    if ($rows !== null) {
+        return $rows;
+    }
+
+    $rows = ORM::for_table('tbl_users')
+        ->select_many('id', 'username', 'fullname', 'user_type', 'status')
+        ->where_in('user_type', _customer_am_allowed_roles())
+        ->order_by_asc('user_type')
+        ->order_by_asc('username')
+        ->find_array();
+
+    return $rows;
+}
+
+function _customer_am_label_map()
+{
+    static $labels = null;
+    if ($labels !== null) {
+        return $labels;
+    }
+
+    $labels = [];
+    foreach (_customer_am_rows() as $row) {
+        $id = (int) ($row['id'] ?? 0);
+        if ($id < 1) {
+            continue;
+        }
+        $fullname = trim((string) ($row['fullname'] ?? ''));
+        $username = trim((string) ($row['username'] ?? ''));
+        $role = trim((string) ($row['user_type'] ?? ''));
+        $label = $username;
+        if ($fullname !== '') {
+            $label = $fullname . ' (' . $username . ')';
+        }
+        if ($role !== '') {
+            $label .= ' [' . $role . ']';
+        }
+        $labels[$id] = $label;
+    }
+
+    return $labels;
+}
+
+function _customer_am_resolve($rawId, &$error = '')
+{
+    $error = '';
+    $id = (int) $rawId;
+    if ($id < 1) {
+        return 0;
+    }
+    if (!_customer_am_column_exists()) {
+        return 0;
+    }
+
+    $row = _customer_am_user_by_id($id);
+    if (empty($row) || !in_array((string) ($row['user_type'] ?? ''), _customer_am_allowed_roles(), true)) {
+        $error = Lang::T('Invalid account manager');
+        return 0;
+    }
+
+    return $id;
+}
+
+function _customer_am_id($customer)
+{
+    if (!_customer_am_column_exists()) {
+        return 0;
+    }
+    $customer = _customer_access_user_row($customer);
+    return max(0, (int) ($customer['account_manager_id'] ?? 0));
+}
+
+function _customer_can_edit_assignment($admin = null)
+{
+    $actor = _customer_access_user_row($admin);
+    if (empty($actor)) {
+        $actor = _customer_access_user_row(Admin::_info());
+    }
+    $role = trim((string) ($actor['user_type'] ?? ''));
+    return in_array($role, ['SuperAdmin', 'Admin'], true);
+}
+
+function _customer_can_access($customer, $admin = null)
+{
+    if (!_customer_am_column_exists()) {
+        return true;
+    }
+
+    $customerRow = _customer_access_user_row($customer);
+    if (empty($customerRow)) {
+        return false;
+    }
+
+    $actor = _customer_access_user_row($admin);
+    if (empty($actor)) {
+        $actor = _customer_access_user_row(Admin::_info());
+    }
+    if (empty($actor)) {
+        return false;
+    }
+
+    $role = trim((string) ($actor['user_type'] ?? ''));
+    if (in_array($role, ['SuperAdmin', 'Admin'], true)) {
+        return true;
+    }
+
+    $amId = _customer_am_id($customerRow);
+    if ($amId < 1) {
+        return true;
+    }
+
+    return $amId === (int) ($actor['id'] ?? 0);
+}
+
+function _customer_apply_scope($query, $admin = null, $tableAlias = 'tbl_customers')
+{
+    if (!_customer_am_column_exists()) {
+        return $query;
+    }
+
+    $actor = _customer_access_user_row($admin);
+    if (empty($actor)) {
+        $actor = _customer_access_user_row(Admin::_info());
+    }
+    if (empty($actor)) {
+        return $query->where('id', -1);
+    }
+
+    $role = trim((string) ($actor['user_type'] ?? ''));
+    if (in_array($role, ['SuperAdmin', 'Admin'], true)) {
+        return $query;
+    }
+
+    $uid = (int) ($actor['id'] ?? 0);
+    if ($uid < 1) {
+        return $query->where('id', -1);
+    }
+
+    $tableAlias = trim((string) $tableAlias);
+    $tableAlias = str_replace('`', '', $tableAlias);
+    $column = ($tableAlias !== '') ? ('`' . $tableAlias . '`.`account_manager_id`') : '`account_manager_id`';
+    $query->where_raw('(' . $column . ' = 0 OR ' . $column . ' = ?)', [$uid]);
+    return $query;
+}
+
 
 function _log($description, $type = '', $userid = '0')
 {

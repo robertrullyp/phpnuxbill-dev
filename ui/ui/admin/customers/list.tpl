@@ -141,6 +141,9 @@
                                 <th>Photo</th>
                                 <th>{Lang::T('Account Type')}</th>
                                 <th>{Lang::T('Full Name')}</th>
+                                {if $customer_am_enabled}
+                                    <th>{Lang::T('Account Manager')}</th>
+                                {/if}
                                 <th>{Lang::T('Balance')}</th>
                                 <th>{Lang::T('Contact')}</th>
                                 <th>{Lang::T('Package')}</th>
@@ -172,6 +175,18 @@
                                 <td>{$ds['account_type']}</td>
                                 <td onclick="window.location.href = '{Text::url('customers/view/', $ds['id'])}'"
                                     style="cursor: pointer;">{$ds['fullname']}</td>
+                                {if $customer_am_enabled}
+                                    {assign var='rowAmId' value=$ds['account_manager_id']|default:0}
+                                    <td>
+                                        {if $rowAmId gt 0 && isset($customer_am_labels[$rowAmId])}
+                                            {$customer_am_labels[$rowAmId]}
+                                        {elseif $rowAmId gt 0}
+                                            User #{$rowAmId}
+                                        {else}
+                                            All Users
+                                        {/if}
+                                    </td>
+                                {/if}
                                 <td>{Lang::moneyFormat($ds['balance'])}</td>
                                 <td align="center">
                                     {if $ds['phonenumber']}
@@ -203,9 +218,12 @@
                                     <a href="{Text::url('customers/view/')}{$ds['id']}" id="{$ds['id']}"
                                         style="margin: 0px; color:black"
                                         class="btn btn-success btn-xs">&nbsp;&nbsp;{Lang::T('View')}&nbsp;&nbsp;</a>
-                                    <a href="{Text::url('customers/edit/', $ds['id'])}"
-                                        id="{$ds['id']}" style="margin: 0px; color:black"
-                                        class="btn btn-info btn-xs">&nbsp;&nbsp;{Lang::T('Edit')}&nbsp;&nbsp;</a>
+                                    <form method="post" action="{Text::url('customers/edit/', $ds['id'])}"
+                                        style="display:inline;">
+                                        <input type="hidden" name="csrf_token" value="{$csrf_token}">
+                                        <button type="submit" id="{$ds['id']}" style="margin: 0px; color:black"
+                                            class="btn btn-info btn-xs">&nbsp;&nbsp;{Lang::T('Edit')}&nbsp;&nbsp;</button>
+                                    </form>
                                     <form method="post" action="{Text::url('customers/sync/', $ds['id'])}"
                                         style="display:inline;">
                                         <input type="hidden" name="csrf_token" value="{$csrf_token}">

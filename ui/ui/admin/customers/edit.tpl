@@ -147,6 +147,31 @@
                             </span>
                         </div>
                     </div>
+                    {if $customer_am_enabled && $can_edit_customer_am}
+                        <div class="form-group">
+                            <label class="col-md-3 control-label">{Lang::T('Account Manager')}</label>
+                            <div class="col-md-9">
+                                <select class="form-control" id="account_manager_mode" name="account_manager_mode">
+                                    <option value="all" {if $selected_account_manager_mode|default:'all' eq 'all'}selected{/if}>{Lang::T('All')}</option>
+                                    <option value="list" {if $selected_account_manager_mode|default:'all' eq 'list'}selected{/if}>{Lang::T('List')}</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="form-group" id="account-manager-list-wrap">
+                            <label class="col-md-3 control-label">{Lang::T('Select Account Manager')}</label>
+                            <div class="col-md-9">
+                                <select class="form-control select2" id="account_manager_id" name="account_manager_id" style="width: 100%">
+                                    <option value="">- {Lang::T('Select')} -</option>
+                                    {foreach $am_users as $amUser}
+                                        <option value="{$amUser['id']}" {if $selected_account_manager_id|default:0 eq $amUser['id']}selected{/if}>
+                                            {$amUser['fullname']} ({$amUser['username']}) [{$amUser['user_type']}]
+                                        </option>
+                                    {/foreach}
+                                </select>
+                                <span class="help-block">Set to <b>All</b> to allow all users, or <b>List</b> to bind one user.</span>
+                            </div>
+                        </div>
+                    {/if}
                 </div>
                 <div class="panel-heading">PPPoE</div>
                 <div class="panel-body">
@@ -272,6 +297,29 @@
         document.addEventListener("DOMContentLoaded", function() {
             var customFieldsContainer = document.getElementById('custom-fields-container');
             var addCustomFieldButton = document.getElementById('add-custom-field');
+            var accountManagerMode = document.getElementById('account_manager_mode');
+            var accountManagerListWrap = document.getElementById('account-manager-list-wrap');
+            var accountManagerSelect = document.getElementById('account_manager_id');
+
+            function toggleAccountManagerList() {
+                if (!accountManagerMode || !accountManagerListWrap || !accountManagerSelect) {
+                    return;
+                }
+                var isList = accountManagerMode.value === 'list';
+                accountManagerListWrap.style.display = isList ? 'block' : 'none';
+                accountManagerSelect.disabled = !isList;
+                if (!isList) {
+                    accountManagerSelect.value = '';
+                    if (window.jQuery && jQuery(accountManagerSelect).hasClass('select2-hidden-accessible')) {
+                        jQuery(accountManagerSelect).val('').trigger('change.select2');
+                    }
+                }
+            }
+
+            toggleAccountManagerList();
+            if (accountManagerMode) {
+                accountManagerMode.addEventListener('change', toggleAccountManagerList);
+            }
 
             addCustomFieldButton.addEventListener('click', function() {
                 var fieldIndex = customFieldsContainer.children.length;

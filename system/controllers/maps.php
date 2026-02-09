@@ -52,6 +52,14 @@ switch ($action) {
             $name = _post('name');
             $query = ORM::for_table('tbl_routers')->where_not_equal('coordinates', '')->order_by_desc('id');
             $query->selects(['id', 'name', 'coordinates', 'description', 'coverage', 'enabled']);
+            if (($admin['user_type'] ?? '') !== 'SuperAdmin') {
+                $allowedIds = _router_get_accessible_router_ids($admin, false);
+                if (empty($allowedIds)) {
+                    $query->where('id', -1);
+                } else {
+                    $query->where_in('id', $allowedIds);
+                }
+            }
             if ($name != '') {
                 $query->where_like('name', '%' . $name . '%');
             }

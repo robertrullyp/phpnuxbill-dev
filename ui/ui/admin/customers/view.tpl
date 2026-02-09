@@ -25,6 +25,11 @@
                     <li class="list-group-item">
                         <b>{Lang::T('Username')}</b> <span class="pull-right">{$d['username']}</span>
                     </li>
+                    {if $customer_am_enabled}
+                        <li class="list-group-item">
+                            <b>{Lang::T('Account Manager')}</b> <span class="pull-right">{$customer_am_label}</span>
+                        </li>
+                    {/if}
                     <li class="list-group-item">
                         <b>{Lang::T('Phone Number')}</b> <span class="pull-right">{$d['phonenumber']}</span>
                     </li>

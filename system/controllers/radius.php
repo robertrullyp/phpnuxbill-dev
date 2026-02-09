@@ -16,6 +16,8 @@ if (!in_array($admin['user_type'], ['SuperAdmin', 'Admin'])) {
     _alert(Lang::T('You do not have permission to access this page'), 'danger', "dashboard");
 }
 
+$allowedRouterNames = _router_get_accessible_router_names($admin, false);
+
 // Radius module depends on a separate DB connection + tables.
 // In API mode we must not leak SQL errors; fail with a clear message.
 try {
@@ -30,7 +32,7 @@ switch ($action) {
     case 'nas-add':
         $ui->assign('_system_menu', 'radius');
         $ui->assign('_title', "Network Access Server");
-        $ui->assign('routers', ORM::for_table('tbl_routers')->find_many());
+        $ui->assign('routers', _router_get_accessible_routers($admin, false));
         $ui->assign('csrf_token', Csrf::generateAndStoreToken());
         $ui->display('admin/radius/nas-add.tpl');
         break;
@@ -70,6 +72,9 @@ switch ($action) {
         if ($d) {
             $msg .= 'NAS IP Exists<br>';
         }
+        if (!empty($routers) && !_router_can_access_router($routers, $admin, ['radius'])) {
+            $msg .= Lang::T('Selected router is outside your allowed scope') . '<br>';
+        }
         if ($msg == '') {
             require_once $DEVICE_PATH . DIRECTORY_SEPARATOR . "Radius.php";
             if ((new Radius())->nasAdd($shortname, $nasname, $ports, $secret, $routers, $description, $type, $server, $community) > 0) {
@@ -90,8 +95,8 @@ switch ($action) {
         if (!$d) {
             $d = ORM::for_table('nas', 'radius')->where_equal('shortname', _get('name'))->find_one();
         }
-        if ($d) {
-            $ui->assign('routers', ORM::for_table('tbl_routers')->find_many());
+        if ($d && (empty($d['routers']) || _router_can_access_router($d['routers'], $admin, ['radius']))) {
+            $ui->assign('routers', _router_get_accessible_routers($admin, false));
             $ui->assign('d', $d);
             $ui->assign('csrf_token', Csrf::generateAndStoreToken());
             $ui->display('admin/radius/nas-edit.tpl');
@@ -133,6 +138,13 @@ switch ($action) {
         if (empty($type)) {
             $type = null;
         }
+        if (!empty($routers) && !_router_can_access_router($routers, $admin, ['radius'])) {
+            $msg .= Lang::T('Selected router is outside your allowed scope') . '<br>';
+        }
+        $nas = ORM::for_table('nas', 'radius')->find_one($id);
+        if (!$nas || (!empty($nas['routers']) && !_router_can_access_router($nas['routers'], $admin, ['radius']))) {
+            $msg .= Lang::T('Data Not Found') . '<br>';
+        }
         if ($msg == '') {
             require_once $DEVICE_PATH . DIRECTORY_SEPARATOR . "Radius.php";
             if ((new Radius())->nasUpdate($id, $shortname, $nasname, $ports, $secret, $routers, $description, $type, $server, $community)) {
@@ -155,7 +167,7 @@ switch ($action) {
         Csrf::generateAndStoreToken();
         $id  = $routes['2'];
         $d = ORM::for_table('nas', 'radius')->find_one($id);
-        if ($d) {
+        if ($d && (empty($d['routers']) || _router_can_access_router($d['routers'], $admin, ['radius']))) {
             $d->delete();
             r2(getUrl('radius/nas-list'), 's', Lang::T('NAS Deleted'));
         } else {
@@ -174,12 +186,32 @@ switch ($action) {
         $name = _post('name');
         if (empty($name)) {
             $query = ORM::for_table('nas', 'radius');
+            if (($admin['user_type'] ?? '') !== 'SuperAdmin') {
+                if (empty($allowedRouterNames)) {
+                    $query->where('routers', '');
+                } else {
+                    $query->where_raw(
+                        '(routers = ? OR routers IN (' . implode(',', array_fill(0, count($allowedRouterNames), '?')) . '))',
+                        array_merge([''], $allowedRouterNames)
+                    );
+                }
+            }
             $nas = Paginator::findMany($query);
         } else {
             $query = ORM::for_table('nas', 'radius')
-                ->where_like('nasname', $search)
-                ->where_like('shortname', $search)
-                ->where_like('description', $search);
+                ->where_like('nasname', '%' . $name . '%')
+                ->where_like('shortname', '%' . $name . '%')
+                ->where_like('description', '%' . $name . '%');
+            if (($admin['user_type'] ?? '') !== 'SuperAdmin') {
+                if (empty($allowedRouterNames)) {
+                    $query->where('routers', '');
+                } else {
+                    $query->where_raw(
+                        '(routers = ? OR routers IN (' . implode(',', array_fill(0, count($allowedRouterNames), '?')) . '))',
+                        array_merge([''], $allowedRouterNames)
+                    );
+                }
+            }
             $nas = Paginator::findMany($query, ['name' => $name]);
         }
         $ui->assign('name', $name);

@@ -267,6 +267,7 @@ if (empty($step)) {
                 }
             }
             file_put_contents("system/cache/updates.done.json", json_encode($dones));
+            runUserHierarchyCleanupMigration($db);
         } catch (Exception $e) {
             $msg = "Failed to update database: " . $e->getMessage() . ". A backup has been created at: " . htmlspecialchars($_SESSION['backup_file']);
             $msgType = "danger";
@@ -517,6 +518,461 @@ function r2($to, $ntype = 'e', $msg = '')
     $_SESSION['notify'] = $msg;
     header("location: $to");
     die();
+}
+
+function updateTableExists($db, $table)
+{
+    $stmt = $db->prepare("SHOW TABLES LIKE :name");
+    $stmt->execute([':name' => $table]);
+    return (bool) $stmt->fetch(PDO::FETCH_NUM);
+}
+
+function updateColumnExists($db, $table, $column)
+{
+    $stmt = $db->prepare("SHOW COLUMNS FROM `{$table}` LIKE :name");
+    $stmt->execute([':name' => $column]);
+    return (bool) $stmt->fetch(PDO::FETCH_ASSOC);
+}
+
+function updateCleanupNormalizeIds($value)
+{
+    if (is_string($value)) {
+        $value = trim($value);
+        if ($value === '') {
+            return [];
+        }
+        $decoded = json_decode($value, true);
+        if (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) {
+            $value = $decoded;
+        } else {
+            $value = preg_split('/[\s,]+/', $value);
+        }
+    }
+    if (!is_array($value)) {
+        return [];
+    }
+    $ids = [];
+    foreach ($value as $item) {
+        $id = (int) $item;
+        if ($id > 0) {
+            $ids[$id] = $id;
+        }
+    }
+    return array_values($ids);
+}
+
+function updateCleanupParseData($raw, &$valid)
+{
+    if (is_array($raw)) {
+        $valid = true;
+        return $raw;
+    }
+    if ($raw === null) {
+        $valid = true;
+        return [];
+    }
+    if (!is_string($raw)) {
+        $valid = false;
+        return [];
+    }
+    $raw = trim($raw);
+    if ($raw === '') {
+        $valid = true;
+        return [];
+    }
+
+    $decoded = json_decode($raw, true);
+    if (json_last_error() !== JSON_ERROR_NONE || !is_array($decoded)) {
+        $valid = false;
+        return [];
+    }
+
+    $valid = true;
+    return $decoded;
+}
+
+function updateCleanupEncodeData($data)
+{
+    if (empty($data)) {
+        return null;
+    }
+    $encoded = json_encode($data, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+    return ($encoded === false) ? null : $encoded;
+}
+
+function updateCleanupFirstId($ids)
+{
+    if (empty($ids)) {
+        return 0;
+    }
+    sort($ids, SORT_NUMERIC);
+    return (int) $ids[0];
+}
+
+function updateCleanupFindAncestorByRole($startRoot, $wantedRoles, $usersById, $depthLimit = 8)
+{
+    $startRoot = (int) $startRoot;
+    if ($startRoot < 1) {
+        return 0;
+    }
+    $wantedMap = [];
+    foreach ((array) $wantedRoles as $role) {
+        $role = trim((string) $role);
+        if ($role !== '') {
+            $wantedMap[$role] = true;
+        }
+    }
+    if (empty($wantedMap)) {
+        return 0;
+    }
+
+    $visited = [];
+    $current = $startRoot;
+    for ($i = 0; $i < $depthLimit; $i++) {
+        if ($current < 1 || isset($visited[$current]) || !isset($usersById[$current])) {
+            return 0;
+        }
+        $visited[$current] = true;
+        $row = $usersById[$current];
+        $role = trim((string) ($row['user_type'] ?? ''));
+        if (isset($wantedMap[$role])) {
+            return (int) $current;
+        }
+        $next = (int) ($row['root'] ?? 0);
+        if ($next < 1 || $next === $current) {
+            return 0;
+        }
+        $current = $next;
+    }
+
+    return 0;
+}
+
+function updateCleanupBuildRoleIndexes($usersById)
+{
+    $super = [];
+    $admin = [];
+    $agent = [];
+    $adminBySuper = [];
+    $agentByAdmin = [];
+
+    foreach ($usersById as $id => $row) {
+        $id = (int) $id;
+        $role = trim((string) ($row['user_type'] ?? ''));
+        $root = (int) ($row['root'] ?? 0);
+
+        if ($role === 'SuperAdmin') {
+            $super[] = $id;
+        } elseif ($role === 'Admin') {
+            $admin[] = $id;
+            if ($root > 0) {
+                $adminBySuper[$root][] = $id;
+            }
+        } elseif ($role === 'Agent') {
+            $agent[] = $id;
+            if ($root > 0) {
+                $agentByAdmin[$root][] = $id;
+            }
+        }
+    }
+
+    sort($super, SORT_NUMERIC);
+    sort($admin, SORT_NUMERIC);
+    sort($agent, SORT_NUMERIC);
+    foreach ($adminBySuper as &$rows) {
+        sort($rows, SORT_NUMERIC);
+    }
+    unset($rows);
+    foreach ($agentByAdmin as &$rows) {
+        sort($rows, SORT_NUMERIC);
+    }
+    unset($rows);
+
+    return [
+        'super' => $super,
+        'admin' => $admin,
+        'agent' => $agent,
+        'admin_by_super' => $adminBySuper,
+        'agent_by_admin' => $agentByAdmin,
+    ];
+}
+
+function updateCleanupNormalizeRouterData($data, $role)
+{
+    $before = $data;
+    $role = trim((string) $role);
+
+    if ($role === 'SuperAdmin') {
+        unset($data['router_assignment_mode'], $data['router_assignment_ids'], $data['router_access_mode'], $data['router_access_ids']);
+        return [$data, $before !== $data];
+    }
+
+    $mode = strtolower(trim((string) ($data['router_assignment_mode'] ?? ($data['router_access_mode'] ?? 'all'))));
+    if (!in_array($mode, ['all', 'list'], true)) {
+        $mode = 'all';
+    }
+    $ids = updateCleanupNormalizeIds($data['router_assignment_ids'] ?? ($data['router_access_ids'] ?? []));
+    $data['router_assignment_mode'] = $mode;
+    $data['router_assignment_ids'] = $ids;
+    unset($data['router_access_mode'], $data['router_access_ids']);
+
+    return [$data, $before !== $data];
+}
+
+function updateCleanupMarkDone($db, $settingName)
+{
+    if (!updateTableExists($db, 'tbl_appconfig') || !updateColumnExists($db, 'tbl_appconfig', 'setting') || !updateColumnExists($db, 'tbl_appconfig', 'value')) {
+        return;
+    }
+
+    $hasIdColumn = updateColumnExists($db, 'tbl_appconfig', 'id');
+    if ($hasIdColumn) {
+        $find = $db->prepare("SELECT `id` FROM `tbl_appconfig` WHERE `setting` = :setting ORDER BY `id` ASC LIMIT 1");
+        $find->execute([':setting' => $settingName]);
+        $row = $find->fetch(PDO::FETCH_ASSOC);
+        if ($row && isset($row['id'])) {
+            $update = $db->prepare("UPDATE `tbl_appconfig` SET `value` = :value WHERE `id` = :id");
+            $update->execute([
+                ':value' => 'done',
+                ':id' => (int) $row['id'],
+            ]);
+            return;
+        }
+    } else {
+        $find = $db->prepare("SELECT `setting` FROM `tbl_appconfig` WHERE `setting` = :setting LIMIT 1");
+        $find->execute([':setting' => $settingName]);
+        if ($find->fetch(PDO::FETCH_ASSOC)) {
+            $update = $db->prepare("UPDATE `tbl_appconfig` SET `value` = :value WHERE `setting` = :setting");
+            $update->execute([
+                ':value' => 'done',
+                ':setting' => $settingName,
+            ]);
+            return;
+        }
+    }
+
+    try {
+        $insert = $db->prepare("INSERT INTO `tbl_appconfig` (`setting`, `value`) VALUES (:setting, :value)");
+        $insert->execute([
+            ':setting' => $settingName,
+            ':value' => 'done',
+        ]);
+    } catch (Exception $e) {
+        // fallback for strict/legacy table definitions
+        $update = $db->prepare("UPDATE `tbl_appconfig` SET `value` = :value WHERE `setting` = :setting");
+        $update->execute([
+            ':value' => 'done',
+            ':setting' => $settingName,
+        ]);
+        return;
+    }
+}
+
+function runUserHierarchyCleanupMigration($db)
+{
+    $settingName = 'user_hierarchy_cleanup_v1';
+    if (!updateTableExists($db, 'tbl_users')) {
+        updateCleanupMarkDone($db, $settingName);
+        return;
+    }
+    if (!updateColumnExists($db, 'tbl_users', 'id') || !updateColumnExists($db, 'tbl_users', 'user_type') || !updateColumnExists($db, 'tbl_users', 'root')) {
+        updateCleanupMarkDone($db, $settingName);
+        return;
+    }
+
+    if (updateTableExists($db, 'tbl_appconfig') && updateColumnExists($db, 'tbl_appconfig', 'setting') && updateColumnExists($db, 'tbl_appconfig', 'value')) {
+        $marker = $db->prepare("SELECT `value` FROM `tbl_appconfig` WHERE `setting` = :setting ORDER BY `id` ASC LIMIT 1");
+        $marker->execute([':setting' => $settingName]);
+        $markerRow = $marker->fetch(PDO::FETCH_ASSOC);
+        if ($markerRow && trim((string) ($markerRow['value'] ?? '')) === 'done') {
+            return;
+        }
+    }
+
+    $hasDataColumn = updateColumnExists($db, 'tbl_users', 'data');
+    if ($hasDataColumn) {
+        $rows = $db->query("SELECT `id`, `user_type`, `root`, `data` FROM `tbl_users` ORDER BY `id` ASC")->fetchAll(PDO::FETCH_ASSOC);
+    } else {
+        $rows = $db->query("SELECT `id`, `user_type`, `root` FROM `tbl_users` ORDER BY `id` ASC")->fetchAll(PDO::FETCH_ASSOC);
+    }
+    if (empty($rows)) {
+        updateCleanupMarkDone($db, $settingName);
+        return;
+    }
+
+    $usersById = [];
+    $changes = [];
+    foreach ($rows as $row) {
+        $id = (int) ($row['id'] ?? 0);
+        if ($id < 1) {
+            continue;
+        }
+        $usersById[$id] = $row;
+        $changes[$id] = [
+            'old_root' => (int) ($row['root'] ?? 0),
+            'new_root' => (int) ($row['root'] ?? 0),
+            'old_data' => $row['data'] ?? null,
+            'new_data' => $row['data'] ?? null,
+        ];
+    }
+    if (empty($usersById)) {
+        updateCleanupMarkDone($db, $settingName);
+        return;
+    }
+
+    $indexes = updateCleanupBuildRoleIndexes($usersById);
+
+    foreach ($usersById as $id => $row) {
+        $role = trim((string) ($row['user_type'] ?? ''));
+        $uid = (int) $id;
+        $currentRoot = (int) ($row['root'] ?? 0);
+        $newRoot = $currentRoot;
+
+        if ($role === 'SuperAdmin') {
+            $newRoot = 0;
+        } elseif ($role === 'Admin') {
+            $isValidParent = ($currentRoot > 0 && $currentRoot !== $uid && in_array($currentRoot, $indexes['super'], true));
+            if (!$isValidParent) {
+                $candidate = updateCleanupFindAncestorByRole($currentRoot, ['SuperAdmin'], $usersById);
+                if ($candidate < 1) {
+                    $candidate = updateCleanupFirstId($indexes['super']);
+                }
+                $newRoot = $candidate;
+            }
+        }
+
+        if ($newRoot !== $currentRoot) {
+            $changes[$uid]['new_root'] = $newRoot;
+            $usersById[$uid]['root'] = $newRoot;
+        }
+    }
+
+    $indexes = updateCleanupBuildRoleIndexes($usersById);
+
+    foreach ($usersById as $id => $row) {
+        $role = trim((string) ($row['user_type'] ?? ''));
+        if (!in_array($role, ['Agent', 'Report'], true)) {
+            continue;
+        }
+        $uid = (int) $id;
+        $currentRoot = (int) ($row['root'] ?? 0);
+        $newRoot = $currentRoot;
+        $isValidParent = ($currentRoot > 0 && $currentRoot !== $uid && in_array($currentRoot, $indexes['admin'], true));
+        if (!$isValidParent) {
+            $candidate = updateCleanupFindAncestorByRole($currentRoot, ['Admin'], $usersById);
+            if ($candidate < 1 && $currentRoot > 0 && in_array($currentRoot, $indexes['super'], true)) {
+                $candidate = updateCleanupFirstId($indexes['admin_by_super'][$currentRoot] ?? []);
+            }
+            if ($candidate < 1) {
+                $candidate = updateCleanupFirstId($indexes['admin']);
+            }
+            $newRoot = $candidate;
+        }
+        if ($newRoot !== $currentRoot) {
+            $changes[$uid]['new_root'] = $newRoot;
+            $usersById[$uid]['root'] = $newRoot;
+        }
+    }
+
+    $indexes = updateCleanupBuildRoleIndexes($usersById);
+
+    foreach ($usersById as $id => $row) {
+        $role = trim((string) ($row['user_type'] ?? ''));
+        if ($role !== 'Sales') {
+            continue;
+        }
+        $uid = (int) $id;
+        $currentRoot = (int) ($row['root'] ?? 0);
+        $newRoot = $currentRoot;
+        $isValidParent = ($currentRoot > 0 && $currentRoot !== $uid && in_array($currentRoot, $indexes['agent'], true));
+        if (!$isValidParent) {
+            $candidate = updateCleanupFindAncestorByRole($currentRoot, ['Agent'], $usersById);
+            if ($candidate < 1 && $currentRoot > 0 && in_array($currentRoot, $indexes['admin'], true)) {
+                $candidate = updateCleanupFirstId($indexes['agent_by_admin'][$currentRoot] ?? []);
+            }
+            if ($candidate < 1 && $currentRoot > 0 && in_array($currentRoot, $indexes['super'], true)) {
+                $adminUnderSuper = updateCleanupFirstId($indexes['admin_by_super'][$currentRoot] ?? []);
+                if ($adminUnderSuper > 0) {
+                    $candidate = updateCleanupFirstId($indexes['agent_by_admin'][$adminUnderSuper] ?? []);
+                }
+            }
+            if ($candidate < 1) {
+                $candidate = updateCleanupFirstId($indexes['agent']);
+            }
+            $newRoot = $candidate;
+        }
+        if ($newRoot !== $currentRoot) {
+            $changes[$uid]['new_root'] = $newRoot;
+            $usersById[$uid]['root'] = $newRoot;
+        }
+    }
+
+    if ($hasDataColumn) {
+        foreach ($usersById as $id => $row) {
+            $valid = false;
+            $raw = $changes[$id]['old_data'];
+            $decoded = updateCleanupParseData($raw, $valid);
+            if (!$valid) {
+                continue;
+            }
+            list($normalized, $changed) = updateCleanupNormalizeRouterData($decoded, (string) ($row['user_type'] ?? ''));
+            if (!$changed) {
+                continue;
+            }
+            $changes[$id]['new_data'] = updateCleanupEncodeData($normalized);
+        }
+    }
+
+    $planned = [];
+    foreach ($changes as $id => $item) {
+        $rootChanged = ((int) $item['new_root'] !== (int) $item['old_root']);
+        $dataChanged = $hasDataColumn && ((string) ($item['new_data'] ?? '') !== (string) ($item['old_data'] ?? ''));
+        if ($rootChanged || $dataChanged) {
+            $planned[$id] = $item;
+        }
+    }
+
+    if (empty($planned)) {
+        updateCleanupMarkDone($db, $settingName);
+        return;
+    }
+
+    $startedTx = false;
+    if (!$db->inTransaction()) {
+        $db->beginTransaction();
+        $startedTx = true;
+    }
+
+    try {
+        if ($hasDataColumn) {
+            $stmt = $db->prepare("UPDATE `tbl_users` SET `root` = :root, `data` = :data WHERE `id` = :id");
+        } else {
+            $stmt = $db->prepare("UPDATE `tbl_users` SET `root` = :root WHERE `id` = :id");
+        }
+
+        foreach ($planned as $id => $item) {
+            $stmt->bindValue(':root', (int) $item['new_root'], PDO::PARAM_INT);
+            if ($hasDataColumn) {
+                if ($item['new_data'] === null || $item['new_data'] === '') {
+                    $stmt->bindValue(':data', null, PDO::PARAM_NULL);
+                } else {
+                    $stmt->bindValue(':data', (string) $item['new_data'], PDO::PARAM_STR);
+                }
+            }
+            $stmt->bindValue(':id', (int) $id, PDO::PARAM_INT);
+            $stmt->execute();
+        }
+
+        updateCleanupMarkDone($db, $settingName);
+        if ($startedTx && $db->inTransaction()) {
+            $db->commit();
+        }
+    } catch (Exception $e) {
+        if ($startedTx && $db->inTransaction()) {
+            $db->rollBack();
+        }
+        throw $e;
+    }
 }
 
 function shouldSkipCopy($relativePath, $exclude)

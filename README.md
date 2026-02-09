@@ -17,8 +17,8 @@ Important notes:
 
 ## Current Release
 
-- **Version:** `2026.01.31`
-- **Focus:** WhatsApp Gateway v2 (POST/GET, auth, idempotency, interactive builder + media uploads), queue/retry controls, and optional transaction notes in invoices/reports.
+- **Version:** `2026.2.8`
+- **Focus:** Hierarchical role hardening (`SuperAdmin > Admin > Agent > Sales/Report`), router access inheritance (`All/List`), and customer Account Manager assignment (`All/List`).
 
 ## What's New in This Fork
 
@@ -69,10 +69,21 @@ Enhancements and changes added on top of upstream:
   - Updater default ZIP source points to this fork (`robertrullyp/phpnuxbill-dev`), while DB updates run from `system/updates.json` (idempotent).
   - Updater creates a full pre-update backup (`system/backup/`) plus a SQL database dump, and preserves `config.php`, uploads, caches, and `ui/ui_custom`.
 
+- Role hierarchy and router-access hardening
+  - Added strict role matrix validation so manual request tampering cannot escalate privileges when creating/updating admin users.
+  - Hierarchical downline structure is enforced: `SuperAdmin -> Admin -> Agent -> Sales` (with `Report` under `Admin`).
+  - Router Access can be assigned as `All` or `List`; child assignments are constrained by parent-allowed routers.
+  - SuperAdmin keeps unrestricted router visibility and assignment capabilities.
+
+- Customer Account Manager (AM)
+  - Added `account_manager_id` in `tbl_customers` (`0 = All`) and AM selector in customer Add/Edit UI.
+  - AM mode supports `All` and `List`; customer visibility and related flows follow AM assignment.
+  - AM reassignment/edit remains restricted to `SuperAdmin` and `Admin`.
+
 Compatibility:
 
 - Fresh installs: schema included in `install/phpnuxbill.sql` matches fork features.
-- Upgrades: run `update.php` (admin session required) to apply `system/updates.json` migrations; the fork includes a runtime guard to keep `tbl_plans.visibility` in sync.
+- Upgrades: run `update.php` (admin session required) to apply `system/updates.json` migrations; includes runtime guards for plan visibility consistency and legacy user hierarchy cleanup.
 
 ## Server Requirements & Dependencies
 
@@ -126,6 +137,8 @@ Ringkasan pembaruan perbaikan dibanding repo asli (hotspotbilling/phpnuxbill):
 - Paket & voucher: opsi “welcome package”, perbaikan filter voucher dan pelacakan batch, serta aneka bug-fix stabilitas.
 - Plugin Manager: tab terpisah (Plugin/Payment Gateway/Devices), tombol refresh cache, pemeriksaan ekstensi ZIP, alur instal lebih aman.
 - Proses update: sumber ZIP bawaan diarahkan ke fork ini; migrasi DB dari `system/updates.json` (idempotent).
+- Hardening role admin: validasi matrix role/upline-downline + pembatasan assign router berdasarkan hirarki parent.
+- Account Manager customer: mode `All/List` dengan kolom `account_manager_id` (nilai `0` = semua user).
 - Peningkatan terjemahan (ID) dan banyak perbaikan kecil lain (validasi input, pesan error, pengalihan yang tepat, dsb.).
 
 Lihat detail lengkap di CHANGELOG untuk daftar perubahan harian/mingguan.
@@ -192,6 +205,23 @@ OTP timing can be tuned through two settings available in Admin > Settings > Mis
 ### Phone Number Formatting
 
 Ensure the `country_code_phone` setting is configured in Admin > Settings > Localisation. All modules should normalize phone numbers using `Lang::phoneFormat` before storing or comparing values to maintain consistency across the system.
+
+### Filesystem Permissions (Recommended)
+
+Use restrictive defaults for code and explicit writable access only for runtime cache paths:
+
+```bash
+# project defaults
+find . -type d -not -path './.git*' -exec chmod 755 {} +
+find . -type f -not -path './.git*' -exec chmod 644 {} +
+
+# writable runtime paths
+sudo chown -R <deploy_user>:www-data system/cache ui/compiled
+sudo find system/cache ui/compiled -type d -exec chmod 2775 {} +
+sudo find system/cache ui/compiled -type f -exec chmod 664 {} +
+```
+
+Keep `.htaccess_firewall` enabled in deployment, and avoid granting write access outside `system/cache` and `ui/compiled`.
 
 ### Upstream Tracking
 

@@ -46,6 +46,20 @@ if (!in_array($admin['user_type'], ['SuperAdmin', 'Admin'])) {
     _alert(Lang::T('You do not have permission to access this page'), 'danger', "dashboard");
 }
 
+$accessibleRouterNames = _router_get_accessible_router_names($admin, false);
+$applyPlanScopeFilter = function ($query) use ($admin, $accessibleRouterNames) {
+    if (($admin['user_type'] ?? '') === 'SuperAdmin') {
+        return $query;
+    }
+    if (empty($accessibleRouterNames)) {
+        $query->where('tbl_plans.is_radius', '1');
+        return $query;
+    }
+    $placeholders = implode(',', array_fill(0, count($accessibleRouterNames), '?'));
+    $query->where_raw('(tbl_plans.is_radius = 1 OR tbl_plans.routers IN (' . $placeholders . '))', $accessibleRouterNames);
+    return $query;
+};
+
 switch ($action) {
     case 'sync':
         set_time_limit(-1);
@@ -61,7 +75,9 @@ switch ($action) {
         }
 
         list($planType, $redirectRoute) = $syncTargets[$target];
-        $plans = ORM::for_table('tbl_plans')->where('type', $planType)->find_many();
+        $planQuery = ORM::for_table('tbl_plans')->where('type', $planType);
+        $applyPlanScopeFilter($planQuery);
+        $plans = $planQuery->find_many();
         $log = '';
 
         foreach ($plans as $plan) {
@@ -88,6 +104,9 @@ switch ($action) {
         $device = _req('device');
         $status = _req('status');
         $router = _req('router');
+        if (!empty($router) && $router !== 'radius' && !_router_can_access_router($router, $admin, ['radius'])) {
+            $router = '';
+        }
         $ui->assign('type1', $type1);
         $ui->assign('type2', $type2);
         $ui->assign('type3', $type3);
@@ -116,7 +135,11 @@ switch ($action) {
         $ui->assign('type2s', ORM::for_table('tbl_plans')->getEnum("plan_type"));
         $ui->assign('type3s', ORM::for_table('tbl_plans')->getEnum("typebp"));
         $ui->assign('valids', ORM::for_table('tbl_plans')->getEnum("validity_unit"));
-        $ui->assign('routers', array_column(ORM::for_table('tbl_plans')->distinct()->select("routers")->where('tbl_plans.type', 'Hotspot')->whereNotEqual('routers', '')->findArray(), 'routers'));
+        $ui->assign('routers', _router_filter_allowed_names(
+            array_column(ORM::for_table('tbl_plans')->distinct()->select("routers")->where('tbl_plans.type', 'Hotspot')->whereNotEqual('routers', '')->findArray(), 'routers'),
+            $admin,
+            ['radius']
+        ));
         $devices = [];
         $files = scandir($DEVICE_PATH);
         foreach ($files as $file) {
@@ -129,6 +152,7 @@ switch ($action) {
         $query = ORM::for_table('tbl_bandwidth')
             ->left_outer_join('tbl_plans', array('tbl_bandwidth.id', '=', 'tbl_plans.id_bw'))
             ->where('tbl_plans.type', 'Hotspot');
+        $applyPlanScopeFilter($query);
 
         if (!empty($type1)) {
             $query->where('tbl_plans.prepaid', $type1);
@@ -190,7 +214,7 @@ switch ($action) {
     case 'add':
         $d = ORM::for_table('tbl_bandwidth')->find_many();
         $ui->assign('d', $d);
-        $r = ORM::for_table('tbl_routers')->find_many();
+        $r = _router_get_accessible_routers($admin, false);
         $ui->assign('r', $r);
         $ui->assign('last_visibility', isset($_SESSION['last_visibility']) ? $_SESSION['last_visibility'] : 'all');
         $devices = [];
@@ -211,7 +235,7 @@ switch ($action) {
     case 'edit':
         $id = $routes['2'];
         $d = ORM::for_table('tbl_plans')->find_one($id);
-        if ($d) {
+        if ($d && ($d['is_radius'] || _router_can_access_router($d['routers'], $admin, ['radius']))) {
             if (empty($d['device'])) {
                 if ($d['is_radius']) {
                     $d->device = 'Radius';
@@ -260,7 +284,7 @@ switch ($action) {
         $id = $routes['2'];
 
         $d = ORM::for_table('tbl_plans')->find_one($id);
-        if ($d) {
+        if ($d && ($d['is_radius'] || _router_can_access_router($d['routers'], $admin, ['radius']))) {
             run_hook('delete_plan'); #HOOK
             Package::removePlanLinks($id);
             $dvc = Package::getDevice($d);
@@ -318,6 +342,9 @@ switch ($action) {
         if (empty($radius)) {
             if ($routers == '') {
                 $msg .= Lang::T('All field is required') . '<br>';
+            }
+            if ($routers != '' && !_router_can_access_router($routers, $admin, ['radius'])) {
+                $msg .= Lang::T('Selected router is outside your allowed scope') . '<br>';
             }
         }
         $d = ORM::for_table('tbl_plans')->where('name_plan', $name)->where('type', 'Hotspot')->find_one();
@@ -447,6 +474,12 @@ switch ($action) {
         } else {
             $msg .= Lang::T('Data Not Found') . '<br>';
         }
+        if ($d && !($d['is_radius'] || _router_can_access_router($d['routers'], $admin, ['radius']))) {
+            $msg .= Lang::T('Data Not Found') . '<br>';
+        }
+        if (!empty($routers) && !_router_can_access_router($routers, $admin, ['radius'])) {
+            $msg .= Lang::T('Selected router is outside your allowed scope') . '<br>';
+        }
 
         if ($price_old <= $price) {
             $price_old = '';
@@ -551,6 +584,9 @@ switch ($action) {
         $device = _req('device');
         $status = _req('status');
         $router = _req('router');
+        if (!empty($router) && $router !== 'radius' && !_router_can_access_router($router, $admin, ['radius'])) {
+            $router = '';
+        }
         $ui->assign('type1', $type1);
         $ui->assign('type2', $type2);
         $ui->assign('type3', $type3);
@@ -579,7 +615,11 @@ switch ($action) {
         $ui->assign('type2s', ORM::for_table('tbl_plans')->getEnum("plan_type"));
         $ui->assign('type3s', ORM::for_table('tbl_plans')->getEnum("typebp"));
         $ui->assign('valids', ORM::for_table('tbl_plans')->getEnum("validity_unit"));
-        $ui->assign('routers', array_column(ORM::for_table('tbl_plans')->distinct()->select("routers")->whereNotEqual('routers', '')->findArray(), 'routers'));
+        $ui->assign('routers', _router_filter_allowed_names(
+            array_column(ORM::for_table('tbl_plans')->distinct()->select("routers")->whereNotEqual('routers', '')->findArray(), 'routers'),
+            $admin,
+            ['radius']
+        ));
         $devices = [];
         $files = scandir($DEVICE_PATH);
         foreach ($files as $file) {
@@ -592,6 +632,7 @@ switch ($action) {
         $query = ORM::for_table('tbl_bandwidth')
             ->left_outer_join('tbl_plans', array('tbl_bandwidth.id', '=', 'tbl_plans.id_bw'))
             ->where('tbl_plans.type', 'PPPOE');
+        $applyPlanScopeFilter($query);
         if (!empty($type1)) {
             $query->where('tbl_plans.prepaid', $type1);
         }
@@ -654,7 +695,7 @@ switch ($action) {
         $ui->assign('_title', Lang::T('PPPOE Plans'));
         $d = ORM::for_table('tbl_bandwidth')->find_many();
         $ui->assign('d', $d);
-        $r = ORM::for_table('tbl_routers')->find_many();
+        $r = _router_get_accessible_routers($admin, false);
         $ui->assign('r', $r);
         $ui->assign('last_visibility', isset($_SESSION['last_visibility']) ? $_SESSION['last_visibility'] : 'all');
         $devices = [];
@@ -676,7 +717,7 @@ switch ($action) {
         $ui->assign('_title', Lang::T('PPPOE Plans'));
         $id = $routes['2'];
         $d = ORM::for_table('tbl_plans')->find_one($id);
-        if ($d) {
+        if ($d && ($d['is_radius'] || _router_can_access_router($d['routers'], $admin, ['radius']))) {
             if (empty($d['device'])) {
                 if ($d['is_radius']) {
                     $d->device = 'Radius';
@@ -692,7 +733,7 @@ switch ($action) {
             $ui->assign('b', $b);
             $r = [];
             if ($d['is_radius']) {
-                $r = ORM::for_table('tbl_routers')->find_many();
+                $r = _router_get_accessible_routers($admin, false);
             }
             $ui->assign('r', $r);
             $devices = [];
@@ -732,7 +773,7 @@ switch ($action) {
         $id = $routes['2'];
 
         $d = ORM::for_table('tbl_plans')->find_one($id);
-        if ($d) {
+        if ($d && ($d['is_radius'] || _router_can_access_router($d['routers'], $admin, ['radius']))) {
             run_hook('delete_ppoe'); #HOOK
             Package::removePlanLinks($id);
 
@@ -786,6 +827,9 @@ switch ($action) {
         if (empty($radius)) {
             if ($routers == '') {
                 $msg .= Lang::T('All field is required') . '<br>';
+            }
+            if ($routers != '' && !_router_can_access_router($routers, $admin, ['radius'])) {
+                $msg .= Lang::T('Selected router is outside your allowed scope') . '<br>';
             }
         }
 
@@ -921,6 +965,12 @@ switch ($action) {
         if ($d) {
         } else {
             $msg .= Lang::T('Data Not Found') . '<br>';
+        }
+        if ($d && !($d['is_radius'] || _router_can_access_router($d['routers'], $admin, ['radius']))) {
+            $msg .= Lang::T('Data Not Found') . '<br>';
+        }
+        if (!empty($routers) && !_router_can_access_router($routers, $admin, ['radius'])) {
+            $msg .= Lang::T('Selected router is outside your allowed scope') . '<br>';
         }
         run_hook('edit_ppoe'); #HOOK
         if ($msg == '') {
@@ -1209,6 +1259,9 @@ switch ($action) {
         $device = _req('device');
         $status = _req('status');
         $router = _req('router');
+        if (!empty($router) && $router !== 'radius' && !_router_can_access_router($router, $admin, ['radius'])) {
+            $router = '';
+        }
         $ui->assign('type1', $type1);
         $ui->assign('type2', $type2);
         $ui->assign('type3', $type3);
@@ -1237,7 +1290,11 @@ switch ($action) {
         $ui->assign('type2s', ORM::for_table('tbl_plans')->getEnum("plan_type"));
         $ui->assign('type3s', ORM::for_table('tbl_plans')->getEnum("typebp"));
         $ui->assign('valids', ORM::for_table('tbl_plans')->getEnum("validity_unit"));
-        $ui->assign('routers', array_column(ORM::for_table('tbl_plans')->distinct()->select("routers")->whereNotEqual('routers', '')->findArray(), 'routers'));
+        $ui->assign('routers', _router_filter_allowed_names(
+            array_column(ORM::for_table('tbl_plans')->distinct()->select("routers")->whereNotEqual('routers', '')->findArray(), 'routers'),
+            $admin,
+            ['radius']
+        ));
         $devices = [];
         $files = scandir($DEVICE_PATH);
         foreach ($files as $file) {
@@ -1250,6 +1307,7 @@ switch ($action) {
         $query = ORM::for_table('tbl_bandwidth')
             ->left_outer_join('tbl_plans', array('tbl_bandwidth.id', '=', 'tbl_plans.id_bw'))
             ->where('tbl_plans.type', 'VPN');
+        $applyPlanScopeFilter($query);
         if (!empty($type1)) {
             $query->where('tbl_plans.prepaid', $type1);
         }
@@ -1313,7 +1371,7 @@ switch ($action) {
         $ui->assign('_title', Lang::T('VPN Plans'));
         $d = ORM::for_table('tbl_bandwidth')->find_many();
         $ui->assign('d', $d);
-        $r = ORM::for_table('tbl_routers')->find_many();
+        $r = _router_get_accessible_routers($admin, false);
         $ui->assign('r', $r);
         $ui->assign('last_visibility', isset($_SESSION['last_visibility']) ? $_SESSION['last_visibility'] : 'all');
         $devices = [];
@@ -1335,7 +1393,7 @@ switch ($action) {
         $ui->assign('_title', Lang::T('VPN Plans'));
         $id = $routes['2'];
         $d = ORM::for_table('tbl_plans')->find_one($id);
-        if ($d) {
+        if ($d && ($d['is_radius'] || _router_can_access_router($d['routers'], $admin, ['radius']))) {
             if (empty($d['device'])) {
                 if ($d['is_radius']) {
                     $d->device = 'Radius';
@@ -1351,7 +1409,7 @@ switch ($action) {
             $ui->assign('b', $b);
             $r = [];
             if ($d['is_radius']) {
-                $r = ORM::for_table('tbl_routers')->find_many();
+                $r = _router_get_accessible_routers($admin, false);
             }
             $ui->assign('r', $r);
             $devices = [];
@@ -1391,7 +1449,7 @@ switch ($action) {
         $id = $routes['2'];
 
         $d = ORM::for_table('tbl_plans')->find_one($id);
-        if ($d) {
+        if ($d && ($d['is_radius'] || _router_can_access_router($d['routers'], $admin, ['radius']))) {
             run_hook('delete_vpn'); #HOOK
             Package::removePlanLinks($id);
 
@@ -1445,6 +1503,9 @@ switch ($action) {
         if (empty($radius)) {
             if ($routers == '') {
                 $msg .= Lang::T('All field is required') . '<br>';
+            }
+            if ($routers != '' && !_router_can_access_router($routers, $admin, ['radius'])) {
+                $msg .= Lang::T('Selected router is outside your allowed scope') . '<br>';
             }
         }
 
@@ -1577,6 +1638,12 @@ switch ($action) {
         if ($d) {
         } else {
             $msg .= Lang::T('Data Not Found') . '<br>';
+        }
+        if ($d && !($d['is_radius'] || _router_can_access_router($d['routers'], $admin, ['radius']))) {
+            $msg .= Lang::T('Data Not Found') . '<br>';
+        }
+        if (!empty($routers) && !_router_can_access_router($routers, $admin, ['radius'])) {
+            $msg .= Lang::T('Selected router is outside your allowed scope') . '<br>';
         }
         run_hook('edit_vpn'); #HOOK
         if ($msg == '') {

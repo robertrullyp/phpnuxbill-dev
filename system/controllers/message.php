@@ -376,7 +376,7 @@ EOT;
             _alert(Lang::T('You do not have permission to access this page'), 'danger', "dashboard");
         }
 
-        $ui->assign('routers', ORM::forTable('tbl_routers')->where('enabled', '1')->find_many());
+        $ui->assign('routers', _router_get_accessible_routers($admin, true));
         $ui->display('admin/message/bulk.tpl');
         break;
 
@@ -397,6 +397,7 @@ EOT;
         $test = isset($_REQUEST['test']) && $_REQUEST['test'] === 'on';
         $service = $_REQUEST['service'] ?? '';
         $subject = $_REQUEST['subject'] ?? '';
+        $routerName = '';
         $channels = ['email', 'sms', 'wa', 'inbox'];
         $selectedChannels = [];
         $queueWa = !empty($_REQUEST['wa_queue']) && $_REQUEST['wa_queue'] == '1';
@@ -415,6 +416,10 @@ EOT;
             die(json_encode(['status' => 'error', 'message' => LANG::T('All fields are required')]));
         }
 
+        if (($admin['user_type'] ?? '') !== 'SuperAdmin' && empty($router)) {
+            die(json_encode(['status' => 'error', 'message' => LANG::T('Please select router')]));
+        }
+
         if (array_intersect($selectedChannels, ['email', 'inbox']) && empty($subject)) {
             die(json_encode(['status' => 'error', 'message' => LANG::T('Subject is required') . '.']));
         }
@@ -430,11 +435,14 @@ EOT;
                     $routerName = 'Radius';
                     break;
                 default:
-                    $router = ORM::for_table('tbl_routers')->find_one($router);
-                    if (!$router) {
+                    if (!_router_can_access_router((string) $router, $admin, ['radius'])) {
                         die(json_encode(['status' => 'error', 'message' => LANG::T('Invalid router')]));
                     }
-                    $routerName = $router->name;
+                    $routerRow = ORM::for_table('tbl_routers')->find_one((int) $router);
+                    if (!$routerRow || !_router_can_access_router((string) $routerRow->name, $admin, ['radius'])) {
+                        die(json_encode(['status' => 'error', 'message' => LANG::T('Invalid router')]));
+                    }
+                    $routerName = $routerRow->name;
                     break;
             }
         }

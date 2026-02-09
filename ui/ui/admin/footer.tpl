@@ -145,7 +145,11 @@
         function apiGetText(){
             var el = listAttApi[posAttApi];
             if(el != undefined){
-                $.get(el.getAttribute('api-get-text'), function(data) {
+                var apiUrl = el.getAttribute('api-get-text');
+                if (location.protocol === 'https:' && /^http:\/\//i.test(apiUrl)) {
+                    apiUrl = apiUrl.replace(/^http:/i, 'https:');
+                }
+                $.get(apiUrl, function(data) {
                     el.innerHTML = data;
                     posAttApi++;
                     if(posAttApi < listAttApi.length){

@@ -71,4 +71,5 @@ system/uploads/invoices/**
 !system/uploads/invoices/index.html
 TODO.md
 scripts/*
+!scripts/cleanup_user_hierarchy.php
 .githooks

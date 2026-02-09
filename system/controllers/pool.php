@@ -16,6 +16,13 @@ if (!in_array($admin['user_type'], ['SuperAdmin', 'Admin'])) {
     _alert(Lang::T('You do not have permission to access this page'), 'danger', "dashboard");
 }
 
+$allowedRouterNames = _router_get_accessible_router_names($admin, false);
+$allowedPoolRouters = $allowedRouterNames;
+if (!empty($config['radius_enable'])) {
+    $allowedPoolRouters[] = 'radius';
+}
+$allowedPoolRouters = array_values(array_unique(array_filter($allowedPoolRouters)));
+
 require_once $DEVICE_PATH . DIRECTORY_SEPARATOR . 'MikrotikPppoe' . '.php';
 
 switch ($action) {
@@ -24,9 +31,23 @@ switch ($action) {
         $name = _post('name');
         if ($name != '') {
             $query = ORM::for_table('tbl_pool')->where_like('pool_name', '%' . $name . '%')->order_by_desc('id');
+            if (($admin['user_type'] ?? '') !== 'SuperAdmin') {
+                if (empty($allowedPoolRouters)) {
+                    $query->where('id', -1);
+                } else {
+                    $query->where_in('routers', $allowedPoolRouters);
+                }
+            }
             $d = Paginator::findMany($query, ['name' => $name]);
         } else {
             $query = ORM::for_table('tbl_pool')->order_by_desc('id');
+            if (($admin['user_type'] ?? '') !== 'SuperAdmin') {
+                if (empty($allowedPoolRouters)) {
+                    $query->where('id', -1);
+                } else {
+                    $query->where_in('routers', $allowedPoolRouters);
+                }
+            }
             $d = Paginator::findMany($query);
         }
 
@@ -36,7 +57,7 @@ switch ($action) {
         break;
 
     case 'add':
-        $r = ORM::for_table('tbl_routers')->find_many();
+        $r = _router_get_accessible_routers($admin, false);
         $ui->assign('r', $r);
         run_hook('view_add_pool'); #HOOK
         $ui->assign('csrf_token', Csrf::generateAndStoreToken());
@@ -46,7 +67,7 @@ switch ($action) {
     case 'edit':
         $id  = $routes['2'];
         $d = ORM::for_table('tbl_pool')->find_one($id);
-        if ($d) {
+        if ($d && _router_can_access_router($d['routers'], $admin, ['radius'])) {
             $ui->assign('d', $d);
             run_hook('view_edit_pool'); #HOOK
             $ui->assign('csrf_token', Csrf::generateAndStoreToken());
@@ -60,7 +81,7 @@ switch ($action) {
         $id  = $routes['2'];
         run_hook('delete_pool'); #HOOK
         $d = ORM::for_table('tbl_pool')->find_one($id);
-        if ($d) {
+        if ($d && _router_can_access_router($d['routers'], $admin, ['radius'])) {
             if ($d['routers'] != 'radius') {
                 (new MikrotikPppoe())->remove_pool($d);
             }
@@ -71,7 +92,15 @@ switch ($action) {
         break;
 
     case 'sync':
-        $pools = ORM::for_table('tbl_pool')->find_many();
+        $poolQuery = ORM::for_table('tbl_pool');
+        if (($admin['user_type'] ?? '') !== 'SuperAdmin') {
+            if (empty($allowedPoolRouters)) {
+                $poolQuery->where('id', -1);
+            } else {
+                $poolQuery->where_in('routers', $allowedPoolRouters);
+            }
+        }
+        $pools = $poolQuery->find_many();
         $log = '';
         foreach ($pools as $pool) {
             if ($pool['routers'] != 'radius') {
@@ -98,6 +127,9 @@ switch ($action) {
         }
         if ($ip_address == '' or $routers == '') {
             $msg .= Lang::T('All field is required') . '<br>';
+        }
+        if (!empty($routers) && !_router_can_access_router($routers, $admin, ['radius'])) {
+            $msg .= Lang::T('Selected router is outside your allowed scope') . '<br>';
         }
 
         $d = ORM::for_table('tbl_pool')->where('pool_name', $name)->find_one();
@@ -137,10 +169,15 @@ switch ($action) {
         if ($ip_address == '' or $routers == '') {
             $msg .= Lang::T('All field is required') . '<br>';
         }
+        if (!empty($routers) && !_router_can_access_router($routers, $admin, ['radius'])) {
+            $msg .= Lang::T('Selected router is outside your allowed scope') . '<br>';
+        }
 
         $d = ORM::for_table('tbl_pool')->find_one($id);
         $old = ORM::for_table('tbl_pool')->find_one($id);
         if (!$d) {
+            $msg .= Lang::T('Data Not Found') . '<br>';
+        } elseif (!_router_can_access_router($d['routers'], $admin, ['radius'])) {
             $msg .= Lang::T('Data Not Found') . '<br>';
         }
 
@@ -164,9 +201,23 @@ switch ($action) {
         $name = _post('name');
         if ($name != '') {
             $query = ORM::for_table('tbl_port_pool')->where_like('pool_name', '%' . $name . '%')->order_by_desc('id');
+            if (($admin['user_type'] ?? '') !== 'SuperAdmin') {
+                if (empty($allowedPoolRouters)) {
+                    $query->where('id', -1);
+                } else {
+                    $query->where_in('routers', $allowedPoolRouters);
+                }
+            }
             $d = Paginator::findMany($query, ['name' => $name]);
         } else {
             $query = ORM::for_table('tbl_port_pool')->order_by_desc('id');
+            if (($admin['user_type'] ?? '') !== 'SuperAdmin') {
+                if (empty($allowedPoolRouters)) {
+                    $query->where('id', -1);
+                } else {
+                    $query->where_in('routers', $allowedPoolRouters);
+                }
+            }
             $d = Paginator::findMany($query);
         }
 
@@ -176,7 +227,7 @@ switch ($action) {
         break;
 
     case 'add-port':
-        $r = ORM::for_table('tbl_routers')->find_many();
+        $r = _router_get_accessible_routers($admin, false);
         $ui->assign('r', $r);
         run_hook('view_add_port'); #HOOK
         $ui->assign('csrf_token', Csrf::generateAndStoreToken());
@@ -186,7 +237,7 @@ switch ($action) {
     case 'edit-port':
         $id  = $routes['2'];
         $d = ORM::for_table('tbl_port_pool')->find_one($id);
-        if ($d) {
+        if ($d && _router_can_access_router($d['routers'], $admin, ['radius'])) {
             $ui->assign('d', $d);
             run_hook('view_edit_port'); #HOOK
             $ui->assign('csrf_token', Csrf::generateAndStoreToken());
@@ -200,7 +251,7 @@ switch ($action) {
         $id  = $routes['2'];
         run_hook('delete_port'); #HOOK
         $d = ORM::for_table('tbl_port_pool')->find_one($id);
-        if ($d) {
+        if ($d && _router_can_access_router($d['routers'], $admin, ['radius'])) {
             $d->delete();
 
             r2(getUrl('pool/port'), 's', Lang::T('Data Deleted Successfully'));
@@ -208,7 +259,15 @@ switch ($action) {
         break;
 
     case 'sync':
-        $pools = ORM::for_table('tbl_port_pool')->find_many();
+        $poolQuery = ORM::for_table('tbl_port_pool');
+        if (($admin['user_type'] ?? '') !== 'SuperAdmin') {
+            if (empty($allowedPoolRouters)) {
+                $poolQuery->where('id', -1);
+            } else {
+                $poolQuery->where_in('routers', $allowedPoolRouters);
+            }
+        }
+        $pools = $poolQuery->find_many();
         $log = '';
         foreach ($pools as $pool) {
             if ($pool['routers'] != 'radius') {
@@ -235,6 +294,9 @@ switch ($action) {
         }
         if ($port_range == '' or $routers == '') {
             $msg .= Lang::T('All field is required') . '<br>';
+        }
+        if (!empty($routers) && !_router_can_access_router($routers, $admin, ['radius'])) {
+            $msg .= Lang::T('Selected router is outside your allowed scope') . '<br>';
         }
 
         $d = ORM::for_table('tbl_port_pool')->where('routers', $routers)->find_one();
@@ -274,10 +336,15 @@ switch ($action) {
         if ($range_port == '' or $routers == '') {
             $msg .= Lang::T('All field is required') . '<br>';
         }
+        if (!empty($routers) && !_router_can_access_router($routers, $admin, ['radius'])) {
+            $msg .= Lang::T('Selected router is outside your allowed scope') . '<br>';
+        }
 
         $d = ORM::for_table('tbl_port_pool')->find_one($id);
         $old = ORM::for_table('tbl_port_pool')->find_one($id);
         if (!$d) {
+            $msg .= Lang::T('Data Not Found') . '<br>';
+        } elseif (!_router_can_access_router($d['routers'], $admin, ['radius'])) {
             $msg .= Lang::T('Data Not Found') . '<br>';
         }
 

@@ -33,6 +33,19 @@ document.addEventListener("DOMContentLoaded", function(event) {
 </script>
 EOT;
 getUrl('docs');
+$accessibleRouterNames = _router_get_accessible_router_names($admin, false);
+$applyPlanRouterScope = function ($query, $routerColumn = 'routers', $radiusColumn = 'is_radius') use ($admin, $accessibleRouterNames) {
+    if (($admin['user_type'] ?? '') === 'SuperAdmin') {
+        return $query;
+    }
+    if (empty($accessibleRouterNames)) {
+        $query->where($radiusColumn, 1);
+        return $query;
+    }
+    $placeholders = implode(',', array_fill(0, count($accessibleRouterNames), '?'));
+    $query->where_raw('(' . $radiusColumn . ' = 1 OR ' . $routerColumn . ' IN (' . $placeholders . '))', $accessibleRouterNames);
+    return $query;
+};
 switch ($action) {
     case 'sync':
         if (!in_array($admin['user_type'], ['SuperAdmin', 'Admin'])) {
@@ -75,7 +88,11 @@ switch ($action) {
         }
         $ui->assign('xfooter', $select2_customer);
         if (isset($routes['2']) && !empty($routes['2'])) {
-            $ui->assign('cust', ORM::for_table('tbl_customers')->find_one($routes['2']));
+            $prefillCustomer = ORM::for_table('tbl_customers')->find_one((int) $routes['2']);
+            if (!$prefillCustomer || !_customer_can_access($prefillCustomer, $admin)) {
+                r2(getUrl('plan/recharge'), 'e', Lang::T('Customer not found'));
+            }
+            $ui->assign('cust', $prefillCustomer);
         }
         $usings = explode(',', $config['payment_usings']);
         $usings = array_filter(array_unique($usings));
@@ -109,12 +126,39 @@ switch ($action) {
         if ($id_customer == '' or $server == '' or $planId == '' or $using == '') {
             $msg .= Lang::T('All field is required') . '<br>';
         }
+        if (!empty($server) && !_router_can_access_router($server, $admin, ['radius'])) {
+            $msg .= Lang::T('Selected router is outside your allowed scope') . '<br>';
+        }
+        $custRow = null;
+        if ($id_customer !== '') {
+            $custRow = ORM::for_table('tbl_customers')->find_one((int) $id_customer);
+            if (!$custRow || !_customer_can_access($custRow, $admin)) {
+                $msg .= Lang::T('Customer not found') . '<br>';
+            }
+        }
 
         if ($msg == '') {
             $gateway = 'Recharge';
             $channel = $admin['fullname'];
-            $cust = User::_info($id_customer);
+            $cust = $custRow ? $custRow->as_array() : User::_info($id_customer);
             $plan = ORM::for_table('tbl_plans')->find_one($planId);
+            if (!$plan) {
+                $msg .= Lang::T('Plan not found') . '<br>';
+            } elseif (!empty($plan['is_radius'])) {
+                if ($server !== 'radius') {
+                    $msg .= Lang::T('Invalid plan for selected router') . '<br>';
+                }
+            } else {
+                if ($server !== (string) ($plan['routers'] ?? '')) {
+                    $msg .= Lang::T('Invalid plan for selected router') . '<br>';
+                }
+                if (!_router_can_access_router((string) ($plan['routers'] ?? ''), $admin, ['radius'])) {
+                    $msg .= Lang::T('Selected router is outside your allowed scope') . '<br>';
+                }
+            }
+        }
+
+        if ($msg == '') {
             list($bills, $add_cost) = User::getBills($id_customer);
             $add_inv = User::getAttribute("Invoice", $id_customer);
             if (!empty($add_inv)) {
@@ -215,11 +259,35 @@ switch ($action) {
         if ($id_customer == '' or $server == '' or $planId == '' or $using == '') {
             $msg .= Lang::T('All field is required') . '<br>';
         }
+        if (!empty($server) && !_router_can_access_router($server, $admin, ['radius'])) {
+            $msg .= Lang::T('Selected router is outside your allowed scope') . '<br>';
+        }
+        $custRow = null;
+        if ($id_customer !== '') {
+            $custRow = ORM::for_table('tbl_customers')->find_one((int) $id_customer);
+            if (!$custRow || !_customer_can_access($custRow, $admin)) {
+                $msg .= Lang::T('Customer not found') . '<br>';
+            }
+        }
+        if (!$plan) {
+            $msg .= Lang::T('Plan not found') . '<br>';
+        } elseif (!empty($plan['is_radius'])) {
+            if ($server !== 'radius') {
+                $msg .= Lang::T('Invalid plan for selected router') . '<br>';
+            }
+        } else {
+            if ($server !== (string) ($plan['routers'] ?? '')) {
+                $msg .= Lang::T('Invalid plan for selected router') . '<br>';
+            }
+            if (!_router_can_access_router((string) ($plan['routers'] ?? ''), $admin, ['radius'])) {
+                $msg .= Lang::T('Selected router is outside your allowed scope') . '<br>';
+            }
+        }
 
         if ($msg == '') {
             $gateway = ucwords($using);
             $channel = $admin['fullname'];
-            $cust = User::_info($id_customer);
+            $cust = $custRow ? $custRow->as_array() : User::_info($id_customer);
             list($bills, $add_cost) = User::getBills($id_customer);
 
             // Tax calculation start
@@ -554,6 +622,9 @@ switch ($action) {
         $ui->assign('_title', Lang::T('Voucher Cards'));
         $search = _req('search');
         $router = _req('router');
+        if (!empty($router) && !_router_can_access_router($router, $admin, ['radius'])) {
+            $router = '';
+        }
         $customer = _req('customer');
         $plan = _req('plan');
         $status = _req('status');
@@ -568,6 +639,19 @@ switch ($action) {
 
         $query = ORM::for_table('tbl_plans')
             ->inner_join('tbl_voucher', ['tbl_plans.id', '=', 'tbl_voucher.id_plan']);
+
+        if (($admin['user_type'] ?? '') !== 'SuperAdmin') {
+            $allowedVoucherRouters = $accessibleRouterNames;
+            if (!empty($config['radius_enable'])) {
+                $allowedVoucherRouters[] = 'radius';
+            }
+            $allowedVoucherRouters = array_values(array_unique(array_filter($allowedVoucherRouters)));
+            if (empty($allowedVoucherRouters)) {
+                $query->where('tbl_voucher.id', -1);
+            } else {
+                $query->where_in('tbl_voucher.routers', $allowedVoucherRouters);
+            }
+        }
 
         if (!empty($router)) {
             $query->where('tbl_voucher.routers', $router);
@@ -621,7 +705,11 @@ switch ($action) {
         } else {
             $ui->assign('plans', []);
         }
-        $ui->assign('routers', array_column(ORM::for_table('tbl_voucher')->distinct()->select("routers")->findArray(), 'routers'));
+        $ui->assign('routers', _router_filter_allowed_names(
+            array_column(ORM::for_table('tbl_voucher')->distinct()->select("routers")->findArray(), 'routers'),
+            $admin,
+            ['radius']
+        ));
 
         if ($search != '') {
             if (in_array($admin['user_type'], ['SuperAdmin', 'Admin'])) {
@@ -695,9 +783,11 @@ switch ($action) {
         $ui->assign('_title', Lang::T('Add Vouchers'));
         $c = ORM::for_table('tbl_customers')->find_many();
         $ui->assign('c', $c);
-        $p = ORM::for_table('tbl_plans')->where('enabled', '1')->find_many();
+        $p = ORM::for_table('tbl_plans')->where('enabled', '1');
+        $applyPlanRouterScope($p, 'routers', 'is_radius');
+        $p = $p->find_many();
         $ui->assign('p', $p);
-        $r = ORM::for_table('tbl_routers')->where('enabled', '1')->find_many();
+        $r = _router_get_accessible_routers($admin, true);
         $ui->assign('r', $r);
         run_hook('view_add_voucher'); #HOOK
         $ui->display('admin/voucher/add.tpl');
@@ -883,6 +973,30 @@ switch ($action) {
         }
         if (!Validator::UnsignedNumber($lengthcode)) {
             $msg .= "The Length Code must be a number<br>";
+        }
+        if (!empty($server) && !_router_can_access_router($server, $admin, ['radius'])) {
+            $msg .= Lang::T('Selected router is outside your allowed scope') . '<br>';
+        }
+
+        $planRow = ORM::for_table('tbl_plans')->find_one((int) $plan);
+        if (!$planRow) {
+            $msg .= Lang::T('Plan not found') . '<br>';
+        } else {
+            if (!empty($planRow['is_radius'])) {
+                if ($server !== 'radius') {
+                    $msg .= Lang::T('Invalid plan for selected router') . '<br>';
+                }
+            } else {
+                if ($server !== (string) ($planRow['routers'] ?? '')) {
+                    $msg .= Lang::T('Invalid plan for selected router') . '<br>';
+                }
+                if (!_router_can_access_router((string) ($planRow['routers'] ?? ''), $admin, ['radius'])) {
+                    $msg .= Lang::T('Selected router is outside your allowed scope') . '<br>';
+                }
+            }
+            if (!empty($type) && strcasecmp((string) $planRow['type'], (string) $type) !== 0) {
+                $msg .= Lang::T('Invalid plan type') . '<br>';
+            }
         }
 
         if ($msg == '') {
@@ -1254,6 +1368,9 @@ switch ($action) {
         $search = _req('search');
         $status = _req('status', '-');
         $router = _req('router');
+        if (!empty($router) && !_router_can_access_router($router, $admin, ['radius'])) {
+            $router = '';
+        }
         $plan = _req('plan');
 
         $buildFilters = static function ($searchValue, $statusValue, $routerValue, $planValue) {
@@ -1287,6 +1404,9 @@ switch ($action) {
             $search = _post('search', $search);
             $status = _post('status', $status);
             $router = _post('router', $router);
+            if (!empty($router) && !_router_can_access_router($router, $admin, ['radius'])) {
+                $router = '';
+            }
             $plan = _post('plan', $plan);
 
             $queryParams = $buildFilters($search, $status, $router, $plan);
@@ -1309,13 +1429,17 @@ switch ($action) {
         $ui->assign('plan', $plan);
         $ui->assign('status', $status);
         $ui->assign('router', $router);
-        $ui->assign('routers', array_column(
-            ORM::for_table('tbl_user_recharges')
-                ->distinct()
-                ->select('tbl_user_recharges.routers', 'routers')
-                ->whereNotEqual('tbl_user_recharges.routers', '')
-                ->findArray(),
-            'routers'
+        $ui->assign('routers', _router_filter_allowed_names(
+            array_column(
+                ORM::for_table('tbl_user_recharges')
+                    ->distinct()
+                    ->select('tbl_user_recharges.routers', 'routers')
+                    ->whereNotEqual('tbl_user_recharges.routers', '')
+                    ->findArray(),
+                'routers'
+            ),
+            $admin,
+            ['radius']
         ));
 
         $plns = ORM::for_table('tbl_user_recharges')
@@ -1333,6 +1457,19 @@ switch ($action) {
             ->select('tbl_customers.fullname', 'customer_fullname')
             ->left_outer_join('tbl_customers', ['tbl_user_recharges.customer_id', '=', 'tbl_customers.id'])
             ->order_by_desc('tbl_user_recharges.id');
+
+        if (($admin['user_type'] ?? '') !== 'SuperAdmin') {
+            $allowedRechargeRouters = $accessibleRouterNames;
+            if (!empty($config['radius_enable'])) {
+                $allowedRechargeRouters[] = 'radius';
+            }
+            $allowedRechargeRouters = array_values(array_unique(array_filter($allowedRechargeRouters)));
+            if (empty($allowedRechargeRouters)) {
+                $query->where('tbl_user_recharges.id', -1);
+            } else {
+                $query->where_in('tbl_user_recharges.routers', $allowedRechargeRouters);
+            }
+        }
 
         if (isset($filters['search'])) {
             $searchTerm = $filters['search'];

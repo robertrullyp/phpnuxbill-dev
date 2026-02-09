@@ -2,6 +2,15 @@
 
 # CHANGELOG
 
+## 2026.2.8
+
+- **Security (RBAC):** Hardened admin-user create/edit flows with a strict role-assignment matrix and root-parent validation to block privilege escalation via manual requests.
+- **Router Access:** Added hierarchical router assignment (`All`/`List`) with inheritance limits across downline structure (`SuperAdmin -> Admin -> Agent -> Sales`).
+- **Customers:** Added Account Manager assignment mode (`All`/`List`) backed by `tbl_customers.account_manager_id`, including visibility filtering and controlled reassignment by higher roles.
+- **Legacy Cleanup:** Integrated user-hierarchy normalization in updater flow to reduce risk from invalid legacy `root` relations.
+- **Maintenance:** Normalized runtime cache permissions/ownership recommendations (`system/cache`, `ui/compiled`) and synchronized release metadata.
+- **Database:** Added updater migration for `tbl_customers.account_manager_id`.
+
 ## 2026.01.31
 
 - **WhatsApp Gateway:** Added POST/GET method selection, auth headers, idempotency keys, and richer response handling for external WA servers.

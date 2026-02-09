@@ -11,6 +11,7 @@ $ui->assign('_system_menu', 'customers');
 
 $action = $routes['1'];
 $ui->assign('_admin', $admin);
+$customer = null;
 
 if (empty($action)) {
     $action = 'list';
@@ -157,6 +158,10 @@ switch ($action) {
             _alert(Lang::T('You do not have permission to access this page'), 'danger', "dashboard");
         }
         $ui->assign('xheader', $leafletpickerHeader);
+        $ui->assign('customer_am_enabled', _customer_am_column_exists());
+        $ui->assign('am_users', _customer_am_rows());
+        $ui->assign('selected_account_manager_id', 0);
+        $ui->assign('selected_account_manager_mode', 'all');
         run_hook('view_add_customer'); #HOOK
         $ui->assign('csrf_token',  Csrf::generateAndStoreToken());
         $ui->display('admin/customers/add.tpl');
@@ -175,6 +180,10 @@ switch ($action) {
             r2(getUrl('customers/view/') . $id_customer, 'e', Lang::T('Invalid or Expired CSRF Token') . ".");
         }
         Csrf::generateAndStoreToken();
+        $targetCustomer = ORM::for_table('tbl_customers')->find_one($id_customer);
+        if (!$targetCustomer || !_customer_can_access($targetCustomer, $admin)) {
+            r2(getUrl('customers/list'), 'e', Lang::T('Account Not Found'));
+        }
         $b = ORM::for_table('tbl_user_recharges')->where('customer_id', $id_customer)->where('plan_id', $plan_id)->find_one();
         if ($b) {
             $gateway = 'Recharge';
@@ -290,6 +299,10 @@ switch ($action) {
             r2(getUrl('customers/view/') . $id_customer, 'e', Lang::T('Invalid or Expired CSRF Token') . ".");
         }
         Csrf::generateAndStoreToken();
+        $targetCustomer = ORM::for_table('tbl_customers')->find_one($id_customer);
+        if (!$targetCustomer || !_customer_can_access($targetCustomer, $admin)) {
+            r2(getUrl('customers/list'), 'e', Lang::T('Account Not Found'));
+        }
         $bs = ORM::for_table('tbl_user_recharges')->where('customer_id', $id_customer)->where('status', 'on')->findMany();
         if ($bs) {
             $routers = [];
@@ -340,11 +353,17 @@ switch ($action) {
         break;
     case 'viewu':
         $customer = ORM::for_table('tbl_customers')->where('username', $routes['2'])->find_one();
+        if ($customer && !_customer_can_access($customer, $admin)) {
+            $customer = null;
+        }
     case 'view':
         $id = $routes['2'];
         run_hook('view_customer'); #HOOK
         if (!$customer) {
             $customer = ORM::for_table('tbl_customers')->find_one($id);
+        }
+        if ($customer && !_customer_can_access($customer, $admin)) {
+            $customer = null;
         }
         if ($customer) {
             // Fetch the Customers Attributes values from the tbl_customer_custom_fields table
@@ -383,6 +402,11 @@ switch ($action) {
             $ui->assign('packages', User::_billing($customer['id']));
             $ui->assign('v', $v);
             $ui->assign('d', $customer);
+            $amId = _customer_am_id($customer);
+            $amLabels = _customer_am_label_map();
+            $ui->assign('customer_am_enabled', _customer_am_column_exists());
+            $ui->assign('customer_am_id', $amId);
+            $ui->assign('customer_am_label', ($amId > 0 && isset($amLabels[$amId])) ? $amLabels[$amId] : Lang::T('All'));
             $ui->assign('customFields', $customFields);
             $ui->assign('xheader', $leafletpickerHeader);
             $ui->assign('csrf_token',  Csrf::generateAndStoreToken());
@@ -428,7 +452,13 @@ switch ($action) {
                     $ui->assign('notify', 'No photo found to delete');
                 }
             }
+            $selectedAccountManagerId = _customer_am_id($d);
             $ui->assign('d', $d);
+            $ui->assign('customer_am_enabled', _customer_am_column_exists());
+            $ui->assign('can_edit_customer_am', _customer_can_edit_assignment($admin));
+            $ui->assign('am_users', _customer_am_rows());
+            $ui->assign('selected_account_manager_id', $selectedAccountManagerId);
+            $ui->assign('selected_account_manager_mode', $selectedAccountManagerId > 0 ? 'list' : 'all');
             $ui->assign('statuses', ORM::for_table('tbl_customers')->getEnum("status"));
             $ui->assign('customFields', $customFields);
             $ui->assign('xheader', $leafletpickerHeader);
@@ -487,6 +517,9 @@ switch ($action) {
         break;
 
     case 'add-post':
+        if (!in_array($admin['user_type'], ['SuperAdmin', 'Admin', 'Agent', 'Sales'])) {
+            _alert(Lang::T('You do not have permission to access this page'), 'danger', "dashboard");
+        }
 
         $csrf_token = _post('csrf_token');
         if (!Csrf::check($csrf_token)) {
@@ -513,6 +546,12 @@ switch ($action) {
         $district = _post('district');
         $state = _post('state');
         $zip = _post('zip');
+        $account_manager_mode = strtolower(trim((string) _post('account_manager_mode', 'all')));
+        if (!in_array($account_manager_mode, ['all', 'list'], true)) {
+            $account_manager_mode = 'all';
+        }
+        $account_manager_input = (int) _post('account_manager_id', 0);
+        $account_manager_id = 0;
 
         run_hook('add_customer'); #HOOK
         $msg = '';
@@ -536,6 +575,21 @@ switch ($action) {
         if (ORM::for_table('tbl_customers')->where('phonenumber', Lang::phoneFormat($phonenumber))->find_one()) {
             $msg .= Lang::T('Phone number already exists') . '<br>';
         }
+        if (_customer_am_column_exists()) {
+            if ($account_manager_mode === 'list') {
+                if ($account_manager_input < 1) {
+                    $msg .= Lang::T('Please select account manager') . '<br>';
+                } else {
+                    $am_error = '';
+                    $account_manager_id = _customer_am_resolve($account_manager_input, $am_error);
+                    if ($am_error !== '') {
+                        $msg .= $am_error . '<br>';
+                    }
+                }
+            } else {
+                $account_manager_id = 0;
+            }
+        }
         if ($msg == '') {
             $d = ORM::for_table('tbl_customers')->create();
             $d->username = $username;
@@ -555,6 +609,9 @@ switch ($action) {
             $d->district = $district;
             $d->state = $state;
             $d->zip = $zip;
+            if (_customer_am_column_exists()) {
+                $d->account_manager_id = $account_manager_id;
+            }
             $d->save();
 
             // Retrieve the customer ID of the newly created customer
@@ -632,6 +689,9 @@ switch ($action) {
         break;
 
     case 'edit-post':
+        if (!in_array($admin['user_type'], ['SuperAdmin', 'Admin'])) {
+            _alert(Lang::T('You do not have permission to access this page'), 'danger', "dashboard");
+        }
         $id = _post('id');
         $csrf_token = _post('csrf_token');
         if (!Csrf::check($csrf_token)) {
@@ -657,6 +717,9 @@ switch ($action) {
         $district = _post('district');
         $state = _post('state');
         $zip = _post('zip');
+        $account_manager_mode_input = isset($_POST['account_manager_mode']) ? strtolower(trim((string) $_POST['account_manager_mode'])) : null;
+        $account_manager_input = isset($_POST['account_manager_id']) ? (int) $_POST['account_manager_id'] : null;
+        $account_manager_id = 0;
         run_hook('edit_customer'); #HOOK
         $msg = '';
         if (Validator::Length($username, 55, 2) == false) {
@@ -674,6 +737,34 @@ switch ($action) {
 
         if (!$c) {
             $msg .= Lang::T('Data Not Found') . '<br>';
+        }
+        if ($c && !_customer_can_access($c, $admin)) {
+            $msg .= Lang::T('Account Not Found') . '<br>';
+        }
+
+        if ($c) {
+            $account_manager_id = _customer_am_id($c);
+        }
+        if ($c && _customer_am_column_exists() && _customer_can_edit_assignment($admin)) {
+            if ($account_manager_mode_input !== null) {
+                if (!in_array($account_manager_mode_input, ['all', 'list'], true)) {
+                    $msg .= Lang::T('Invalid account manager mode') . '<br>';
+                } elseif ($account_manager_mode_input === 'all') {
+                    $account_manager_id = 0;
+                } else {
+                    if ($account_manager_input === null || (int) $account_manager_input < 1) {
+                        $msg .= Lang::T('Please select account manager') . '<br>';
+                    } else {
+                        $am_error = '';
+                        $resolved_am = _customer_am_resolve($account_manager_input, $am_error);
+                        if ($am_error !== '') {
+                            $msg .= $am_error . '<br>';
+                        } else {
+                            $account_manager_id = $resolved_am;
+                        }
+                    }
+                }
+            }
         }
 
         if ($c && $c['phonenumber'] != $phonenumber) {
@@ -794,6 +885,9 @@ switch ($action) {
             $c->district = $district;
             $c->state = $state;
             $c->zip = $zip;
+            if (_customer_am_column_exists() && _customer_can_edit_assignment($admin)) {
+                $c->account_manager_id = $account_manager_id;
+            }
             $c->save();
 
 
@@ -915,6 +1009,7 @@ switch ($action) {
             $query = ORM::for_table('tbl_customers');
             $query->where("status", $filter);
         }
+        _customer_apply_scope($query, $admin, 'tbl_customers');
         if ($order == 'lastname') {
             $query->order_by_expr("SUBSTR(fullname, INSTR(fullname, ' ')) $orderby");
         } else {
@@ -995,6 +1090,8 @@ switch ($action) {
 
         $d = Paginator::findMany($query, ['search' => $search], $per_page, $append_url);
         $ui->assign('d', $d);
+        $ui->assign('customer_am_enabled', _customer_am_column_exists());
+        $ui->assign('customer_am_labels', _customer_am_label_map());
         $ui->assign('statuses', ORM::for_table('tbl_customers')->getEnum("status"));
         $ui->assign('filter', $filter);
         $ui->assign('search', htmlspecialchars($search, ENT_QUOTES, 'UTF-8'));

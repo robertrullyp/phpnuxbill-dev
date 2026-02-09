@@ -19,8 +19,23 @@ $ui->assign('_admin', $admin);
 switch ($action) {
     case 'pool':
         $routers = _get('routers');
+        $d = [];
+        $allowedRouterNames = _router_get_accessible_router_names($admin, false);
+        $allowedPoolRouters = $allowedRouterNames;
+        if (!empty($config['radius_enable'])) {
+            $allowedPoolRouters[] = 'radius';
+        }
+
+        if (!empty($routers) && !_router_can_access_router($routers, $admin, ['radius'])) {
+            $routers = '';
+        }
+
         if (empty($routers)) {
-            $d = ORM::for_table('tbl_pool')->find_many();
+            if (($admin['user_type'] ?? '') === 'SuperAdmin') {
+                $d = ORM::for_table('tbl_pool')->find_many();
+            } elseif (!empty($allowedPoolRouters)) {
+                $d = ORM::for_table('tbl_pool')->where_in('routers', array_values(array_unique($allowedPoolRouters)))->find_many();
+            }
         } else {
             $d = ORM::for_table('tbl_pool')->where('routers', $routers)->find_many();
         }
@@ -41,7 +56,7 @@ switch ($action) {
         }
         die();
     case 'server':
-        $d = ORM::for_table('tbl_routers')->where('enabled', '1')->find_many();
+        $d = _router_get_accessible_routers($admin, true);
         $ui->assign('d', $d);
 
         $ui->display('admin/autoload/server.tpl');
@@ -75,6 +90,12 @@ switch ($action) {
     case 'plan':
         $server = _post('server');
         $jenis = _post('jenis');
+        $d = [];
+        if (!empty($server) && !_router_can_access_router($server, $admin, ['radius'])) {
+            $ui->assign('d', $d);
+            $ui->display('admin/autoload/plan.tpl');
+            break;
+        }
         if (in_array($admin['user_type'], array('SuperAdmin', 'Admin'))) {
             switch ($server) {
                 case 'radius':
@@ -164,14 +185,19 @@ switch ($action) {
         }
         break;
     case 'customer_select2':
-
-        $s = addslashes(_get('s'));
-        if (empty($s)) {
-            $c = ORM::for_table('tbl_customers')->limit(30)->find_many();
-        } else {
-            $c = ORM::for_table('tbl_customers')->where_raw("(`username` LIKE '%$s%' OR `fullname` LIKE '%$s%' OR `phonenumber` LIKE '%$s%' OR `email` LIKE '%$s%')")->limit(30)->find_many();
+        $s = trim((string) _get('s'));
+        $query = ORM::for_table('tbl_customers');
+        _customer_apply_scope($query, $admin, 'tbl_customers');
+        if ($s !== '') {
+            $like = '%' . $s . '%';
+            $query->where_raw(
+                "(`username` LIKE ? OR `fullname` LIKE ? OR `phonenumber` LIKE ? OR `email` LIKE ?)",
+                [$like, $like, $like, $like]
+            );
         }
+        $c = $query->limit(30)->find_many();
         header('Content-Type: application/json');
+        $json = [];
         foreach ($c as $cust) {
             $json[] = [
                 'id' => $cust['id'],
