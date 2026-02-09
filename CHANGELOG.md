@@ -11,6 +11,7 @@
 - **UX:** Refined customer WiFi editor into compact action-button workflow (`Edit WiFi` / `Save Changes` / `Cancel`) with no inline edit icons in SSID/password rows.
 - **API/Docs:** Synced API examples/spec references and release metadata for production rollout.
 - **Maintenance:** Fixed `customers/edit/{id}` flow to allow direct GET navigation while preserving CSRF validation for POST-triggered entry points.
+- **Updater/Installer:** Hardened database migration execution (idempotent-aware error handling + post-migration schema hardening) and synchronized fresh-install schema with current runtime (`VPN` enums, `account_manager_id`, `batch_name`, `tbl_invoices`, and `tbl_plan_customers` primary key/auto-increment).
 - Version bumped to `2026.2.9`.
 
 ## 2026.2.8

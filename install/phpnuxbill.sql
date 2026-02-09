@@ -38,14 +38,15 @@ CREATE TABLE `tbl_customers` (
   `state` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci DEFAULT NULL,
   `zip` varchar(10) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci DEFAULT NULL,
   `phonenumber` varchar(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci DEFAULT '0',
-  `email` varchar(128) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL DEFAULT '1',
+  `email` varchar(128) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL DEFAULT '',
   `coordinates` varchar(50) COLLATE utf8mb4_general_ci NOT NULL DEFAULT '' COMMENT 'Latitude and Longitude coordinates',
   `account_type` enum('Business','Personal') COLLATE utf8mb4_general_ci DEFAULT 'Personal' COMMENT 'For selecting account type',
   `balance` decimal(15,2) NOT NULL DEFAULT '0.00' COMMENT 'For Money Deposit',
-  `service_type` enum('Hotspot','PPPoE','Others') CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci DEFAULT 'Others' COMMENT 'For selecting user type',
+  `service_type` enum('Hotspot','PPPoE','VPN','Others') CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci DEFAULT 'Others' COMMENT 'For selecting user type',
   `auto_renewal` tinyint(1) NOT NULL DEFAULT '1' COMMENT 'Auto renewall using balance',
   `status` enum('Active','Banned','Disabled','Inactive','Limited','Suspended') CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL DEFAULT 'Active',
   `created_by` int NOT NULL DEFAULT '0',
+  `account_manager_id` int NOT NULL DEFAULT '0' COMMENT '0 means all users can access',
   `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `last_login` datetime DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
@@ -99,7 +100,7 @@ CREATE TABLE `tbl_plans` (
   `id_bw` int NOT NULL,
   `price` varchar(40) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL,
   `price_old` varchar(40) COLLATE utf8mb4_general_ci NOT NULL DEFAULT '',
-  `type` enum('Hotspot','PPPOE','Balance') CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL,
+  `type` enum('Hotspot','PPPOE','VPN','Balance') CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL,
   `typebp` enum('Unlimited','Limited') CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci DEFAULT NULL,
   `limit_type` enum('Time_Limit','Data_Limit','Both_Limit') CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci DEFAULT NULL,
   `time_limit` int UNSIGNED DEFAULT NULL,
@@ -181,9 +182,25 @@ CREATE TABLE `tbl_transactions` (
   `time` time NOT NULL,
   `method` varchar(128) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL,
   `routers` varchar(32) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL,
-  `type` enum('Hotspot','PPPOE','Balance') CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL,
+  `type` enum('Hotspot','PPPOE','VPN','Balance') CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL,
   `note` varchar(256) COLLATE utf8mb4_general_ci NOT NULL DEFAULT '' COMMENT 'for note',
   `admin_id` int NOT NULL DEFAULT '1'
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+DROP TABLE IF EXISTS `tbl_invoices`;
+CREATE TABLE `tbl_invoices` (
+  `id` int NOT NULL,
+  `number` varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL,
+  `customer_id` int NOT NULL,
+  `fullname` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL,
+  `email` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL,
+  `address` text CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci,
+  `status` enum('Unpaid','Paid','Cancelled') CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL DEFAULT 'Unpaid',
+  `due_date` datetime NOT NULL,
+  `filename` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci DEFAULT NULL,
+  `amount` decimal(10,2) NOT NULL,
+  `data` json NOT NULL,
+  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 DROP TABLE IF EXISTS `tbl_users`;
@@ -231,6 +248,7 @@ CREATE TABLE `tbl_voucher` (
   `type` enum('Hotspot','PPPOE') CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL,
   `routers` varchar(32) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL,
   `id_plan` int NOT NULL,
+  `batch_name` varchar(40) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci DEFAULT NULL,
   `code` varchar(55) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL,
   `user` varchar(45) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL,
   `status` varchar(25) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL,
@@ -406,6 +424,9 @@ ALTER TABLE `tbl_payment_gateway`
 ALTER TABLE `tbl_plans`
   ADD PRIMARY KEY (`id`);
 
+ALTER TABLE `tbl_plan_customers`
+  ADD PRIMARY KEY (`id`);
+
 ALTER TABLE `tbl_plan_links`
   ADD PRIMARY KEY (`id`),
   ADD UNIQUE KEY `unique_plan_link` (`plan_id`,`linked_plan_id`),
@@ -418,6 +439,9 @@ ALTER TABLE `tbl_routers`
   ADD PRIMARY KEY (`id`);
 
 ALTER TABLE `tbl_transactions`
+  ADD PRIMARY KEY (`id`);
+
+ALTER TABLE `tbl_invoices`
   ADD PRIMARY KEY (`id`);
 
 ALTER TABLE `tbl_users`
@@ -451,6 +475,9 @@ ALTER TABLE `tbl_payment_gateway`
 ALTER TABLE `tbl_plans`
   MODIFY `id` int NOT NULL AUTO_INCREMENT;
 
+ALTER TABLE `tbl_plan_customers`
+  MODIFY `id` int NOT NULL AUTO_INCREMENT;
+
 ALTER TABLE `tbl_plan_links`
   MODIFY `id` int NOT NULL AUTO_INCREMENT;
 
@@ -461,6 +488,9 @@ ALTER TABLE `tbl_routers`
   MODIFY `id` int NOT NULL AUTO_INCREMENT;
 
 ALTER TABLE `tbl_transactions`
+  MODIFY `id` int NOT NULL AUTO_INCREMENT;
+
+ALTER TABLE `tbl_invoices`
   MODIFY `id` int NOT NULL AUTO_INCREMENT;
 
 ALTER TABLE `tbl_users`
@@ -478,6 +508,10 @@ COMMIT;
 INSERT INTO
     `tbl_appconfig` (`id`, `setting`, `value`)
 VALUES (1, 'CompanyName', 'PHPNuxBill'), (2, 'currency_code', 'Rp.'), (3, 'language', 'english'), (4, 'show-logo', '1'), (5, 'nstyle', 'blue'), (6, 'timezone', 'Asia/Jakarta'), (7, 'dec_point', ','), (8, 'thousands_sep', '.'), (9, 'rtl', '0'), (10, 'address', ''), (11, 'phone', ''), (12, 'date_format', 'd M Y'), (13, 'note', 'Thank you...'), (14, 'otp_wait', '600'), (15, 'otp_expiry', '1200');
+
+INSERT INTO
+    `tbl_appconfig` (`setting`, `value`)
+VALUES ('genieacs_enable', 'no'), ('genieacs_url', '');
 
 
 INSERT INTO

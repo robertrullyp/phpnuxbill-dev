@@ -239,40 +239,69 @@ if (empty($step)) {
     }
 } else if ($step == 5) {
     // Step 5: Database Update (previously step 4)
-    if (file_exists("system/updates.json")) {
-        try {
-            $db = new pdo(
-                "mysql:host=$db_host;dbname=$db_name",
-                $db_user,
-                $db_pass,
-                array(PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION)
-            );
+    try {
+        $db = new pdo(
+            "mysql:host=$db_host;dbname=$db_name;charset=utf8mb4",
+            $db_user,
+            $db_pass,
+            array(PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION)
+        );
 
+        if (file_exists("system/updates.json")) {
             $updates = json_decode(file_get_contents("system/updates.json"), true);
-            $dones = [];
-            if (file_exists("system/cache/updates.done.json")) {
-                $dones = json_decode(file_get_contents("system/cache/updates.done.json"), true);
+            if (!is_array($updates)) {
+                throw new Exception('Invalid update manifest: system/updates.json');
             }
+
+            $doneFile = "system/cache/updates.done.json";
+            $dones = updateReadDoneVersions($doneFile);
+
             foreach ($updates as $version => $queries) {
-                if (!in_array($version, $dones)) {
-                    foreach ($queries as $q) {
-                        try {
-                            $db->exec($q);
-                        } catch (PDOException $e) {
-                            // Log or handle more gracefully in the future
-                            // For now, ignoring "already exists" is the original behavior
+                $version = trim((string) $version);
+                if ($version === '') {
+                    continue;
+                }
+                if (in_array($version, $dones, true)) {
+                    continue;
+                }
+
+                if (!is_array($queries)) {
+                    $queries = [];
+                }
+
+                foreach ($queries as $q) {
+                    $q = trim((string) $q);
+                    if ($q === '') {
+                        continue;
+                    }
+                    try {
+                        $db->exec($q);
+                    } catch (PDOException $e) {
+                        if (!updateIsIgnorableMigrationError($e)) {
+                            throw new Exception(
+                                'Database migration failed at version ' . $version . ': ' . $e->getMessage(),
+                                0,
+                                $e
+                            );
                         }
                     }
-                    $dones[] = $version;
                 }
+
+                $dones[] = $version;
+                updateWriteDoneVersions($doneFile, $dones);
             }
-            file_put_contents("system/cache/updates.done.json", json_encode($dones));
-            runUserHierarchyCleanupMigration($db);
-        } catch (Exception $e) {
-            $msg = "Failed to update database: " . $e->getMessage() . ". A backup has been created at: " . htmlspecialchars($_SESSION['backup_file']);
-            $msgType = "danger";
-            $continue = false;
         }
+
+        runCoreSchemaHardening($db);
+        runUserHierarchyCleanupMigration($db);
+    } catch (Exception $e) {
+        $backupHint = '';
+        if (!empty($_SESSION['backup_file'])) {
+            $backupHint = ". A backup has been created at: " . htmlspecialchars($_SESSION['backup_file']);
+        }
+        $msg = "Failed to update database: " . $e->getMessage() . $backupHint;
+        $msgType = "danger";
+        $continue = false;
     }
     if ($continue) {
         $nextStep = 6;
@@ -520,11 +549,98 @@ function r2($to, $ntype = 'e', $msg = '')
     die();
 }
 
+function updateReadDoneVersions($filePath)
+{
+    if (!file_exists($filePath)) {
+        return [];
+    }
+
+    $raw = json_decode((string) file_get_contents($filePath), true);
+    if (!is_array($raw)) {
+        return [];
+    }
+
+    $doneMap = [];
+    foreach ($raw as $version) {
+        $version = trim((string) $version);
+        if ($version !== '') {
+            $doneMap[$version] = true;
+        }
+    }
+
+    return array_keys($doneMap);
+}
+
+function updateWriteDoneVersions($filePath, $versions)
+{
+    $doneMap = [];
+    foreach ((array) $versions as $version) {
+        $version = trim((string) $version);
+        if ($version !== '') {
+            $doneMap[$version] = true;
+        }
+    }
+
+    $payload = json_encode(
+        array_keys($doneMap),
+        JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE
+    );
+    if ($payload === false) {
+        throw new Exception('Failed to encode update marker file.');
+    }
+
+    if (file_put_contents($filePath, $payload) === false) {
+        throw new Exception('Failed to write update marker file: ' . $filePath);
+    }
+}
+
+function updateIsIgnorableMigrationError($e)
+{
+    if (!($e instanceof PDOException)) {
+        return false;
+    }
+
+    $driverCode = 0;
+    if (!empty($e->errorInfo) && isset($e->errorInfo[1])) {
+        $driverCode = (int) $e->errorInfo[1];
+    }
+
+    if (in_array($driverCode, [1050, 1051, 1054, 1060, 1061, 1062, 1068, 1091, 1146], true)) {
+        return true;
+    }
+
+    $message = strtolower((string) $e->getMessage());
+    $knownFragments = [
+        'already exists',
+        'duplicate column name',
+        'duplicate entry',
+        'duplicate key name',
+        'multiple primary key defined',
+        'can\'t drop',
+        'unknown column',
+        'unknown table',
+        'table doesn\'t exist',
+    ];
+    foreach ($knownFragments as $fragment) {
+        if (strpos($message, $fragment) !== false) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
 function updateTableExists($db, $table)
 {
-    $stmt = $db->prepare("SHOW TABLES LIKE :name");
-    $stmt->execute([':name' => $table]);
-    return (bool) $stmt->fetch(PDO::FETCH_NUM);
+    try {
+        $stmt = $db->prepare("SELECT 1 FROM `information_schema`.`tables` WHERE `table_schema` = DATABASE() AND `table_name` = :name LIMIT 1");
+        $stmt->execute([':name' => $table]);
+        return (bool) $stmt->fetch(PDO::FETCH_NUM);
+    } catch (Throwable $e) {
+        $stmt = $db->prepare("SHOW TABLES LIKE :name");
+        $stmt->execute([':name' => $table]);
+        return (bool) $stmt->fetch(PDO::FETCH_NUM);
+    }
 }
 
 function updateColumnExists($db, $table, $column)
@@ -532,6 +648,106 @@ function updateColumnExists($db, $table, $column)
     $stmt = $db->prepare("SHOW COLUMNS FROM `{$table}` LIKE :name");
     $stmt->execute([':name' => $column]);
     return (bool) $stmt->fetch(PDO::FETCH_ASSOC);
+}
+
+function updateIndexExists($db, $table, $indexName)
+{
+    $stmt = $db->prepare("SHOW INDEX FROM `{$table}` WHERE `Key_name` = :name");
+    $stmt->execute([':name' => $indexName]);
+    return (bool) $stmt->fetch(PDO::FETCH_ASSOC);
+}
+
+function updateHasAutoIncrement($db, $table, $column)
+{
+    $stmt = $db->prepare("SHOW COLUMNS FROM `{$table}` LIKE :name");
+    $stmt->execute([':name' => $column]);
+    $col = $stmt->fetch(PDO::FETCH_ASSOC);
+    if (!$col) {
+        return false;
+    }
+    $extra = strtolower((string) ($col['Extra'] ?? ''));
+    return strpos($extra, 'auto_increment') !== false;
+}
+
+function updateEnsureAppConfigValue($db, $setting, $value)
+{
+    if (!updateTableExists($db, 'tbl_appconfig')) {
+        return;
+    }
+    if (!updateColumnExists($db, 'tbl_appconfig', 'setting') || !updateColumnExists($db, 'tbl_appconfig', 'value')) {
+        return;
+    }
+
+    $find = $db->prepare("SELECT `setting` FROM `tbl_appconfig` WHERE `setting` = :setting LIMIT 1");
+    $find->execute([':setting' => $setting]);
+    if ($find->fetch(PDO::FETCH_ASSOC)) {
+        return;
+    }
+
+    $insert = $db->prepare("INSERT INTO `tbl_appconfig` (`setting`, `value`) VALUES (:setting, :value)");
+    $insert->execute([
+        ':setting' => (string) $setting,
+        ':value' => (string) $value,
+    ]);
+}
+
+function runCoreSchemaHardening($db)
+{
+    if (updateTableExists($db, 'tbl_customers')) {
+        if (!updateColumnExists($db, 'tbl_customers', 'account_manager_id')) {
+            $db->exec("ALTER TABLE `tbl_customers` ADD `account_manager_id` INT NOT NULL DEFAULT '0' COMMENT '0 means all users can access' AFTER `created_by`;");
+        }
+        if (updateColumnExists($db, 'tbl_customers', 'service_type')) {
+            $db->exec("ALTER TABLE `tbl_customers` CHANGE `service_type` `service_type` ENUM('Hotspot','PPPoE','VPN','Others') CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL DEFAULT 'Others' COMMENT 'For selecting user type';");
+        }
+    }
+
+    if (updateTableExists($db, 'tbl_plans')) {
+        if (updateColumnExists($db, 'tbl_plans', 'type')) {
+            $db->exec("ALTER TABLE `tbl_plans` CHANGE `type` `type` ENUM('Hotspot','PPPOE','VPN','Balance') CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL;");
+        }
+
+        if (!updateColumnExists($db, 'tbl_plans', 'prepaid')) {
+            if (updateColumnExists($db, 'tbl_plans', 'allow_purchase')) {
+                $db->exec("ALTER TABLE `tbl_plans` CHANGE `allow_purchase` `prepaid` ENUM('yes','no') CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL DEFAULT 'yes' COMMENT 'is prepaid';");
+            } else {
+                $db->exec("ALTER TABLE `tbl_plans` ADD `prepaid` ENUM('yes','no') CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL DEFAULT 'yes' COMMENT 'is prepaid' AFTER `enabled`;");
+            }
+        }
+    }
+
+    if (updateTableExists($db, 'tbl_transactions') && updateColumnExists($db, 'tbl_transactions', 'type')) {
+        $db->exec("ALTER TABLE `tbl_transactions` CHANGE `type` `type` ENUM('Hotspot','PPPOE','VPN','Balance') CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL;");
+    }
+
+    if (updateTableExists($db, 'tbl_voucher') && !updateColumnExists($db, 'tbl_voucher', 'batch_name')) {
+        $db->exec("ALTER TABLE `tbl_voucher` ADD `batch_name` VARCHAR(40) AFTER `id_plan`;");
+    }
+
+    if (!updateTableExists($db, 'tbl_invoices')) {
+        $db->exec("CREATE TABLE IF NOT EXISTS `tbl_invoices` ( `id` INT AUTO_INCREMENT PRIMARY KEY, `number` VARCHAR(50) NOT NULL, `customer_id` INT NOT NULL, `fullname` VARCHAR(100) NOT NULL, `email` VARCHAR(100) NOT NULL, `address` TEXT, `status` ENUM('Unpaid', 'Paid', 'Cancelled') NOT NULL DEFAULT 'Unpaid', `due_date` DATETIME NOT NULL, `filename` VARCHAR(255), `amount` DECIMAL(10, 2) NOT NULL, `data` JSON NOT NULL, `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;");
+    }
+
+    if (updateTableExists($db, 'tbl_plan_customers')) {
+        if (!updateIndexExists($db, 'tbl_plan_customers', 'PRIMARY')) {
+            $db->exec("ALTER TABLE `tbl_plan_customers` ADD PRIMARY KEY (`id`);");
+        }
+        if (!updateIndexExists($db, 'tbl_plan_customers', 'plan_customer_unique')) {
+            $db->exec("ALTER TABLE `tbl_plan_customers` ADD UNIQUE KEY `plan_customer_unique` (`plan_id`,`customer_id`);");
+        }
+        if (!updateIndexExists($db, 'tbl_plan_customers', 'idx_plan_id')) {
+            $db->exec("ALTER TABLE `tbl_plan_customers` ADD KEY `idx_plan_id` (`plan_id`);");
+        }
+        if (!updateIndexExists($db, 'tbl_plan_customers', 'idx_customer_id')) {
+            $db->exec("ALTER TABLE `tbl_plan_customers` ADD KEY `idx_customer_id` (`customer_id`);");
+        }
+        if (updateColumnExists($db, 'tbl_plan_customers', 'id') && !updateHasAutoIncrement($db, 'tbl_plan_customers', 'id')) {
+            $db->exec("ALTER TABLE `tbl_plan_customers` MODIFY `id` int NOT NULL AUTO_INCREMENT;");
+        }
+    }
+
+    updateEnsureAppConfigValue($db, 'genieacs_enable', 'no');
+    updateEnsureAppConfigValue($db, 'genieacs_url', '');
 }
 
 function updateCleanupNormalizeIds($value)
