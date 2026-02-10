@@ -379,6 +379,29 @@ class Package
         }
         return '';
     }
+
+    protected static function isUnlimitedPeriodPlan($plan): bool
+    {
+        if (!$plan) {
+            return false;
+        }
+        if (!is_array($plan)) {
+            $plan = $plan->as_array();
+        }
+        return isset($plan['validity_unit'], $plan['validity'])
+            && $plan['validity_unit'] === 'Period'
+            && (int) $plan['validity'] <= 0;
+    }
+
+    protected static function getUnlimitedExpirationDate(): string
+    {
+        return '2099-12-31';
+    }
+
+    protected static function getUnlimitedExpirationTime(): string
+    {
+        return '23:59:59';
+    }
     /**
      * @param int         $id_customer             String user identifier
      * @param string      $router_name             router name for this package
@@ -425,6 +448,7 @@ class Package
         if (!$skipInvoiceNotification && $p && isset($p['invoice_notification']) && (int) $p['invoice_notification'] === 0) {
             $skipInvoiceNotification = true;
         }
+        $isUnlimitedPeriod = self::isUnlimitedPeriodPlan($p);
 
         if (!$isVoucher) {
             $c = ORM::for_table('tbl_customers')->where('id', $id_customer)->find_one();
@@ -466,7 +490,7 @@ class Package
             }
         }
 
-        if ($p['validity_unit'] == 'Period') {
+        if ($p['validity_unit'] == 'Period' && !$isUnlimitedPeriod) {
             // if customer has attribute Expired Date use it
             $day_exp = User::getAttribute("Expired Date", $c['id']);
             if (!$day_exp) {
@@ -530,7 +554,10 @@ class Package
 
         run_hook("recharge_user");
 
-        if ($p['validity_unit'] == 'Months') {
+        if ($isUnlimitedPeriod) {
+            $date_exp = self::getUnlimitedExpirationDate();
+            $time = self::getUnlimitedExpirationTime();
+        } else if ($p['validity_unit'] == 'Months') {
             $date_exp = date("Y-m-d", strtotime('+' . $p['validity'] . ' month'));
         } else if ($p['validity_unit'] == 'Period') {
             $current_date = new DateTime($date_only);
@@ -592,8 +619,13 @@ class Package
                         $time = $b['time'];
                         break;
                     case 'Period':
-                        $date_exp = date("Y-m-$day_exp", strtotime($b['expiration'] . ' +' . $p['validity'] . ' months'));
-                        $time = date("23:59:00");
+                        if ($isUnlimitedPeriod) {
+                            $date_exp = self::getUnlimitedExpirationDate();
+                            $time = self::getUnlimitedExpirationTime();
+                        } else {
+                            $date_exp = date("Y-m-$day_exp", strtotime($b['expiration'] . ' +' . $p['validity'] . ' months'));
+                            $time = date("23:59:00");
+                        }
                         break;
                     case 'Days':
                         $date_exp = date("Y-m-d", strtotime($b['expiration'] . ' +' . $p['validity'] . ' days'));
@@ -678,7 +710,7 @@ class Package
                 //its already paid
                 $t->price = 0;
             } else {
-                if ($p['validity_unit'] == 'Period') {
+                if ($p['validity_unit'] == 'Period' && !$isUnlimitedPeriod) {
                     // Postpaid price from field
                     $add_inv = User::getAttribute("Invoice", $id_customer);
                     if (empty($add_inv) or $add_inv == 0) {
@@ -706,7 +738,7 @@ class Package
             $t->save();
             $transactionForNotification = $t;
 
-            if ($p['validity_unit'] == 'Period') {
+            if ($p['validity_unit'] == 'Period' && !$isUnlimitedPeriod) {
                 // insert price to fields for invoice next month
                 $fl = ORM::for_table('tbl_customers_fields')->where('field_name', 'Invoice')->where('customer_id', $c['id'])->find_one();
                 if (!$fl) {
@@ -795,7 +827,7 @@ class Package
                 $t->price = 0;
                 // its already paid
             } else {
-                if ($p['validity_unit'] == 'Period') {
+                if ($p['validity_unit'] == 'Period' && !$isUnlimitedPeriod) {
                     // Postpaid price always zero for first time
                     $bills = [];
                     $t->price = 0;
@@ -819,7 +851,7 @@ class Package
             $t->save();
             $transactionForNotification = $t;
 
-            if ($p['validity_unit'] == 'Period' && $p['price'] != 0) {
+            if ($p['validity_unit'] == 'Period' && !$isUnlimitedPeriod && (int) $p['validity'] > 0 && $p['price'] != 0) {
                 // insert price to fields for invoice next month
                 $fl = ORM::for_table('tbl_customers_fields')->where('field_name', 'Invoice')->where('customer_id', $c['id'])->find_one();
                 if (!$fl) {
@@ -831,7 +863,7 @@ class Package
                     $ed = new DateTime("$date_exp");
                     $td = $ed->diff($sd);
                     $fd = $td->format("%a");
-                    $gi = ($p['price'] / (30 * $p['validity'])) * $fd;
+                    $gi = ($p['price'] / (30 * (int) $p['validity'])) * $fd;
                     if ($gi > $p['price']) {
                         $fl->field_value = $p['price'];
                     } else {

@@ -821,7 +821,7 @@ switch ($action) {
         if (Validator::UnsignedNumber($price) == false) {
             $msg .= 'The price must be a number' . '<br>';
         }
-        if ($name == '' or $id_bw == '' or $price == '' or $validity == '' or $pool == '') {
+        if (trim((string) $name) === '' || trim((string) $id_bw) === '' || trim((string) $price) === '' || trim((string) $validity) === '' || trim((string) $pool) === '') {
             $msg .= Lang::T('All field is required') . '<br>';
         }
         if (empty($radius)) {
@@ -952,7 +952,7 @@ switch ($action) {
         if (Validator::UnsignedNumber($price) == false) {
             $msg .= 'The price must be a number' . '<br>';
         }
-        if ($name == '' or $id_bw == '' or $price == '' or $validity == '' or $pool == '') {
+        if (trim((string) $name) === '' || trim((string) $id_bw) === '' || trim((string) $price) === '' || trim((string) $validity) === '' || trim((string) $pool) === '') {
             $msg .= Lang::T('All field is required') . '<br>';
         }
 

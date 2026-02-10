@@ -199,7 +199,8 @@
                                         {Lang::T('Period')}</option>
                                 {/if}
                             </select>
-                            <p class="help-block">{Lang::T('1 Period = 1 Month, Expires the 20th of each month')}</p>
+                            <p class="help-block">{Lang::T('1 Period = 1 Month, Expires the 20th of each month')}
+                                <br>{Lang::T('Set Period to 0 for no expiry')}</p>
                         </div>
 
                     </div>

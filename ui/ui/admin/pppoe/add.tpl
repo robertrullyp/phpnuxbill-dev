@@ -160,6 +160,7 @@
                             </select>
                         </div>
                         <p class="help-block col-md-4">{Lang::T('1 Period = 1 Month, Expires the 20th of each month')}
+                            <br>{Lang::T('Set Period to 0 for no expiry')}
                         </p>
                     </div>
                     <div class="form-group hidden" id="expired_date">
