@@ -975,5 +975,10 @@
     "info": "info",
     "Restart_Reboot_device_now_": "Mulai ulang\/Reboot perangkat sekarang?",
     "Rebooting___": "Mem-boot ulang...",
-    "Failed_to_connect_to_device": "Gagal menyambung ke perangkat"
+    "Failed_to_connect_to_device": "Gagal menyambung ke perangkat",
+    "Customer_List": "Daftar Pelanggan",
+    "Send_reminder_notifications_for_this_plan": "Kirim pemberitahuan pengingat untuk rencana ini",
+    "Linked_Plans": "Paket Tertaut",
+    "Linked_Plans_Help": "Bantuan Paket Tertaut",
+    "Set_Period_to_0_for_no_expiry": "Tetapkan Periode ke 0 tanpa kedaluwarsa"
 }

@@ -45,11 +45,21 @@ $unlimitedExpirationTime = '23:59:59';
 // Normalize existing active rows for unlimited Period plans before expiry scan.
 ORM::raw_execute(
     "UPDATE `tbl_user_recharges` AS `tur`
-    INNER JOIN `tbl_plans` AS `p` ON `p`.`id` = `tur`.`plan_id`
     SET `tur`.`expiration` = ?, `tur`.`time` = ?, `tur`.`status` = 'on'
     WHERE `tur`.`status` = 'on'
-      AND LOWER(TRIM(`p`.`validity_unit`)) = 'period'
-      AND CAST(`p`.`validity` AS SIGNED) <= 0
+      AND EXISTS (
+          SELECT 1
+          FROM `tbl_plans` AS `p`
+          WHERE (
+                `p`.`id` = `tur`.`plan_id`
+                OR (
+                    `p`.`name_plan` = `tur`.`namebp`
+                    AND LOWER(TRIM(COALESCE(`p`.`type`, ''))) = LOWER(TRIM(COALESCE(`tur`.`type`, '')))
+                )
+          )
+            AND LOWER(TRIM(COALESCE(`p`.`validity_unit`, ''))) = 'period'
+            AND CAST(COALESCE(`p`.`validity`, 0) AS SIGNED) <= 0
+      )
       AND (`tur`.`expiration` <> ? OR `tur`.`time` <> ?)",
     [$unlimitedExpirationDate, $unlimitedExpirationTime, $unlimitedExpirationDate, $unlimitedExpirationTime]
 );
@@ -57,11 +67,22 @@ ORM::raw_execute(
 $d = ORM::for_table('tbl_user_recharges')
     ->table_alias('tur')
     ->select('tur.*')
-    ->left_outer_join('tbl_plans', ['tur.plan_id', '=', 'p.id'], 'p')
     ->where('tur.status', 'on')
     ->where_lte('tur.expiration', date("Y-m-d"))
     ->where_raw(
-        "(`p`.`id` IS NULL OR LOWER(TRIM(`p`.`validity_unit`)) <> 'period' OR CAST(`p`.`validity` AS SIGNED) > 0)"
+        "NOT EXISTS (
+            SELECT 1
+            FROM `tbl_plans` AS `p`
+            WHERE (
+                `p`.`id` = `tur`.`plan_id`
+                OR (
+                    `p`.`name_plan` = `tur`.`namebp`
+                    AND LOWER(TRIM(COALESCE(`p`.`type`, ''))) = LOWER(TRIM(COALESCE(`tur`.`type`, '')))
+                )
+            )
+              AND LOWER(TRIM(COALESCE(`p`.`validity_unit`, ''))) = 'period'
+              AND CAST(COALESCE(`p`.`validity`, 0) AS SIGNED) <= 0
+        )"
     )
     ->find_many();
 echo "Found " . count($d) . " user(s)\n";
@@ -90,8 +111,20 @@ foreach ($d as $ds) {
                 $c = $u;
             }
 
-            // Fetch plan details
+            // Fetch plan details.
+            // Fallback by name+type is needed when plan_id changes in legacy rows.
             $p = ORM::for_table('tbl_plans')->where('id', $u['plan_id'])->find_one();
+            if (!$p) {
+                $planFallbackName = trim((string) ($u['namebp'] ?? ''));
+                $planFallbackType = strtolower(trim((string) ($u['type'] ?? '')));
+                if ($planFallbackName !== '') {
+                    $planFallbackQuery = ORM::for_table('tbl_plans')->where('name_plan', $planFallbackName);
+                    if ($planFallbackType !== '') {
+                        $planFallbackQuery->where_raw('LOWER(TRIM(`type`)) = ?', [$planFallbackType]);
+                    }
+                    $p = $planFallbackQuery->order_by_desc('id')->find_one();
+                }
+            }
             if (!$p) {
                 throw new Exception("Plan not found for ID: " . $u['plan_id']);
             }
@@ -105,6 +138,39 @@ foreach ($d as $ds) {
                 $u->status = 'on';
                 $u->save();
                 echo " : SKIP (UNLIMITED PERIOD)\r\n";
+                continue;
+            }
+
+            // If a newer unlimited Period row is still active for the same service,
+            // close this old row without disconnecting the customer.
+            $hasUnlimitedSibling = ORM::for_table('tbl_user_recharges')
+                ->table_alias('tur2')
+                ->select('tur2.id')
+                ->where('tur2.customer_id', $u['customer_id'])
+                ->where('tur2.status', 'on')
+                ->where_not_equal('tur2.id', $u['id'])
+                ->where('tur2.routers', $u['routers'])
+                ->where('tur2.type', $u['type'])
+                ->where_raw(
+                    "EXISTS (
+                        SELECT 1
+                        FROM `tbl_plans` AS `p2`
+                        WHERE (
+                            `p2`.`id` = `tur2`.`plan_id`
+                            OR (
+                                `p2`.`name_plan` = `tur2`.`namebp`
+                                AND LOWER(TRIM(COALESCE(`p2`.`type`, ''))) = LOWER(TRIM(COALESCE(`tur2`.`type`, '')))
+                            )
+                        )
+                          AND LOWER(TRIM(COALESCE(`p2`.`validity_unit`, ''))) = 'period'
+                          AND CAST(COALESCE(`p2`.`validity`, 0) AS SIGNED) <= 0
+                    )"
+                )
+                ->find_one();
+            if ($hasUnlimitedSibling) {
+                $u->status = 'off';
+                $u->save();
+                echo " : SKIP (OLDER ROW, ACTIVE UNLIMITED PERIOD EXISTS)\r\n";
                 continue;
             }
 
