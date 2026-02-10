@@ -32,6 +32,14 @@ if (!isset($_SESSION['aid']) || empty($_SESSION['aid'])) {
 }
 
 set_time_limit(-1);
+ignore_user_abort(true);
+
+$isCloudflareProxy = isset($_SERVER['HTTP_CF_RAY'])
+    || isset($_SERVER['HTTP_CF_VISITOR'])
+    || isset($_SERVER['HTTP_CF_CONNECTING_IP'])
+    || isset($_SERVER['HTTP_CDN_LOOP']);
+$enableStreamHeartbeat = $isCloudflareProxy && PHP_SAPI !== 'cli';
+$GLOBALS['update_enable_stream_heartbeat'] = $enableStreamHeartbeat;
 
 if (!is_writeable(pathFixer('system/cache/'))) {
     r2("./?_route=community", 'e', 'Folder system/cache/ is not writable');
@@ -48,8 +56,16 @@ if ($step <= 1 || empty($_SESSION['update_flow_token']) || !is_string($_SESSION[
     $_SESSION['update_flow_token'] = updateGenerateRandomToken(32);
 }
 $updateFlowToken = (string) $_SESSION['update_flow_token'];
+$flowTokenSafe = preg_replace('/[^a-f0-9]/i', '', $updateFlowToken);
+if ($flowTokenSafe === '') {
+    $flowTokenSafe = updateGenerateRandomToken(12);
+}
+$flowStateFile = pathFixer('system/cache/update-state-' . $flowTokenSafe . '.json');
 if ($step <= 1) {
     unset($_SESSION['update_extract_dir']);
+    if (file_exists($flowStateFile)) {
+        @unlink($flowStateFile);
+    }
 }
 $continue = true;
 if (!extension_loaded('zip')) {
@@ -61,10 +77,16 @@ if (!extension_loaded('zip')) {
 if ($step > 0 && $continue) {
     $requestFlowToken = isset($_GET['flow']) ? (string) $_GET['flow'] : '';
     if ($requestFlowToken === '' || !hash_equals($updateFlowToken, $requestFlowToken)) {
-        $msg = "Invalid update session token. Please restart updater from step 1.";
-        $msgType = "danger";
-        $continue = false;
-        $step = 0;
+        // Graceful fallback for stale/old links: continue with current session flow token.
+        $requestFlowToken = $updateFlowToken;
+    }
+}
+
+if ($step > 0 && $continue) {
+    $flowState = updateReadFlowState($flowStateFile);
+    $completedStep = isset($flowState['completed_step']) ? (int) $flowState['completed_step'] : 0;
+    if ($completedStep >= $step && $completedStep < 6) {
+        $step = $completedStep + 1;
     }
 }
 
@@ -75,6 +97,10 @@ if ($continue) {
         $msgType = "danger";
         $continue = false;
     }
+}
+
+if ($continue && $step > 0 && $step < 6) {
+    updateHeartbeat(true);
 }
 
 
@@ -106,6 +132,10 @@ if (!empty($_SESSION['update_extract_dir'])) {
     } else {
         unset($_SESSION['update_extract_dir']);
     }
+}
+
+if ($step > 0 && $continue && $step < 6) {
+    updateMarkFlowStep($flowStateFile, $step, 'running');
 }
 
 if (empty($step)) {
@@ -140,6 +170,11 @@ if (empty($step)) {
             CURLOPT_SSL_VERIFYPEER => true,
             CURLOPT_SSL_VERIFYHOST => 2,
             CURLOPT_FAILONERROR => false,
+            CURLOPT_NOPROGRESS => false,
+            CURLOPT_PROGRESSFUNCTION => function () {
+                updateHeartbeat(false);
+                return 0;
+            },
             CURLOPT_USERAGENT => 'PHPNuxBill-Updater',
         ]);
 
@@ -183,6 +218,7 @@ if (empty($step)) {
         $downloadZip->close();
 
         $nextStep = 2;
+        updateMarkFlowStep($flowStateFile, 1, 'completed');
     } catch (Exception $e) {
         if ($ch !== null) {
             @curl_close($ch);
@@ -204,6 +240,7 @@ if (empty($step)) {
         }
 
         $zip = new ZipArchive();
+        updateHeartbeat(false);
         $zipStatus = $zip->open($file);
         if ($zipStatus !== true) {
             throw new Exception('Failed to open update archive (' . updateZipOpenErrorMessage($zipStatus) . ').');
@@ -217,12 +254,14 @@ if (empty($step)) {
             $zip->close();
             throw new Exception('Zip extraction returned failure status.');
         }
+        updateHeartbeat(false);
         $zip->close();
 
         $folder = resolveExtractedFolder($repo, $zipBase, $folder);
 
         if (is_dir($folder)) {
             $nextStep = 3;
+            updateMarkFlowStep($flowStateFile, 2, 'completed');
         } else {
             unset($_SESSION['update_extract_dir']);
             throw new Exception('Extracted update folder was not found.');
@@ -260,14 +299,17 @@ if (empty($step)) {
                 throw new Exception("Cannot open zip archive for writing: " . $backupFile);
             }
 
+            updateHeartbeat(false);
             zipFolder(pathFixer('.'), $zip, strlen(pathFixer('.')));
 
             $zip->close();
+            updateHeartbeat(false);
             $dbBackupFile = createDatabaseBackup($backupDir);
             if (!empty($dbBackupFile)) {
                 $_SESSION['db_backup_file'] = $dbBackupFile;
             }
             $nextStep = 4;
+            updateMarkFlowStep($flowStateFile, 3, 'completed');
         } catch (Exception $e) {
             $msg = "Failed to create backup: " . $e->getMessage();
             $msgType = "danger";
@@ -304,6 +346,7 @@ if (empty($step)) {
             throw new Exception('Source path does not exist: ' . $folder);
         }
         foreach ($replaceDirs as $dir) {
+            updateHeartbeat(false);
             $original = rtrim(pathFixer($dir), DIRECTORY_SEPARATOR);
             if (!is_dir($original)) {
                 continue;
@@ -318,6 +361,7 @@ if (empty($step)) {
             $preparedBackups[$backup] = $original;
         }
 
+        updateHeartbeat(false);
         copyFolder($folder, pathFixer('./'), $preservePaths);
 
         if (is_dir(pathFixer('install/'))) {
@@ -345,6 +389,7 @@ if (empty($step)) {
 
         if (!file_exists($folder)) {
             $nextStep = 5;
+            updateMarkFlowStep($flowStateFile, 4, 'completed');
         } else {
             throw new Exception('Failed to remove temporary update directory.');
         }
@@ -391,6 +436,7 @@ if (empty($step)) {
             $dones = updateReadDoneVersions($doneFile);
 
             foreach ($updates as $version => $queries) {
+                updateHeartbeat(false);
                 $version = trim((string) $version);
                 if ($version === '') {
                     continue;
@@ -404,6 +450,7 @@ if (empty($step)) {
                 }
 
                 foreach ($queries as $q) {
+                    updateHeartbeat(false);
                     $q = trim((string) $q);
                     if ($q === '') {
                         continue;
@@ -426,7 +473,9 @@ if (empty($step)) {
             }
         }
 
+        updateHeartbeat(false);
         runCoreSchemaHardening($db);
+        updateHeartbeat(false);
         runUserHierarchyCleanupMigration($db);
     } catch (Exception $e) {
         $backupHint = '';
@@ -439,6 +488,7 @@ if (empty($step)) {
     }
     if ($continue) {
         $nextStep = 6;
+        updateMarkFlowStep($flowStateFile, 5, 'completed');
     }
 } else if ($step == 6) {
     // Step 6: Finish (previously step 5)
@@ -496,6 +546,12 @@ if (empty($step)) {
     if (!empty($requestedRedirect) && isset($redirectTargets[$requestedRedirect])) {
         $target = $redirectTargets[$requestedRedirect];
     }
+
+    updateMarkFlowStep($flowStateFile, 6, 'completed');
+    if (file_exists($flowStateFile)) {
+        @unlink($flowStateFile);
+    }
+    unset($_SESSION['update_flow_token']);
 
     r2($target, 's', $message);
 }
@@ -701,6 +757,93 @@ function r2($to, $ntype = 'e', $msg = '')
     $_SESSION['notify'] = $msg;
     header("location: $to");
     die();
+}
+
+function updateReadFlowState($filePath)
+{
+    if (!is_file($filePath)) {
+        return [];
+    }
+    $raw = @file_get_contents($filePath);
+    if ($raw === false || $raw === '') {
+        return [];
+    }
+    $decoded = json_decode($raw, true);
+    if (!is_array($decoded)) {
+        return [];
+    }
+    return $decoded;
+}
+
+function updateWriteFlowState($filePath, array $state)
+{
+    $dir = dirname($filePath);
+    if (!is_dir($dir) && !mkdir($dir, 0755, true) && !is_dir($dir)) {
+        return false;
+    }
+    $payload = json_encode($state, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+    if ($payload === false) {
+        return false;
+    }
+    return file_put_contents($filePath, $payload, LOCK_EX) !== false;
+}
+
+function updateMarkFlowStep($filePath, $step, $status = 'running')
+{
+    $step = (int) $step;
+    if ($step < 1) {
+        return;
+    }
+    $status = trim((string) $status);
+    if ($status === '') {
+        $status = 'running';
+    }
+    $state = updateReadFlowState($filePath);
+    $state['current_step'] = $step;
+    $state['status'] = $status;
+    $state['updated_at'] = time();
+    if ($status === 'completed') {
+        $currentCompleted = isset($state['completed_step']) ? (int) $state['completed_step'] : 0;
+        $state['completed_step'] = max($currentCompleted, $step);
+    } elseif (!isset($state['completed_step'])) {
+        $state['completed_step'] = 0;
+    }
+    updateWriteFlowState($filePath, $state);
+}
+
+function updateHeartbeat($force = false)
+{
+    if (empty($GLOBALS['update_enable_stream_heartbeat']) || PHP_SAPI === 'cli') {
+        return;
+    }
+
+    static $initialized = false;
+    static $lastBeat = 0.0;
+
+    $now = microtime(true);
+    if (!$force && ($now - $lastBeat) < 5) {
+        return;
+    }
+
+    if (!$initialized) {
+        @ini_set('zlib.output_compression', '0');
+        @ini_set('output_buffering', '0');
+        @ini_set('implicit_flush', '1');
+        if (function_exists('apache_setenv')) {
+            @apache_setenv('no-gzip', '1');
+        }
+        while (ob_get_level() > 0) {
+            @ob_end_flush();
+        }
+        @ob_implicit_flush(true);
+        $initialized = true;
+    }
+
+    echo "\n<!-- updater-heartbeat " . date('H:i:s') . " -->\n";
+    echo str_repeat(' ', 1024) . "\n";
+    @ob_flush();
+    @flush();
+    $lastBeat = $now;
 }
 
 function updateGenerateRandomToken($length = 32)
@@ -1554,6 +1697,7 @@ function copyFolder($from, $to, $exclude = [], $base = null)
     }
 
     foreach ($items as $item) {
+        updateHeartbeat(false);
         if ($item === '.' || $item === '..') {
             continue;
         }
@@ -1632,6 +1776,7 @@ function zipFolder($source, &$zip, $stripPath)
     ];
 
     foreach ($files as $fileInfo) {
+        updateHeartbeat(false);
         $filePath = $fileInfo->getPathname();
         $localPath = ltrim(str_replace('\\', '/', substr($filePath, strlen($sourceRoot))), '/');
         if ($localPath === '') {
@@ -1699,6 +1844,7 @@ function createDatabaseBackup($backupDir)
 
         $tables = $pdo->query('SHOW TABLES')->fetchAll(PDO::FETCH_NUM);
         foreach ($tables as $row) {
+            updateHeartbeat(false);
             $table = $row[0];
             if ($table === '') {
                 continue;
@@ -1716,6 +1862,7 @@ function createDatabaseBackup($backupDir)
             $colStmt = $pdo->query("SHOW COLUMNS FROM `{$table}`");
             $columns = [];
             while ($col = $colStmt->fetch(PDO::FETCH_ASSOC)) {
+                updateHeartbeat(false);
                 $columns[] = $col['Field'];
             }
             if (empty($columns)) {
@@ -1732,6 +1879,7 @@ function createDatabaseBackup($backupDir)
             $batchSize = 200;
 
             while ($rowData = $stmt->fetch()) {
+                updateHeartbeat(false);
                 $values = [];
                 foreach ($columns as $col) {
                     $val = $rowData[$col] ?? null;
@@ -1859,6 +2007,9 @@ function createDatabaseBackup($backupDir)
                                 </div>
                             </div>
                             <small class="text-muted">Step <?= (int) max(1, min($progressTotalSteps, $displayStep)) ?> of <?= (int) $progressTotalSteps ?></small>
+                            <?php if ($isCloudflareProxy) { ?>
+                                <br><small class="text-muted">Cloudflare/Cloudflared detected: updater is using keepalive heartbeat and resumable step state.</small>
+                            <?php } ?>
                         </div>
                     </div>
                     <?php if (!empty($msgType) && !empty($msg)) { ?>
