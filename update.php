@@ -26,6 +26,7 @@ if($db_password != null && ($db_pass == null || empty($db_pass))){
 
 // Always use the default, secure update URL. Do not allow override from user input.
 $update_url = 'https://github.com/robertrullyp/phpnuxbill-dev/archive/refs/heads/main.zip';
+$updaterFaviconUrl = updateResolveUpdaterFaviconUrl();
 
 if (!isset($_SESSION['aid']) || empty($_SESSION['aid'])) {
     r2("./?_route=login&You_are_not_admin", 'e', 'You are not admin');
@@ -39,6 +40,7 @@ $isCloudflareProxy = isset($_SERVER['HTTP_CF_RAY'])
     || isset($_SERVER['HTTP_CF_CONNECTING_IP'])
     || isset($_SERVER['HTTP_CDN_LOOP']);
 $isApiRequest = isset($_GET['api']) && (string) $_GET['api'] === '1';
+$isProgressApiRequest = $isApiRequest && isset($_GET['progress']) && (string) $_GET['progress'] === '1';
 $enableStreamHeartbeat = $isCloudflareProxy && PHP_SAPI !== 'cli';
 $GLOBALS['update_enable_stream_heartbeat'] = $enableStreamHeartbeat;
 
@@ -65,22 +67,55 @@ if (!preg_match('/^[a-z_]+$/', $requestedRedirectTo)) {
 }
 $step = $isApiRequest ? $requestedStep : 0;
 
-if ($step <= 1 || empty($_SESSION['update_flow_token']) || !is_string($_SESSION['update_flow_token'])) {
+if ((($step <= 1) && !$isProgressApiRequest) || empty($_SESSION['update_flow_token']) || !is_string($_SESSION['update_flow_token'])) {
     $_SESSION['update_flow_token'] = updateGenerateRandomToken(32);
 }
 $updateFlowToken = (string) $_SESSION['update_flow_token'];
+if ($isProgressApiRequest) {
+    $requestedFlowToken = isset($_GET['flow']) ? trim((string) $_GET['flow']) : '';
+    if ($requestedFlowToken !== '' && preg_match('/^[a-f0-9]{16,128}$/i', $requestedFlowToken)) {
+        $updateFlowToken = strtolower($requestedFlowToken);
+    }
+}
 $flowTokenSafe = preg_replace('/[^a-f0-9]/i', '', $updateFlowToken);
 if ($flowTokenSafe === '') {
     $flowTokenSafe = updateGenerateRandomToken(12);
 }
 $flowStateFile = pathFixer('system/cache/update-state-' . $flowTokenSafe . '.json');
-if ($step <= 1) {
+if ($step <= 1 && !$isProgressApiRequest) {
     unset($_SESSION['update_extract_dir']);
     if (file_exists($flowStateFile)) {
         @unlink($flowStateFile);
     }
 }
 updateCleanupStaleFlowStates(pathFixer('system/cache/'));
+
+if ($isProgressApiRequest) {
+    $progressState = updateReadFlowState($flowStateFile);
+    $progressStep = isset($progressState['current_step']) ? (int) $progressState['current_step'] : 0;
+    $progressStatus = isset($progressState['status']) ? (string) $progressState['status'] : 'idle';
+    $stepProgressPercent = isset($progressState['step_progress_percent']) ? (int) $progressState['step_progress_percent'] : 0;
+    if ($stepProgressPercent < 0) {
+        $stepProgressPercent = 0;
+    } elseif ($stepProgressPercent > 100) {
+        $stepProgressPercent = 100;
+    }
+    $stepProgressLabel = isset($progressState['step_progress_label']) ? (string) $progressState['step_progress_label'] : '';
+    $progressUpdatedAt = isset($progressState['updated_at']) ? (int) $progressState['updated_at'] : 0;
+
+    header('Content-Type: application/json; charset=utf-8');
+    header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+    echo json_encode([
+        'ok' => true,
+        'flow' => (string) $updateFlowToken,
+        'step' => $progressStep,
+        'status' => $progressStatus,
+        'step_progress_percent' => $stepProgressPercent,
+        'step_progress_label' => $stepProgressLabel,
+        'updated_at' => $progressUpdatedAt,
+    ], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+    exit;
+}
 
 $apiFinished = false;
 $apiRedirectTarget = '';
@@ -175,12 +210,13 @@ if (empty($step)) {
         $downloadCandidates = updateBuildDownloadCandidates($update_url);
         $downloadSucceeded = false;
         $lastDownloadError = '';
+        updateMarkFlowStepProgress($flowStateFile, 1, 0, 'Memulai download package...');
 
         foreach ($downloadCandidates as $candidateUrl) {
             updateHeartbeat(false);
             $downloadDetails = [];
             $downloadError = '';
-            if (!updateDownloadArchiveToFile($candidateUrl, $file, $downloadDetails, $downloadError)) {
+            if (!updateDownloadArchiveToFile($candidateUrl, $file, $downloadDetails, $downloadError, $flowStateFile, 1)) {
                 $lastDownloadError = $downloadError;
                 continue;
             }
@@ -208,6 +244,7 @@ if (empty($step)) {
                 continue;
             }
             $downloadZip->close();
+            updateMarkFlowStepProgress($flowStateFile, 1, 100, 'Download selesai.');
             $downloadSucceeded = true;
             break;
         }
@@ -579,6 +616,14 @@ if ($continue && $nextStep !== $currentStep && $progressAnimateTo < 100) {
 if ($isApiRequest) {
     $apiMessage = '';
     $apiMessageType = '';
+    $flowStateSnapshot = updateReadFlowState($flowStateFile);
+    $apiStepProgressPercent = isset($flowStateSnapshot['step_progress_percent']) ? (int) $flowStateSnapshot['step_progress_percent'] : 0;
+    if ($apiStepProgressPercent < 0) {
+        $apiStepProgressPercent = 0;
+    } elseif ($apiStepProgressPercent > 100) {
+        $apiStepProgressPercent = 100;
+    }
+    $apiStepProgressLabel = isset($flowStateSnapshot['step_progress_label']) ? (string) $flowStateSnapshot['step_progress_label'] : '';
     if (!empty($msg)) {
         $apiMessage = (string) $msg;
     }
@@ -601,6 +646,8 @@ if ($isApiRequest) {
         'message_type' => $apiMessageType,
         'progress_percent' => (int) $progressPercent,
         'completed_steps' => (int) $completedSteps,
+        'step_progress_percent' => $apiStepProgressPercent,
+        'step_progress_label' => $apiStepProgressLabel,
         'redirect_to' => (string) $apiRedirectTarget,
     ];
     if ($apiFinished) {
@@ -844,9 +891,43 @@ function updateMarkFlowStep($filePath, $step, $status = 'running')
     if ($status === 'completed') {
         $currentCompleted = isset($state['completed_step']) ? (int) $state['completed_step'] : 0;
         $state['completed_step'] = max($currentCompleted, $step);
+        $state['step_progress_percent'] = 100;
+        $state['step_progress_label'] = 'Step ' . $step . ' selesai';
     } elseif (!isset($state['completed_step'])) {
         $state['completed_step'] = 0;
     }
+    if ($status === 'running') {
+        $state['step_progress_percent'] = 0;
+        $state['step_progress_label'] = '';
+    }
+    updateWriteFlowState($filePath, $state);
+    updateTouchProcessLock();
+}
+
+function updateMarkFlowStepProgress($filePath, $step, $percent, $label = '')
+{
+    $step = (int) $step;
+    if ($step < 1) {
+        return;
+    }
+
+    $percent = (int) round($percent);
+    if ($percent < 0) {
+        $percent = 0;
+    } elseif ($percent > 100) {
+        $percent = 100;
+    }
+
+    $state = updateReadFlowState($filePath);
+    $state['current_step'] = $step;
+    if (empty($state['status'])) {
+        $state['status'] = 'running';
+    }
+    $state['step_progress_percent'] = $percent;
+    if ($label !== '') {
+        $state['step_progress_label'] = (string) $label;
+    }
+    $state['updated_at'] = time();
     updateWriteFlowState($filePath, $state);
     updateTouchProcessLock();
 }
@@ -1177,7 +1258,7 @@ function updateEncodeUrlPathSegments($path)
     return implode('/', $encoded);
 }
 
-function updateDownloadArchiveToFile($url, $targetFile, &$details, &$error)
+function updateDownloadArchiveToFile($url, $targetFile, &$details, &$error, $flowStateFile = '', $progressStep = 0)
 {
     $details = [
         'url' => (string) $url,
@@ -1186,8 +1267,16 @@ function updateDownloadArchiveToFile($url, $targetFile, &$details, &$error)
         'effective_url' => (string) $url,
         'bytes_written' => 0,
         'downloaded_size' => 0,
+        'download_total' => 0,
+        'download_now' => 0,
     ];
     $error = '';
+    $progressStep = (int) $progressStep;
+    $lastProgressPercent = -1;
+    $lastProgressUpdate = 0.0;
+    if ($progressStep > 0 && $flowStateFile !== '') {
+        updateMarkFlowStepProgress($flowStateFile, $progressStep, 0, 'Memulai download...');
+    }
 
     if (file_exists($targetFile) && !@unlink($targetFile)) {
         $error = 'Unable to remove stale update archive before downloading.';
@@ -1232,7 +1321,38 @@ function updateDownloadArchiveToFile($url, $targetFile, &$details, &$error)
             return $written;
         },
         CURLOPT_NOPROGRESS => false,
-        CURLOPT_PROGRESSFUNCTION => function () {
+        CURLOPT_PROGRESSFUNCTION => function () use (&$details, $flowStateFile, $progressStep, &$lastProgressPercent, &$lastProgressUpdate) {
+            $args = func_get_args();
+            $downloadTotal = 0.0;
+            $downloadNow = 0.0;
+
+            if (count($args) >= 5) {
+                $downloadTotal = (float) $args[1];
+                $downloadNow = (float) $args[2];
+            } elseif (count($args) >= 4) {
+                $downloadTotal = (float) $args[0];
+                $downloadNow = (float) $args[1];
+            }
+
+            $details['download_total'] = (int) max(0, round($downloadTotal));
+            $details['download_now'] = (int) max(0, round($downloadNow));
+
+            if ($progressStep > 0 && $flowStateFile !== '' && $downloadTotal > 0) {
+                $percent = (int) floor(($downloadNow / $downloadTotal) * 100);
+                if ($percent < 0) {
+                    $percent = 0;
+                } elseif ($percent > 99) {
+                    $percent = 99;
+                }
+
+                $now = microtime(true);
+                $shouldWrite = ($percent !== $lastProgressPercent) && ($percent === 0 || $percent >= 99 || ($now - $lastProgressUpdate) >= 0.75);
+                if ($shouldWrite) {
+                    $lastProgressPercent = $percent;
+                    $lastProgressUpdate = $now;
+                    updateMarkFlowStepProgress($flowStateFile, $progressStep, $percent, 'Download package ' . $percent . '%');
+                }
+            }
             updateHeartbeat(false);
             return 0;
         },
@@ -1282,6 +1402,10 @@ function updateDownloadArchiveToFile($url, $targetFile, &$details, &$error)
             . updateBuildDownloadDebugSummary($targetFile, $details, $url);
         @unlink($targetFile);
         return false;
+    }
+
+    if ($progressStep > 0 && $flowStateFile !== '') {
+        updateMarkFlowStepProgress($flowStateFile, $progressStep, 100, 'Download package selesai');
     }
 
     return true;
@@ -1364,6 +1488,107 @@ function updateReadFilePreview($filePath, $maxBytes = 180)
 
     $clean = preg_replace('/[^\x20-\x7E\r\n\t]/', '?', $raw);
     return trim((string) $clean);
+}
+
+function updateResolveUpdaterFaviconUrl()
+{
+    $uploadPath = pathFixer(__DIR__ . DIRECTORY_SEPARATOR . 'system' . DIRECTORY_SEPARATOR . 'uploads');
+    $candidates = [];
+
+    $configuredFavicon = updateReadAppConfigValue('login_page_favicon');
+    if ($configuredFavicon !== '' && updateIsSafeUploadAssetName($configuredFavicon)) {
+        $candidates[] = $configuredFavicon;
+    }
+    $candidates[] = 'favicon.png';
+    $candidates[] = 'logo.favicon.png';
+    $candidates[] = 'logo.png';
+    $candidates[] = 'logo.default.png';
+
+    foreach ($candidates as $assetName) {
+        $assetName = trim((string) $assetName);
+        if ($assetName === '') {
+            continue;
+        }
+        $filePath = $uploadPath . DIRECTORY_SEPARATOR . $assetName;
+        if (is_file($filePath)) {
+            return updateBuildAssetUrl('system/uploads/' . $assetName);
+        }
+    }
+
+    return updateBuildAssetUrl('ui/ui/images/logo.png');
+}
+
+function updateReadAppConfigValue($settingName)
+{
+    static $cache = [];
+    $settingName = trim((string) $settingName);
+    if ($settingName === '') {
+        return '';
+    }
+    if (array_key_exists($settingName, $cache)) {
+        return $cache[$settingName];
+    }
+
+    global $db_host, $db_name, $db_user, $db_pass;
+    if (empty($db_host) || empty($db_name) || empty($db_user)) {
+        $cache[$settingName] = '';
+        return '';
+    }
+
+    try {
+        $pdo = new PDO(
+            "mysql:host=$db_host;dbname=$db_name;charset=utf8mb4",
+            $db_user,
+            $db_pass,
+            [
+                PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+                PDO::ATTR_TIMEOUT => 2,
+            ]
+        );
+        $stmt = $pdo->prepare("SELECT `value` FROM `tbl_appconfig` WHERE `setting` = :setting ORDER BY `id` ASC LIMIT 1");
+        $stmt->execute([':setting' => $settingName]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        $value = trim((string) ($row['value'] ?? ''));
+        $cache[$settingName] = $value;
+        return $value;
+    } catch (Throwable $e) {
+        $cache[$settingName] = '';
+        return '';
+    }
+}
+
+function updateIsSafeUploadAssetName($assetName)
+{
+    $assetName = trim((string) $assetName);
+    if ($assetName === '') {
+        return false;
+    }
+    if (strpos($assetName, '..') !== false || strpos($assetName, '/') !== false || strpos($assetName, '\\') !== false) {
+        return false;
+    }
+    return preg_match('/^[a-zA-Z0-9._-]+$/', $assetName) === 1;
+}
+
+function updateBuildAssetUrl($relativePath)
+{
+    $relativePath = ltrim(str_replace('\\', '/', (string) $relativePath), '/');
+    if ($relativePath === '') {
+        return './';
+    }
+
+    $suffix = '';
+    $assetFile = pathFixer(__DIR__ . DIRECTORY_SEPARATOR . $relativePath);
+    if (is_file($assetFile)) {
+        $mtime = @filemtime($assetFile);
+        if ($mtime !== false) {
+            $suffix = '?v=' . (int) $mtime;
+        }
+    }
+
+    if (defined('APP_URL') && APP_URL !== '') {
+        return rtrim((string) APP_URL, '/') . '/' . $relativePath . $suffix;
+    }
+    return './' . $relativePath . $suffix;
 }
 
 function updateZipOpenErrorMessage($statusCode)
@@ -2427,7 +2652,7 @@ function createDatabaseBackup($backupDir)
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
     <title>PHPNuxBill Updater</title>
-    <link rel="shortcut icon" href="ui/ui/images/logo.png" type="image/x-icon" />
+    <link rel="shortcut icon" href="<?= htmlspecialchars($updaterFaviconUrl, ENT_QUOTES, 'UTF-8') ?>" type="image/x-icon" />
 
     <link rel="stylesheet" href="ui/ui/styles/bootstrap.min.css">
 
@@ -2448,8 +2673,43 @@ function createDatabaseBackup($backupDir)
             background: yellow;
         }
 
+        body.hold-transition.skin-blue {
+            background: #f4f6f9;
+        }
+
+        .container {
+            max-width: 980px;
+        }
+
+        .content-header {
+            padding: 8px 15px 4px;
+        }
+
+        .content-header h1 {
+            margin: 6px 0 8px;
+            font-size: 24px;
+        }
+
+        .content {
+            padding-top: 0;
+        }
+
+        .panel {
+            margin-bottom: 10px;
+        }
+
+        .panel-heading {
+            padding: 8px 12px;
+            font-size: 13px;
+            font-weight: 600;
+        }
+
+        .panel-body {
+            padding: 12px;
+        }
+
         .updater-progress-panel {
-            margin-bottom: 15px;
+            margin-bottom: 8px;
         }
 
         .updater-progress-title {
@@ -2457,8 +2717,8 @@ function createDatabaseBackup($backupDir)
         }
 
         .updater-progress {
-            margin: 10px 0 6px;
-            height: 18px;
+            margin: 8px 0 4px;
+            height: 14px;
         }
 
         .updater-progress .progress-bar {
@@ -2467,7 +2727,30 @@ function createDatabaseBackup($backupDir)
         }
 
         .updater-mode-hint {
-            margin-top: 6px;
+            margin-top: 4px;
+        }
+
+        .updater-wait-row {
+            margin-top: 8px;
+            min-height: 20px;
+        }
+
+        .updater-wait-indicator {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            color: #2f6f9f;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .updater-spinner {
+            width: 14px;
+            height: 14px;
+            border: 2px solid rgba(60, 141, 188, 0.25);
+            border-top-color: #3c8dbc;
+            border-radius: 50%;
+            animation: updater-spin 0.8s linear infinite;
         }
 
         .updater-step-list {
@@ -2480,16 +2763,18 @@ function createDatabaseBackup($backupDir)
             justify-content: space-between;
             gap: 10px;
             transition: background-color 0.2s ease, border-color 0.2s ease;
+            padding: 8px 10px;
         }
 
         .updater-step-item .updater-step-label {
             font-weight: 600;
+            font-size: 12px;
         }
 
         .updater-step-item .updater-step-detail {
             display: block;
             color: #777;
-            font-size: 12px;
+            font-size: 11px;
         }
 
         .updater-step-item.state-pending {
@@ -2518,25 +2803,26 @@ function createDatabaseBackup($backupDir)
         }
 
         .updater-step-state {
-            min-width: 170px;
+            min-width: 150px;
             text-align: right;
             white-space: nowrap;
             font-weight: 600;
             color: #555;
+            font-size: 11px;
         }
 
         .updater-log {
             border: 1px solid #e5e5e5;
             border-radius: 4px;
             background: #fbfbfb;
-            max-height: 260px;
+            max-height: 180px;
             overflow-y: auto;
-            padding: 8px 10px;
+            padding: 6px 8px;
         }
 
         .updater-log-entry {
-            margin-bottom: 7px;
-            font-size: 12px;
+            margin-bottom: 5px;
+            font-size: 11px;
             line-height: 1.35;
             word-break: break-word;
         }
@@ -2567,10 +2853,38 @@ function createDatabaseBackup($backupDir)
         }
 
         .updater-action-row {
-            margin-top: 12px;
+            margin-top: 10px;
             display: flex;
             gap: 8px;
             flex-wrap: wrap;
+        }
+
+        .footer {
+            margin-top: 8px;
+            padding-bottom: 8px;
+            font-size: 11px;
+        }
+
+        @keyframes updater-spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        @media (max-width: 768px) {
+            .content-header h1 {
+                font-size: 20px;
+            }
+
+            .updater-step-item {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+
+            .updater-step-state {
+                min-width: 0;
+                text-align: left;
+            }
         }
     </style>
 
@@ -2610,6 +2924,12 @@ function createDatabaseBackup($backupDir)
                                     <?= $initialStartStep === 5 ? 'Database Only' : 'Full Update' ?>
                                 </span>
                                 <small class="text-muted">Start dari Step <?= (int) $initialStartStep ?>.</small>
+                            </div>
+                            <div class="updater-wait-row">
+                                <span id="updater-wait-indicator" class="updater-wait-indicator" style="display:none;">
+                                    <span class="updater-spinner" aria-hidden="true"></span>
+                                    <span id="updater-wait-text">Sedang memproses...</span>
+                                </span>
                             </div>
                             <?php if ($isCloudflareProxy) { ?>
                                 <br><small class="text-muted">Cloudflare/Cloudflared detected: updater is using keepalive heartbeat and resumable step state.</small>
@@ -2708,6 +3028,7 @@ function createDatabaseBackup($backupDir)
             var isRunning = false;
             var failedStep = null;
             var redirectTimer = null;
+            var progressPollTimer = null;
 
             var progressBar = document.getElementById('update-progress-bar');
             var progressText = document.getElementById('update-progress-text');
@@ -2716,8 +3037,10 @@ function createDatabaseBackup($backupDir)
             var retryBtn = document.getElementById('updater-retry-btn');
             var finishBtn = document.getElementById('updater-finish-btn');
             var logContainer = document.getElementById('updater-log');
+            var waitIndicator = document.getElementById('updater-wait-indicator');
+            var waitText = document.getElementById('updater-wait-text');
 
-            if (!progressBar || !progressText || !runStatus || !runtimeAlert || !retryBtn || !finishBtn || !logContainer) {
+            if (!progressBar || !progressText || !runStatus || !runtimeAlert || !retryBtn || !finishBtn || !logContainer || !waitIndicator || !waitText) {
                 return;
             }
 
@@ -2749,6 +3072,16 @@ function createDatabaseBackup($backupDir)
                 runtimeAlert.className = 'alert alert-' + type;
                 runtimeAlert.textContent = message;
                 runtimeAlert.style.display = 'block';
+            }
+
+            function setWaitIndicator(active, message) {
+                if (!active) {
+                    waitIndicator.style.display = 'none';
+                    waitText.textContent = 'Sedang memproses...';
+                    return;
+                }
+                waitText.textContent = message || 'Sedang memproses...';
+                waitIndicator.style.display = 'inline-flex';
             }
 
             function appendLog(message, tone) {
@@ -2821,11 +3154,39 @@ function createDatabaseBackup($backupDir)
                 renderProgress(Math.round((completedBeforeStart / totalSteps) * 100));
             }
 
-            function updateProgressFromResponse(payload) {
+            function applyStepProgress(step, stepPercent, stepLabel) {
+                var safeStep = parseInt(step, 10);
+                if (!safeStep || safeStep < 1 || safeStep > totalSteps) {
+                    return;
+                }
+
+                var safeStepPercent = parseInt(stepPercent, 10);
+                if (isNaN(safeStepPercent)) {
+                    safeStepPercent = 0;
+                }
+                if (safeStepPercent < 0) {
+                    safeStepPercent = 0;
+                } else if (safeStepPercent > 100) {
+                    safeStepPercent = 100;
+                }
+
+                var globalPercent = Math.round((((safeStep - 1) + (safeStepPercent / 100)) / totalSteps) * 100);
+                renderProgress(globalPercent);
+
+                if (stepLabel) {
+                    setStepState(safeStep, 'running', stepLabel);
+                    setWaitIndicator(true, stepLabel);
+                }
+            }
+
+            function updateProgressFromResponse(payload, requestedStep) {
                 if (!payload || typeof payload.progress_percent === 'undefined') {
                     return;
                 }
                 renderProgress(payload.progress_percent);
+                if (typeof payload.step_progress_percent !== 'undefined') {
+                    applyStepProgress(requestedStep, payload.step_progress_percent, payload.step_progress_label || '');
+                }
             }
 
             function buildApiUrl(step) {
@@ -2836,29 +3197,89 @@ function createDatabaseBackup($backupDir)
                 return url;
             }
 
+            function buildProgressApiUrl() {
+                return './update.php?api=1&progress=1&flow=' + encodeURIComponent(config.flow);
+            }
+
+            function stopProgressPolling() {
+                if (progressPollTimer) {
+                    clearInterval(progressPollTimer);
+                    progressPollTimer = null;
+                }
+            }
+
+            function startProgressPolling(step) {
+                stopProgressPolling();
+                if (!isRunning || step < 1 || step > totalSteps) {
+                    return;
+                }
+
+                progressPollTimer = setInterval(function() {
+                    if (!isRunning) {
+                        stopProgressPolling();
+                        return;
+                    }
+
+                    fetch(buildProgressApiUrl(), {
+                        method: 'GET',
+                        credentials: 'same-origin',
+                        cache: 'no-store',
+                        headers: {
+                            'Accept': 'application/json',
+                            'X-Requested-With': 'XMLHttpRequest'
+                        }
+                    }).then(function(response) {
+                        if (!response.ok) {
+                            return null;
+                        }
+                        return response.json();
+                    }).then(function(payload) {
+                        if (!payload || !payload.ok) {
+                            return;
+                        }
+
+                        if (payload.flow) {
+                            config.flow = payload.flow;
+                        }
+
+                        var polledStep = parseInt(payload.step, 10);
+                        if (!polledStep || polledStep < 1 || polledStep > totalSteps) {
+                            polledStep = step;
+                        }
+                        applyStepProgress(polledStep, payload.step_progress_percent, payload.step_progress_label || '');
+                    }).catch(function() {
+                        // Do nothing on poll error, main step request still owns flow.
+                    });
+                }, 900);
+            }
+
             function setFailureState(step, message, type, payload) {
                 isRunning = false;
+                stopProgressPolling();
                 failedStep = step;
                 if (step >= 1 && step <= totalSteps) {
                     setStepState(step, 'error', 'Perlu retry');
                 }
                 if (payload) {
-                    updateProgressFromResponse(payload);
+                    updateProgressFromResponse(payload, step);
                 }
                 setRunStatusLabel('Gagal pada step ' + step, 'danger');
                 showRuntimeAlert(type === 'warning' ? 'warning' : 'danger', message);
                 appendLog(message, type === 'warning' ? 'warning' : 'danger');
+                setWaitIndicator(false, '');
                 retryBtn.style.display = 'inline-block';
             }
 
             function markFinished(payload) {
                 isRunning = false;
+                stopProgressPolling();
                 failedStep = null;
                 renderProgress(100);
                 setRunStatusLabel('Selesai', 'success');
                 progressBar.classList.remove('active');
                 retryBtn.style.display = 'none';
                 finishBtn.style.display = 'inline-block';
+                setWaitIndicator(false, '');
 
                 var finishMessage = (payload && payload.message) ? payload.message : 'Update selesai.';
                 showRuntimeAlert('success', finishMessage);
@@ -2887,6 +3308,8 @@ function createDatabaseBackup($backupDir)
                 }
                 setRunStatusLabel('Menjalankan step ' + step, 'primary');
                 appendLog('Menjalankan step ' + step + '.', 'info');
+                setWaitIndicator(true, 'Menjalankan step ' + step + '...');
+                startProgressPolling(step);
 
                 fetch(buildApiUrl(step), {
                     method: 'GET',
@@ -2902,6 +3325,7 @@ function createDatabaseBackup($backupDir)
                     }
                     return response.json();
                 }).then(function(payload) {
+                    stopProgressPolling();
                     if (payload && payload.flow) {
                         config.flow = payload.flow;
                     }
@@ -2911,6 +3335,7 @@ function createDatabaseBackup($backupDir)
                         if (step <= totalSteps) {
                             setStepState(uiStep, 'running', 'Menunggu request updater lain');
                         }
+                        setWaitIndicator(true, payload.message || 'Menunggu proses updater lain...');
                         appendLog(payload.message || 'Updater sedang dipakai request lain. Retry 2 detik lagi.', 'warning');
                         setTimeout(function() {
                             executeStep(step);
@@ -2924,10 +3349,11 @@ function createDatabaseBackup($backupDir)
                         return;
                     }
 
-                    updateProgressFromResponse(payload);
+                    updateProgressFromResponse(payload, step);
                     if (step <= totalSteps) {
                         setStepState(uiStep, 'done', 'Selesai');
                     }
+                    setWaitIndicator(false, '');
                     if (payload.message) {
                         appendLog(payload.message, payload.message_type || 'success');
                     }
@@ -2943,6 +3369,7 @@ function createDatabaseBackup($backupDir)
                     }
                     executeStep(nextStep);
                 }).catch(function(error) {
+                    stopProgressPolling();
                     setFailureState(step, 'Gagal memproses request updater: ' + error.message, 'danger', null);
                 });
             }
@@ -2959,10 +3386,12 @@ function createDatabaseBackup($backupDir)
                 finishBtn.style.display = 'none';
                 isRunning = true;
                 failedStep = null;
+                stopProgressPolling();
 
                 applyStartMode();
                 showRuntimeAlert('info', 'Updater berjalan pada halaman ini. Jangan menutup browser sampai selesai.');
                 setRunStatusLabel('Memulai update', 'info');
+                setWaitIndicator(true, 'Menyiapkan updater...');
                 appendLog('Updater dimulai dari step ' + step + '.', 'info');
                 executeStep(step);
             }
@@ -2976,6 +3405,7 @@ function createDatabaseBackup($backupDir)
             if (!config.canRun) {
                 setRunStatusLabel('Tidak dapat memulai', 'danger');
                 appendLog('Validasi awal updater gagal. Lihat pesan error di atas.', 'danger');
+                setWaitIndicator(false, '');
                 return;
             }
 
