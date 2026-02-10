@@ -449,5 +449,19 @@
     "API_key_is_stored__Leave_blank_to_keep_it_": "API key is stored. Leave blank to keep it.",
     "Key_will_be_hashed_after_saving_and_cannot_be_shown_again_": "Key will be hashed after saving and cannot be shown again.",
     "Used_for_all_admin_endpoints__API__": "Used for all admin endpoints (API).",
-    "Remove_API_Key": "Remove API Key"
+    "Remove_API_Key": "Remove API Key",
+    "Your_Account_Information": "Your Account Information",
+    "Voucher_Activation": "Voucher Activation",
+    "Enter_voucher_code_here": "Enter voucher code here",
+    "Order_Package": "Order Package",
+    "Expires_On": "Expires On",
+    "Deactivate": "Deactivate",
+    "Sync_account_if_you_failed_login_to_internet": "Sync account if you failed login to internet",
+    "Recharge_a_friend": "Recharge a friend",
+    "Friend_username": "Friend username",
+    "_Are_You_Sure_": " Are You Sure?",
+    "Buy_Package": "Buy Package",
+    "Payment_History": "Payment History",
+    "You_are_already_logged_in": "You are already logged in",
+    "Invalid_or_Expired_CSRF_Token": "Invalid or Expired CSRF Token"
 }

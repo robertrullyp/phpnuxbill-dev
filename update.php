@@ -38,8 +38,14 @@ $isCloudflareProxy = isset($_SERVER['HTTP_CF_RAY'])
     || isset($_SERVER['HTTP_CF_VISITOR'])
     || isset($_SERVER['HTTP_CF_CONNECTING_IP'])
     || isset($_SERVER['HTTP_CDN_LOOP']);
+$isApiRequest = isset($_GET['api']) && (string) $_GET['api'] === '1';
 $enableStreamHeartbeat = $isCloudflareProxy && PHP_SAPI !== 'cli';
 $GLOBALS['update_enable_stream_heartbeat'] = $enableStreamHeartbeat;
+
+if ($isApiRequest) {
+    $enableStreamHeartbeat = false;
+    $GLOBALS['update_enable_stream_heartbeat'] = false;
+}
 
 if (!is_writeable(pathFixer('system/cache/'))) {
     r2("./?_route=community", 'e', 'Folder system/cache/ is not writable');
@@ -48,10 +54,17 @@ if (!is_writeable(pathFixer('.'))) {
     r2("./?_route=community", 'e', 'Folder web is not writable');
 }
 
-$step = isset($_GET['step']) ? (int)$_GET['step'] : 0;
-if ($step < 0 || $step > 6) {
-    $step = 0;
+$requestedStep = isset($_GET['step']) ? (int) $_GET['step'] : 0;
+if ($requestedStep < 0 || $requestedStep > 6) {
+    $requestedStep = 0;
 }
+$initialStartStep = ($requestedStep >= 1 && $requestedStep <= 5) ? $requestedStep : 1;
+$requestedRedirectTo = isset($_GET['redirect_to']) ? strtolower(trim((string) $_GET['redirect_to'])) : '';
+if (!preg_match('/^[a-z_]+$/', $requestedRedirectTo)) {
+    $requestedRedirectTo = '';
+}
+$step = $isApiRequest ? $requestedStep : 0;
+
 if ($step <= 1 || empty($_SESSION['update_flow_token']) || !is_string($_SESSION['update_flow_token'])) {
     $_SESSION['update_flow_token'] = updateGenerateRandomToken(32);
 }
@@ -67,7 +80,14 @@ if ($step <= 1) {
         @unlink($flowStateFile);
     }
 }
+updateCleanupStaleFlowStates(pathFixer('system/cache/'));
+
+$apiFinished = false;
+$apiRedirectTarget = '';
+$apiSuccessMessage = '';
+
 $continue = true;
+$waitForRunningUpdate = false;
 if (!extension_loaded('zip')) {
     $msg = "No PHP ZIP extension is available";
     $msgType = "danger";
@@ -90,11 +110,18 @@ if ($step > 0 && $continue) {
     }
 }
 
-if ($continue) {
+if ($continue && $step > 0) {
     $lockError = '';
-    if (!updateAcquireProcessLock(pathFixer('system/cache/update.lock'), $lockError)) {
-        $msg = $lockError;
-        $msgType = "danger";
+    $lockBusy = false;
+    if (!updateAcquireProcessLock(pathFixer('system/cache/update.lock'), $lockError, $lockBusy)) {
+        if ($lockBusy && $step > 0 && $step < 6) {
+            $msg = 'Updater sedang diproses pada request lain. Halaman ini akan mencoba lagi otomatis.';
+            $msgType = 'warning';
+            $waitForRunningUpdate = true;
+        } else {
+            $msg = $lockError;
+            $msgType = 'danger';
+        }
         $continue = false;
     }
 }
@@ -541,7 +568,7 @@ if (empty($step)) {
         'dashboard' => './?_route=dashboard',
         'community' => './?_route=community',
     ];
-    $requestedRedirect = isset($_GET['redirect_to']) ? strtolower($_GET['redirect_to']) : '';
+    $requestedRedirect = $requestedRedirectTo;
     $target = $redirectTargets['dashboard'];
     if (!empty($requestedRedirect) && isset($redirectTargets[$requestedRedirect])) {
         $target = $redirectTargets[$requestedRedirect];
@@ -552,8 +579,13 @@ if (empty($step)) {
         @unlink($flowStateFile);
     }
     unset($_SESSION['update_flow_token']);
-
-    r2($target, 's', $message);
+    if ($isApiRequest) {
+        $apiFinished = true;
+        $apiRedirectTarget = $target;
+        $apiSuccessMessage = $message;
+    } else {
+        r2($target, 's', $message);
+    }
 }
 
 if ($continue) {
@@ -574,7 +606,45 @@ $progressAnimateTo = $progressPercent;
 if ($continue && $nextStep !== $currentStep && $progressAnimateTo < 100) {
     $progressAnimateTo = min(99, $progressAnimateTo + 12);
 }
-$nextUrl = './update.php?step=' . (int) $nextStep . '&flow=' . rawurlencode($updateFlowToken);
+
+if ($isApiRequest) {
+    $apiMessage = '';
+    $apiMessageType = '';
+    if (!empty($msg)) {
+        $apiMessage = (string) $msg;
+    }
+    if (!empty($msgType)) {
+        $apiMessageType = (string) $msgType;
+    }
+    if ($apiFinished) {
+        $apiMessage = $apiSuccessMessage;
+        $apiMessageType = 'success';
+    }
+
+    $response = [
+        'ok' => (bool) $continue,
+        'busy' => (bool) $waitForRunningUpdate,
+        'step' => (int) $currentStep,
+        'next_step' => (int) $nextStep,
+        'done' => (bool) $apiFinished,
+        'flow' => (string) $updateFlowToken,
+        'message' => $apiMessage,
+        'message_type' => $apiMessageType,
+        'progress_percent' => (int) $progressPercent,
+        'completed_steps' => (int) $completedSteps,
+        'redirect_to' => (string) $apiRedirectTarget,
+    ];
+    if ($apiFinished) {
+        $response['progress_percent'] = 100;
+        $response['completed_steps'] = $progressTotalSteps;
+        $response['next_step'] = 6;
+    }
+
+    header('Content-Type: application/json; charset=utf-8');
+    header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+    echo json_encode($response, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+    exit;
+}
 
 function pathFixer($path)
 {
@@ -809,10 +879,12 @@ function updateMarkFlowStep($filePath, $step, $status = 'running')
         $state['completed_step'] = 0;
     }
     updateWriteFlowState($filePath, $state);
+    updateTouchProcessLock();
 }
 
 function updateHeartbeat($force = false)
 {
+    updateTouchProcessLock();
     if (empty($GLOBALS['update_enable_stream_heartbeat']) || PHP_SAPI === 'cli') {
         return;
     }
@@ -870,9 +942,144 @@ function updateGenerateRandomToken($length = 32)
     return sha1(uniqid((string) mt_rand(), true));
 }
 
-function updateAcquireProcessLock($lockFile, &$error = '')
+function updateReadLockMeta($handle)
+{
+    if (!is_resource($handle)) {
+        return [];
+    }
+    rewind($handle);
+    $raw = stream_get_contents($handle);
+    if (!is_string($raw) || trim($raw) === '') {
+        return [];
+    }
+    $decoded = json_decode($raw, true);
+    return is_array($decoded) ? $decoded : [];
+}
+
+function updateExtractLockTimestamp(array $lockMeta)
+{
+    if (!empty($lockMeta['updated_at'])) {
+        return (int) $lockMeta['updated_at'];
+    }
+    if (!empty($lockMeta['time'])) {
+        $parsed = strtotime((string) $lockMeta['time']);
+        if ($parsed !== false) {
+            return (int) $parsed;
+        }
+    }
+    return 0;
+}
+
+function updateProcessExists($pid)
+{
+    $pid = (int) $pid;
+    if ($pid < 1) {
+        return false;
+    }
+    if (function_exists('posix_kill') && @posix_kill($pid, 0)) {
+        return true;
+    }
+    return is_dir('/proc/' . $pid);
+}
+
+function updateTerminateProcess($pid)
+{
+    $pid = (int) $pid;
+    if ($pid < 1 || !updateProcessExists($pid)) {
+        return true;
+    }
+
+    if (!function_exists('posix_kill')) {
+        return false;
+    }
+
+    @posix_kill($pid, defined('SIGTERM') ? SIGTERM : 15);
+    $deadline = microtime(true) + 2.0;
+    while (microtime(true) < $deadline) {
+        usleep(100000);
+        if (!updateProcessExists($pid)) {
+            return true;
+        }
+    }
+
+    @posix_kill($pid, defined('SIGKILL') ? SIGKILL : 9);
+    $deadline = microtime(true) + 2.0;
+    while (microtime(true) < $deadline) {
+        usleep(100000);
+        if (!updateProcessExists($pid)) {
+            return true;
+        }
+    }
+
+    return !updateProcessExists($pid);
+}
+
+function updateTouchProcessLock()
+{
+    if (empty($GLOBALS['update_lock_handle']) || !is_resource($GLOBALS['update_lock_handle'])) {
+        return;
+    }
+    $startedAt = !empty($GLOBALS['update_lock_started_at']) ? (int) $GLOBALS['update_lock_started_at'] : time();
+    $payload = json_encode([
+        'pid' => getmypid(),
+        'time' => date('c'),
+        'updated_at' => time(),
+        'started_at' => $startedAt,
+        'session' => session_id(),
+    ], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+
+    if ($payload === false) {
+        return;
+    }
+
+    $handle = $GLOBALS['update_lock_handle'];
+    @ftruncate($handle, 0);
+    @rewind($handle);
+    @fwrite($handle, $payload);
+    @fflush($handle);
+}
+
+function updateLockMaxAgeSeconds()
+{
+    $configured = isset($GLOBALS['config']['update_lock_max_age']) ? (int) $GLOBALS['config']['update_lock_max_age'] : 0;
+    if ($configured >= 120 && $configured <= 86400) {
+        return $configured;
+    }
+    return 900;
+}
+
+function updateCleanupStaleFlowStates($cacheDir)
+{
+    $cacheDir = normalizeDir($cacheDir);
+    if (!is_dir($cacheDir)) {
+        return;
+    }
+
+    $stateTtl = 86400;
+    $files = glob($cacheDir . 'update-state-*.json');
+    if (is_array($files)) {
+        foreach ($files as $stateFile) {
+            $mtime = @filemtime($stateFile);
+            if ($mtime !== false && (time() - $mtime) > $stateTtl) {
+                @unlink($stateFile);
+            }
+        }
+    }
+
+    $zipFile = $cacheDir . 'phpnuxbill.zip';
+    if (is_file($zipFile)) {
+        $zipSize = @filesize($zipFile);
+        $zipMtime = @filemtime($zipFile);
+        if ($zipSize === 0 && $zipMtime !== false && (time() - $zipMtime) > 300) {
+            @unlink($zipFile);
+        }
+    }
+}
+
+function updateAcquireProcessLock($lockFile, &$error = '', &$busy = false)
 {
     $error = '';
+    $busy = false;
     if (!empty($GLOBALS['update_lock_handle']) && is_resource($GLOBALS['update_lock_handle'])) {
         return true;
     }
@@ -883,32 +1090,61 @@ function updateAcquireProcessLock($lockFile, &$error = '')
         return false;
     }
 
-    $handle = fopen($lockFile, 'c+');
-    if ($handle === false) {
-        $error = 'Unable to open updater lock file.';
-        return false;
-    }
+    $maxAge = updateLockMaxAgeSeconds();
+    $attempts = 0;
 
-    if (!flock($handle, LOCK_EX | LOCK_NB)) {
+    while ($attempts < 3) {
+        $attempts++;
+
+        $handle = fopen($lockFile, 'c+');
+        if ($handle === false) {
+            $error = 'Unable to open updater lock file.';
+            return false;
+        }
+
+        if (flock($handle, LOCK_EX | LOCK_NB)) {
+            $GLOBALS['update_lock_handle'] = $handle;
+            $GLOBALS['update_lock_started_at'] = time();
+            updateTouchProcessLock();
+            return true;
+        }
+
+        $lockMeta = updateReadLockMeta($handle);
         fclose($handle);
+
+        $lockTimestamp = updateExtractLockTimestamp($lockMeta);
+        if ($lockTimestamp <= 0 && is_file($lockFile)) {
+            $mtime = @filemtime($lockFile);
+            if ($mtime !== false) {
+                $lockTimestamp = (int) $mtime;
+            }
+        }
+
+        $isStale = $lockTimestamp > 0 && (time() - $lockTimestamp) > $maxAge;
+        if ($isStale) {
+            $pid = isset($lockMeta['pid']) ? (int) $lockMeta['pid'] : 0;
+            $canRecover = true;
+            if ($pid > 0 && updateProcessExists($pid)) {
+                $canRecover = updateTerminateProcess($pid);
+            }
+
+            if ($canRecover) {
+                @unlink($lockFile);
+                usleep(250000);
+                continue;
+            }
+
+            $error = 'Updater lock is stale but cannot be recovered automatically. Please retry in a moment.';
+            return false;
+        }
+
+        $busy = true;
         $error = 'Another update process is currently running. Please wait until it finishes.';
         return false;
     }
 
-    $payload = json_encode([
-        'pid' => getmypid(),
-        'time' => date('c'),
-        'session' => session_id(),
-    ]);
-    if ($payload !== false) {
-        ftruncate($handle, 0);
-        rewind($handle);
-        fwrite($handle, $payload);
-        fflush($handle);
-    }
-
-    $GLOBALS['update_lock_handle'] = $handle;
-    return true;
+    $error = 'Unable to recover updater lock.';
+    return false;
 }
 
 function updateReleaseProcessLock()
@@ -922,6 +1158,7 @@ function updateReleaseProcessLock()
     @flock($handle, LOCK_UN);
     @fclose($handle);
     $GLOBALS['update_lock_handle'] = null;
+    unset($GLOBALS['update_lock_started_at']);
 }
 
 function updateZipOpenErrorMessage($statusCode)
@@ -1941,9 +2178,6 @@ function createDatabaseBackup($backupDir)
 
     <link rel="stylesheet" href="ui/ui/styles/modern-AdminLTE.min.css">
 
-    <?php if ($continue && $nextStep !== $currentStep) { ?>
-        <meta http-equiv="refresh" content="3; <?= htmlspecialchars($nextUrl, ENT_QUOTES, 'UTF-8') ?>">
-    <?php } ?>
     <style>
         ::-moz-selection {
             /* Code for Firefox */
@@ -1973,6 +2207,113 @@ function createDatabaseBackup($backupDir)
             min-width: 2px;
             transition: width 0.35s ease;
         }
+
+        .updater-mode-hint {
+            margin-top: 6px;
+        }
+
+        .updater-step-list {
+            margin-bottom: 0;
+        }
+
+        .updater-step-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            transition: background-color 0.2s ease, border-color 0.2s ease;
+        }
+
+        .updater-step-item .updater-step-label {
+            font-weight: 600;
+        }
+
+        .updater-step-item .updater-step-detail {
+            display: block;
+            color: #777;
+            font-size: 12px;
+        }
+
+        .updater-step-item.state-pending {
+            border-left: 4px solid #d2d6de;
+            background: #f9fafc;
+        }
+
+        .updater-step-item.state-running {
+            border-left: 4px solid #3c8dbc;
+            background: #eef6fb;
+        }
+
+        .updater-step-item.state-done {
+            border-left: 4px solid #00a65a;
+            background: #edf9f2;
+        }
+
+        .updater-step-item.state-skipped {
+            border-left: 4px solid #f39c12;
+            background: #fff7ea;
+        }
+
+        .updater-step-item.state-error {
+            border-left: 4px solid #dd4b39;
+            background: #fff0ee;
+        }
+
+        .updater-step-state {
+            min-width: 170px;
+            text-align: right;
+            white-space: nowrap;
+            font-weight: 600;
+            color: #555;
+        }
+
+        .updater-log {
+            border: 1px solid #e5e5e5;
+            border-radius: 4px;
+            background: #fbfbfb;
+            max-height: 260px;
+            overflow-y: auto;
+            padding: 8px 10px;
+        }
+
+        .updater-log-entry {
+            margin-bottom: 7px;
+            font-size: 12px;
+            line-height: 1.35;
+            word-break: break-word;
+        }
+
+        .updater-log-entry:last-child {
+            margin-bottom: 0;
+        }
+
+        .updater-log-entry .updater-log-time {
+            color: #777;
+            margin-right: 6px;
+        }
+
+        .updater-log-entry.info {
+            color: #31708f;
+        }
+
+        .updater-log-entry.success {
+            color: #3c763d;
+        }
+
+        .updater-log-entry.warning {
+            color: #8a6d3b;
+        }
+
+        .updater-log-entry.danger {
+            color: #a94442;
+        }
+
+        .updater-action-row {
+            margin-top: 12px;
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
     </style>
 
 </head>
@@ -1987,26 +2328,31 @@ function createDatabaseBackup($backupDir)
 
         <section class="content">
             <div class="row">
-                <div class="col-md-4"></div>
-                <div class="col-md-4">
+                <div class="col-md-8 col-md-offset-2">
                     <div class="panel panel-default updater-progress-panel">
                         <div class="panel-body">
                             <div class="clearfix">
                                 <span class="updater-progress-title">Update Progress</span>
-                                <span class="pull-right" id="update-progress-text"><?= (int) $progressPercent ?>%</span>
+                                <span class="pull-right" id="update-progress-text">0%</span>
                             </div>
                             <div class="progress updater-progress">
                                 <div
                                     id="update-progress-bar"
-                                    class="progress-bar progress-bar-info progress-bar-striped <?= $continue ? 'active' : '' ?>"
+                                    class="progress-bar progress-bar-info progress-bar-striped active"
                                     role="progressbar"
                                     aria-valuemin="0"
                                     aria-valuemax="100"
-                                    aria-valuenow="<?= (int) $progressPercent ?>"
-                                    style="width: <?= (int) max(0, $progressPercent) ?>%;">
+                                    aria-valuenow="0"
+                                    style="width: 0%;">
                                 </div>
                             </div>
-                            <small class="text-muted">Step <?= (int) max(1, min($progressTotalSteps, $displayStep)) ?> of <?= (int) $progressTotalSteps ?></small>
+                            <small class="text-muted">Single-page updater aktif. Semua step diproses pada halaman ini tanpa perpindahan halaman.</small>
+                            <div class="updater-mode-hint">
+                                <span class="label label-<?= $initialStartStep === 5 ? 'warning' : 'primary' ?>" id="updater-mode-label">
+                                    <?= $initialStartStep === 5 ? 'Database Only' : 'Full Update' ?>
+                                </span>
+                                <small class="text-muted">Start dari Step <?= (int) $initialStartStep ?>.</small>
+                            </div>
                             <?php if ($isCloudflareProxy) { ?>
                                 <br><small class="text-muted">Cloudflare/Cloudflared detected: updater is using keepalive heartbeat and resumable step state.</small>
                             <?php } ?>
@@ -2017,49 +2363,68 @@ function createDatabaseBackup($backupDir)
                             <?= $msg ?>
                         </div>
                     <?php } ?>
-                    <?php if ($displayStep > 0) { ?>
-                        <?php if ($displayStep == 1) { ?>
-                            <div class="panel panel-primary">
-                                <div class="panel-heading">Step 1</div>
-                                <div class="panel-body">
-                                    Downloading update<br>
-                                    Please wait....
-                                </div>
+                    <div id="updater-runtime-alert" class="alert alert-info" style="display: none;"></div>
+
+                    <div class="panel panel-primary">
+                        <div class="panel-heading">Langkah Update</div>
+                        <div class="panel-body">
+                            <ul class="list-group updater-step-list" id="updater-step-list">
+                                <li class="list-group-item updater-step-item state-pending" data-step="1">
+                                    <div>
+                                        <span class="updater-step-label">Step 1 - Download package update</span>
+                                        <span class="updater-step-detail">Unduh file update dari repositori.</span>
+                                    </div>
+                                    <span class="updater-step-state">Pending</span>
+                                </li>
+                                <li class="list-group-item updater-step-item state-pending" data-step="2">
+                                    <div>
+                                        <span class="updater-step-label">Step 2 - Extract package</span>
+                                        <span class="updater-step-detail">Ekstrak zip update ke cache sementara.</span>
+                                    </div>
+                                    <span class="updater-step-state">Pending</span>
+                                </li>
+                                <li class="list-group-item updater-step-item state-pending" data-step="3">
+                                    <div>
+                                        <span class="updater-step-label">Step 3 - Backup sistem</span>
+                                        <span class="updater-step-detail">Backup file dan database sebelum instalasi.</span>
+                                    </div>
+                                    <span class="updater-step-state">Pending</span>
+                                </li>
+                                <li class="list-group-item updater-step-item state-pending" data-step="4">
+                                    <div>
+                                        <span class="updater-step-label">Step 4 - Install file update</span>
+                                        <span class="updater-step-detail">Replace file aplikasi sambil menjaga file penting.</span>
+                                    </div>
+                                    <span class="updater-step-state">Pending</span>
+                                </li>
+                                <li class="list-group-item updater-step-item state-pending" data-step="5">
+                                    <div>
+                                        <span class="updater-step-label">Step 5 - Update database</span>
+                                        <span class="updater-step-detail">Jalankan migrasi dan hardening schema.</span>
+                                    </div>
+                                    <span class="updater-step-state">Pending</span>
+                                </li>
+                            </ul>
+                        </div>
+                    </div>
+
+                    <div class="panel panel-default">
+                        <div class="panel-heading clearfix">
+                            <span>Status Proses</span>
+                            <span class="label label-default pull-right" id="updater-run-status">Menunggu</span>
+                        </div>
+                        <div class="panel-body">
+                            <div id="updater-log" class="updater-log"></div>
+                            <div class="updater-action-row">
+                                <button type="button" class="btn btn-warning btn-sm" id="updater-retry-btn" style="display:none;">
+                                    Coba Lagi Step Terakhir
+                                </button>
+                                <a href="./?_route=dashboard" class="btn btn-success btn-sm" id="updater-finish-btn" style="display:none;">
+                                    Lanjut ke Dashboard
+                                </a>
                             </div>
-                        <?php } else if ($displayStep == 2) { ?>
-                            <div class="panel panel-primary">
-                                <div class="panel-heading">Step 2</div>
-                                <div class="panel-body">
-                                    Extracting update<br>
-                                    Please wait....
-                                </div>
-                            </div>
-                        <?php } else if ($displayStep == 3) { ?>
-                            <div class="panel panel-primary">
-                                <div class="panel-heading">Step 3</div>
-                                <div class="panel-body">
-                                    Creating backup<br>
-                                    Please wait....
-                                </div>
-                            </div>
-                        <?php } else if ($displayStep == 4) { ?>
-                            <div class="panel panel-primary">
-                                <div class="panel-heading">Step 4</div>
-                                <div class="panel-body">
-                                    Installing update files<br>
-                                    Please wait....
-                                </div>
-                            </div>
-                        <?php } else if ($displayStep == 5) { ?>
-                            <div class="panel panel-primary">
-                                <div class="panel-heading">Step 5</div>
-                                <div class="panel-body">
-                                    Running database migrations<br>
-                                    Please wait....
-                                </div>
-                            </div>
-                        <?php } ?>
-                    <?php } ?>
+                        </div>
+                    </div>
                 </div>
             </div>
         </section>
@@ -2073,39 +2438,290 @@ function createDatabaseBackup($backupDir)
     </div>
     <script>
         (function() {
-            var bar = document.getElementById('update-progress-bar');
-            var text = document.getElementById('update-progress-text');
-            if (!bar || !text) {
+            var config = {
+                flow: <?= json_encode($updateFlowToken, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>,
+                startStep: <?= (int) $initialStartStep ?>,
+                canRun: <?= $continue ? 'true' : 'false' ?>,
+                redirectTo: <?= json_encode($requestedRedirectTo, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>
+            };
+
+            var totalSteps = 5;
+            var currentStartStep = Math.max(1, Math.min(totalSteps, parseInt(config.startStep, 10) || 1));
+            var isRunning = false;
+            var failedStep = null;
+            var redirectTimer = null;
+
+            var progressBar = document.getElementById('update-progress-bar');
+            var progressText = document.getElementById('update-progress-text');
+            var runStatus = document.getElementById('updater-run-status');
+            var runtimeAlert = document.getElementById('updater-runtime-alert');
+            var retryBtn = document.getElementById('updater-retry-btn');
+            var finishBtn = document.getElementById('updater-finish-btn');
+            var logContainer = document.getElementById('updater-log');
+
+            if (!progressBar || !progressText || !runStatus || !runtimeAlert || !retryBtn || !finishBtn || !logContainer) {
                 return;
             }
 
-            var current = <?= (int) $progressPercent ?>;
-            var target = <?= (int) $progressAnimateTo ?>;
-
-            function render(value) {
-                var safe = Math.max(0, Math.min(100, value));
-                bar.style.width = safe + '%';
-                bar.setAttribute('aria-valuenow', String(safe));
-                text.textContent = safe + '%';
-                if (safe >= 100 || <?= $continue ? 'false' : 'true' ?>) {
-                    bar.classList.remove('active');
+            function renderProgress(percent) {
+                var safe = Math.max(0, Math.min(100, parseInt(percent, 10) || 0));
+                progressBar.style.width = safe + '%';
+                progressBar.setAttribute('aria-valuenow', String(safe));
+                progressText.textContent = safe + '%';
+                if (safe >= 100) {
+                    progressBar.classList.remove('active');
+                } else if (!progressBar.classList.contains('active')) {
+                    progressBar.classList.add('active');
                 }
             }
 
-            render(current);
-            if (target <= current) {
+            function setRunStatusLabel(text, labelType) {
+                runStatus.textContent = text;
+                runStatus.className = 'label pull-right';
+                runStatus.classList.add('label-' + (labelType || 'default'));
+            }
+
+            function showRuntimeAlert(type, message) {
+                if (!message) {
+                    runtimeAlert.style.display = 'none';
+                    runtimeAlert.textContent = '';
+                    runtimeAlert.className = 'alert';
+                    return;
+                }
+                runtimeAlert.className = 'alert alert-' + type;
+                runtimeAlert.textContent = message;
+                runtimeAlert.style.display = 'block';
+            }
+
+            function appendLog(message, tone) {
+                var entry = document.createElement('div');
+                entry.className = 'updater-log-entry ' + (tone || 'info');
+
+                var time = document.createElement('span');
+                time.className = 'updater-log-time';
+                var now = new Date();
+                var hh = String(now.getHours()).padStart(2, '0');
+                var mm = String(now.getMinutes()).padStart(2, '0');
+                var ss = String(now.getSeconds()).padStart(2, '0');
+                time.textContent = '[' + hh + ':' + mm + ':' + ss + ']';
+
+                var text = document.createElement('span');
+                text.textContent = message;
+
+                entry.appendChild(time);
+                entry.appendChild(text);
+                logContainer.appendChild(entry);
+                logContainer.scrollTop = logContainer.scrollHeight;
+            }
+
+            function getStepNode(step) {
+                return document.querySelector('.updater-step-item[data-step="' + step + '"]');
+            }
+
+            function setStepState(step, state, detail) {
+                var node = getStepNode(step);
+                if (!node) {
+                    return;
+                }
+
+                node.classList.remove('state-pending', 'state-running', 'state-done', 'state-skipped', 'state-error');
+                node.classList.add('state-' + state);
+
+                var stateEl = node.querySelector('.updater-step-state');
+                if (!stateEl) {
+                    return;
+                }
+
+                var stateText = 'Pending';
+                if (state === 'running') {
+                    stateText = 'Sedang diproses';
+                } else if (state === 'done') {
+                    stateText = 'Selesai';
+                } else if (state === 'skipped') {
+                    stateText = 'Dilewati';
+                } else if (state === 'error') {
+                    stateText = 'Gagal';
+                }
+                if (detail) {
+                    stateText += ' - ' + detail;
+                }
+                stateEl.textContent = stateText;
+            }
+
+            function initializeStepStates() {
+                for (var i = 1; i <= totalSteps; i++) {
+                    setStepState(i, 'pending');
+                }
+            }
+
+            function applyStartMode() {
+                initializeStepStates();
+                var completedBeforeStart = Math.max(0, currentStartStep - 1);
+                for (var i = 1; i < currentStartStep; i++) {
+                    setStepState(i, 'skipped', 'Mode start step ' + currentStartStep);
+                }
+                renderProgress(Math.round((completedBeforeStart / totalSteps) * 100));
+            }
+
+            function updateProgressFromResponse(payload) {
+                if (!payload || typeof payload.progress_percent === 'undefined') {
+                    return;
+                }
+                renderProgress(payload.progress_percent);
+            }
+
+            function buildApiUrl(step) {
+                var url = './update.php?api=1&step=' + encodeURIComponent(String(step)) + '&flow=' + encodeURIComponent(config.flow);
+                if (config.redirectTo) {
+                    url += '&redirect_to=' + encodeURIComponent(config.redirectTo);
+                }
+                return url;
+            }
+
+            function setFailureState(step, message, type, payload) {
+                isRunning = false;
+                failedStep = step;
+                if (step >= 1 && step <= totalSteps) {
+                    setStepState(step, 'error', 'Perlu retry');
+                }
+                if (payload) {
+                    updateProgressFromResponse(payload);
+                }
+                setRunStatusLabel('Gagal pada step ' + step, 'danger');
+                showRuntimeAlert(type === 'warning' ? 'warning' : 'danger', message);
+                appendLog(message, type === 'warning' ? 'warning' : 'danger');
+                retryBtn.style.display = 'inline-block';
+            }
+
+            function markFinished(payload) {
+                isRunning = false;
+                failedStep = null;
+                renderProgress(100);
+                setRunStatusLabel('Selesai', 'success');
+                progressBar.classList.remove('active');
+                retryBtn.style.display = 'none';
+                finishBtn.style.display = 'inline-block';
+
+                var finishMessage = (payload && payload.message) ? payload.message : 'Update selesai.';
+                showRuntimeAlert('success', finishMessage);
+                appendLog('Semua step updater selesai.', 'success');
+
+                if (payload && payload.redirect_to) {
+                    finishBtn.setAttribute('href', payload.redirect_to);
+                    appendLog('Redirect otomatis dalam 5 detik.', 'info');
+                    if (redirectTimer) {
+                        clearTimeout(redirectTimer);
+                    }
+                    redirectTimer = setTimeout(function() {
+                        window.location.href = payload.redirect_to;
+                    }, 5000);
+                }
+            }
+
+            function executeStep(step) {
+                if (!isRunning) {
+                    return;
+                }
+
+                var uiStep = Math.min(totalSteps, Math.max(1, step));
+                if (step <= totalSteps) {
+                    setStepState(uiStep, 'running', 'Mohon tunggu');
+                }
+                setRunStatusLabel('Menjalankan step ' + step, 'primary');
+                appendLog('Menjalankan step ' + step + '.', 'info');
+
+                fetch(buildApiUrl(step), {
+                    method: 'GET',
+                    credentials: 'same-origin',
+                    cache: 'no-store',
+                    headers: {
+                        'Accept': 'application/json',
+                        'X-Requested-With': 'XMLHttpRequest'
+                    }
+                }).then(function(response) {
+                    if (!response.ok) {
+                        throw new Error('HTTP ' + response.status);
+                    }
+                    return response.json();
+                }).then(function(payload) {
+                    if (payload && payload.flow) {
+                        config.flow = payload.flow;
+                    }
+
+                    if (payload && payload.busy) {
+                        setRunStatusLabel('Menunggu lock updater', 'warning');
+                        if (step <= totalSteps) {
+                            setStepState(uiStep, 'running', 'Menunggu request updater lain');
+                        }
+                        appendLog(payload.message || 'Updater sedang dipakai request lain. Retry 2 detik lagi.', 'warning');
+                        setTimeout(function() {
+                            executeStep(step);
+                        }, 2000);
+                        return;
+                    }
+
+                    if (!payload || !payload.ok) {
+                        var failMessage = (payload && payload.message) ? payload.message : ('Step ' + step + ' gagal.');
+                        setFailureState(step, failMessage, payload ? payload.message_type : 'danger', payload || null);
+                        return;
+                    }
+
+                    updateProgressFromResponse(payload);
+                    if (step <= totalSteps) {
+                        setStepState(uiStep, 'done', 'Selesai');
+                    }
+                    if (payload.message) {
+                        appendLog(payload.message, payload.message_type || 'success');
+                    }
+
+                    if (payload.done) {
+                        markFinished(payload);
+                        return;
+                    }
+
+                    var nextStep = parseInt(payload.next_step, 10);
+                    if (!nextStep || nextStep <= step) {
+                        nextStep = step + 1;
+                    }
+                    executeStep(nextStep);
+                }).catch(function(error) {
+                    setFailureState(step, 'Gagal memproses request updater: ' + error.message, 'danger', null);
+                });
+            }
+
+            function startUpdater(step) {
+                if (isRunning) {
+                    return;
+                }
+                if (redirectTimer) {
+                    clearTimeout(redirectTimer);
+                    redirectTimer = null;
+                }
+                retryBtn.style.display = 'none';
+                finishBtn.style.display = 'none';
+                isRunning = true;
+                failedStep = null;
+
+                applyStartMode();
+                showRuntimeAlert('info', 'Updater berjalan pada halaman ini. Jangan menutup browser sampai selesai.');
+                setRunStatusLabel('Memulai update', 'info');
+                appendLog('Updater dimulai dari step ' + step + '.', 'info');
+                executeStep(step);
+            }
+
+            retryBtn.addEventListener('click', function() {
+                var stepToRetry = failedStep || currentStartStep;
+                startUpdater(stepToRetry);
+            });
+
+            applyStartMode();
+            if (!config.canRun) {
+                setRunStatusLabel('Tidak dapat memulai', 'danger');
+                appendLog('Validasi awal updater gagal. Lihat pesan error di atas.', 'danger');
                 return;
             }
 
-            var delta = target - current;
-            var interval = Math.max(35, Math.floor(950 / delta));
-            var timer = setInterval(function() {
-                current += 1;
-                render(current);
-                if (current >= target) {
-                    clearInterval(timer);
-                }
-            }, interval);
+            startUpdater(currentStartStep);
         })();
     </script>
 </body>
