@@ -170,6 +170,7 @@ if (empty($step)) {
 } else if ($step == 1) {
     $fp = null;
     $ch = null;
+    $bytesWritten = 0;
     try {
         if (!function_exists('curl_init')) {
             throw new Exception('PHP cURL extension is required for updater download step.');
@@ -192,11 +193,22 @@ if (empty($step)) {
             CURLOPT_CONNECTTIMEOUT => 30,
             CURLOPT_TIMEOUT => 600,
             CURLOPT_FOLLOWLOCATION => true,
-            CURLOPT_FILE => $fp,
             CURLOPT_RETURNTRANSFER => false,
             CURLOPT_SSL_VERIFYPEER => true,
             CURLOPT_SSL_VERIFYHOST => 2,
             CURLOPT_FAILONERROR => false,
+            CURLOPT_WRITEFUNCTION => function ($curlHandle, $chunk) use ($fp, &$bytesWritten) {
+                $length = strlen($chunk);
+                if ($length === 0) {
+                    return 0;
+                }
+                $written = fwrite($fp, $chunk);
+                if ($written === false) {
+                    return 0;
+                }
+                $bytesWritten += (int) $written;
+                return $written;
+            },
             CURLOPT_NOPROGRESS => false,
             CURLOPT_PROGRESSFUNCTION => function () {
                 updateHeartbeat(false);
@@ -224,7 +236,7 @@ if (empty($step)) {
             throw new Exception('Downloaded archive file is missing.');
         }
         $downloadedSize = filesize($file);
-        if ($downloadedSize === false || $downloadedSize < 1024) {
+        if ($downloadedSize === false || $downloadedSize < 1024 || $bytesWritten < 1024) {
             throw new Exception('Downloaded archive appears incomplete.');
         }
 
