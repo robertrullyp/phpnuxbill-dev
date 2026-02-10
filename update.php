@@ -168,103 +168,60 @@ if ($step > 0 && $continue && $step < 6) {
 if (empty($step)) {
     $displayStep = 1;
 } else if ($step == 1) {
-    $fp = null;
-    $ch = null;
-    $bytesWritten = 0;
     try {
         if (!function_exists('curl_init')) {
             throw new Exception('PHP cURL extension is required for updater download step.');
         }
-        if (file_exists($file) && !@unlink($file)) {
-            throw new Exception('Unable to remove stale update archive before downloading.');
-        }
+        $downloadCandidates = updateBuildDownloadCandidates($update_url);
+        $downloadSucceeded = false;
+        $lastDownloadError = '';
 
-        $fp = fopen($file, 'wb');
-        if ($fp === false) {
-            throw new Exception('Unable to create update archive file in system/cache/.');
-        }
+        foreach ($downloadCandidates as $candidateUrl) {
+            updateHeartbeat(false);
+            $downloadDetails = [];
+            $downloadError = '';
+            if (!updateDownloadArchiveToFile($candidateUrl, $file, $downloadDetails, $downloadError)) {
+                $lastDownloadError = $downloadError;
+                continue;
+            }
 
-        $ch = curl_init($update_url);
-        if ($ch === false) {
-            throw new Exception('Unable to initialize cURL for update download.');
-        }
-        curl_setopt_array($ch, [
-            CURLOPT_POST => 0,
-            CURLOPT_CONNECTTIMEOUT => 30,
-            CURLOPT_TIMEOUT => 600,
-            CURLOPT_FOLLOWLOCATION => true,
-            CURLOPT_RETURNTRANSFER => false,
-            CURLOPT_SSL_VERIFYPEER => true,
-            CURLOPT_SSL_VERIFYHOST => 2,
-            CURLOPT_FAILONERROR => false,
-            CURLOPT_WRITEFUNCTION => function ($curlHandle, $chunk) use ($fp, &$bytesWritten) {
-                $length = strlen($chunk);
-                if ($length === 0) {
-                    return 0;
-                }
-                $written = fwrite($fp, $chunk);
-                if ($written === false) {
-                    return 0;
-                }
-                $bytesWritten += (int) $written;
-                return $written;
-            },
-            CURLOPT_NOPROGRESS => false,
-            CURLOPT_PROGRESSFUNCTION => function () {
-                updateHeartbeat(false);
-                return 0;
-            },
-            CURLOPT_USERAGENT => 'PHPNuxBill-Updater',
-        ]);
+            $downloadZip = new ZipArchive();
+            $zipOpenStatus = $downloadZip->open($file);
+            if ($zipOpenStatus !== true) {
+                $lastDownloadError = 'Downloaded response is not a valid zip archive (' . updateZipOpenErrorMessage($zipOpenStatus) . '). '
+                    . updateBuildDownloadDebugSummary($file, $downloadDetails, $candidateUrl);
+                @unlink($file);
+                continue;
+            }
 
-        $downloadOk = curl_exec($ch);
-        $curlErrNo = curl_errno($ch);
-        $curlError = curl_error($ch);
-        $httpCode = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        curl_close($ch);
-        $ch = null;
-        fclose($fp);
-        $fp = null;
-
-        if ($downloadOk === false || $curlErrNo !== 0) {
-            throw new Exception('Download failed: ' . ($curlError !== '' ? $curlError : 'Unknown cURL error.'));
-        }
-        if ($httpCode < 200 || $httpCode >= 300) {
-            throw new Exception('Download failed with HTTP status ' . $httpCode . '.');
-        }
-        if (!file_exists($file)) {
-            throw new Exception('Downloaded archive file is missing.');
-        }
-        $downloadedSize = filesize($file);
-        if ($downloadedSize === false || $downloadedSize < 1024 || $bytesWritten < 1024) {
-            throw new Exception('Downloaded archive appears incomplete.');
-        }
-
-        $downloadZip = new ZipArchive();
-        $zipOpenStatus = $downloadZip->open($file);
-        if ($zipOpenStatus !== true) {
-            throw new Exception('Downloaded file is not a valid zip archive (' . updateZipOpenErrorMessage($zipOpenStatus) . ').');
-        }
-        $unsafeZipEntry = '';
-        if (!updateZipEntriesAreSafe($downloadZip, $unsafeZipEntry)) {
+            $unsafeZipEntry = '';
+            if (!updateZipEntriesAreSafe($downloadZip, $unsafeZipEntry)) {
+                $downloadZip->close();
+                $lastDownloadError = 'Downloaded archive contains unsafe path: ' . $unsafeZipEntry;
+                @unlink($file);
+                continue;
+            }
+            if ((int) $downloadZip->numFiles < 1) {
+                $downloadZip->close();
+                $lastDownloadError = 'Downloaded archive is empty.';
+                @unlink($file);
+                continue;
+            }
             $downloadZip->close();
-            throw new Exception('Downloaded archive contains unsafe path: ' . $unsafeZipEntry);
+            $downloadSucceeded = true;
+            break;
         }
-        if ((int) $downloadZip->numFiles < 1) {
-            $downloadZip->close();
-            throw new Exception('Downloaded archive is empty.');
+
+        if (!$downloadSucceeded) {
+            if ($lastDownloadError === '') {
+                $lastDownloadError = 'Unable to download a valid update package.';
+            }
+            throw new Exception($lastDownloadError);
         }
-        $downloadZip->close();
 
         $nextStep = 2;
         updateMarkFlowStep($flowStateFile, 1, 'completed');
     } catch (Exception $e) {
-        if ($ch !== null) {
-            @curl_close($ch);
-        }
-        if (is_resource($fp)) {
-            fclose($fp);
-        }
         if (file_exists($file)) {
             @unlink($file);
         }
@@ -1173,22 +1130,269 @@ function updateReleaseProcessLock()
     unset($GLOBALS['update_lock_started_at']);
 }
 
+function updateBuildDownloadCandidates($primaryUrl)
+{
+    $primaryUrl = trim((string) $primaryUrl);
+    $candidates = [];
+    if ($primaryUrl !== '') {
+        $candidates[$primaryUrl] = true;
+    }
+
+    $parsed = parse_url($primaryUrl);
+    if (!is_array($parsed)) {
+        return array_keys($candidates);
+    }
+
+    $host = strtolower((string) ($parsed['host'] ?? ''));
+    $path = trim((string) ($parsed['path'] ?? ''), '/');
+    if ($host !== 'github.com' || $path === '') {
+        return array_keys($candidates);
+    }
+
+    if (preg_match('#^([^/]+)/([^/]+)/archive/refs/heads/(.+)\.zip$#', $path, $m)) {
+        $owner = $m[1];
+        $repo = $m[2];
+        $branchPath = updateEncodeUrlPathSegments($m[3]);
+        $candidates['https://codeload.github.com/' . rawurlencode($owner) . '/' . rawurlencode($repo) . '/zip/refs/heads/' . $branchPath] = true;
+    } elseif (preg_match('#^([^/]+)/([^/]+)/archive/refs/tags/(.+)\.zip$#', $path, $m)) {
+        $owner = $m[1];
+        $repo = $m[2];
+        $tagPath = updateEncodeUrlPathSegments($m[3]);
+        $candidates['https://codeload.github.com/' . rawurlencode($owner) . '/' . rawurlencode($repo) . '/zip/refs/tags/' . $tagPath] = true;
+    }
+
+    return array_keys($candidates);
+}
+
+function updateEncodeUrlPathSegments($path)
+{
+    $segments = explode('/', trim((string) $path, '/'));
+    $encoded = [];
+    foreach ($segments as $segment) {
+        if ($segment === '') {
+            continue;
+        }
+        $encoded[] = rawurlencode($segment);
+    }
+    return implode('/', $encoded);
+}
+
+function updateDownloadArchiveToFile($url, $targetFile, &$details, &$error)
+{
+    $details = [
+        'url' => (string) $url,
+        'http_code' => 0,
+        'content_type' => '',
+        'effective_url' => (string) $url,
+        'bytes_written' => 0,
+        'downloaded_size' => 0,
+    ];
+    $error = '';
+
+    if (file_exists($targetFile) && !@unlink($targetFile)) {
+        $error = 'Unable to remove stale update archive before downloading.';
+        return false;
+    }
+
+    $fp = fopen($targetFile, 'wb');
+    if ($fp === false) {
+        $error = 'Unable to create update archive file in system/cache/.';
+        return false;
+    }
+
+    $bytesWritten = 0;
+    $ch = curl_init($url);
+    if ($ch === false) {
+        fclose($fp);
+        @unlink($targetFile);
+        $error = 'Unable to initialize cURL for update download.';
+        return false;
+    }
+
+    curl_setopt_array($ch, [
+        CURLOPT_POST => 0,
+        CURLOPT_CONNECTTIMEOUT => 30,
+        CURLOPT_TIMEOUT => 600,
+        CURLOPT_FOLLOWLOCATION => true,
+        CURLOPT_MAXREDIRS => 8,
+        CURLOPT_RETURNTRANSFER => false,
+        CURLOPT_SSL_VERIFYPEER => true,
+        CURLOPT_SSL_VERIFYHOST => 2,
+        CURLOPT_FAILONERROR => false,
+        CURLOPT_WRITEFUNCTION => function ($curlHandle, $chunk) use ($fp, &$bytesWritten) {
+            $length = strlen($chunk);
+            if ($length === 0) {
+                return 0;
+            }
+            $written = fwrite($fp, $chunk);
+            if ($written === false) {
+                return 0;
+            }
+            $bytesWritten += (int) $written;
+            return $written;
+        },
+        CURLOPT_NOPROGRESS => false,
+        CURLOPT_PROGRESSFUNCTION => function () {
+            updateHeartbeat(false);
+            return 0;
+        },
+        CURLOPT_HTTPHEADER => [
+            'Accept: application/zip, application/octet-stream;q=0.9, */*;q=0.8',
+        ],
+        CURLOPT_USERAGENT => 'PHPNuxBill-Updater',
+    ]);
+
+    $downloadOk = curl_exec($ch);
+    $curlErrNo = curl_errno($ch);
+    $curlError = curl_error($ch);
+    $httpCode = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $contentType = (string) curl_getinfo($ch, CURLINFO_CONTENT_TYPE);
+    $effectiveUrl = (string) curl_getinfo($ch, CURLINFO_EFFECTIVE_URL);
+    curl_close($ch);
+    fclose($fp);
+
+    $downloadedSize = file_exists($targetFile) ? filesize($targetFile) : false;
+    if ($downloadedSize === false) {
+        $downloadedSize = 0;
+    }
+
+    $details['http_code'] = $httpCode;
+    $details['content_type'] = $contentType;
+    $details['effective_url'] = $effectiveUrl !== '' ? $effectiveUrl : (string) $url;
+    $details['bytes_written'] = (int) $bytesWritten;
+    $details['downloaded_size'] = (int) $downloadedSize;
+
+    if ($downloadOk === false || $curlErrNo !== 0) {
+        @unlink($targetFile);
+        $error = 'Download failed from ' . $url . ': ' . ($curlError !== '' ? $curlError : 'Unknown cURL error.');
+        return false;
+    }
+    if ($httpCode < 200 || $httpCode >= 300) {
+        @unlink($targetFile);
+        $error = 'Download failed from ' . $url . ' with HTTP status ' . $httpCode . '.';
+        return false;
+    }
+    if (!file_exists($targetFile) || $downloadedSize <= 0 || $bytesWritten <= 0) {
+        @unlink($targetFile);
+        $error = 'Downloaded archive appears incomplete from ' . $url . '.';
+        return false;
+    }
+    if (!updateFileLooksLikeZip($targetFile)) {
+        $error = 'Server returned non-zip content from ' . $url . '. '
+            . updateBuildDownloadDebugSummary($targetFile, $details, $url);
+        @unlink($targetFile);
+        return false;
+    }
+
+    return true;
+}
+
+function updateFileLooksLikeZip($filePath)
+{
+    if (!is_file($filePath)) {
+        return false;
+    }
+
+    $handle = @fopen($filePath, 'rb');
+    if ($handle === false) {
+        return false;
+    }
+    $signature = fread($handle, 4);
+    fclose($handle);
+
+    if (!is_string($signature) || strlen($signature) < 4) {
+        return false;
+    }
+
+    return in_array($signature, ["PK\x03\x04", "PK\x05\x06", "PK\x07\x08"], true);
+}
+
+function updateBuildDownloadDebugSummary($filePath, $details = [], $sourceUrl = '')
+{
+    $parts = [];
+    $httpCode = isset($details['http_code']) ? (int) $details['http_code'] : 0;
+    $contentType = trim((string) ($details['content_type'] ?? ''));
+    $effectiveUrl = trim((string) ($details['effective_url'] ?? ''));
+    $bytesWritten = isset($details['bytes_written']) ? (int) $details['bytes_written'] : 0;
+    $downloadedSize = isset($details['downloaded_size']) ? (int) $details['downloaded_size'] : 0;
+
+    if ($httpCode > 0) {
+        $parts[] = 'HTTP ' . $httpCode;
+    }
+    if ($contentType !== '') {
+        $parts[] = 'Content-Type: ' . $contentType;
+    }
+    if ($effectiveUrl !== '' && $effectiveUrl !== $sourceUrl) {
+        $parts[] = 'Final URL: ' . $effectiveUrl;
+    }
+    if ($bytesWritten > 0 || $downloadedSize > 0) {
+        $parts[] = 'Size: ' . max($bytesWritten, $downloadedSize) . ' bytes';
+    }
+
+    $preview = updateReadFilePreview($filePath, 180);
+    if ($preview !== '') {
+        $preview = preg_replace('/\s+/', ' ', $preview);
+        $preview = trim((string) $preview);
+        if ($preview !== '') {
+            $parts[] = 'Body preview: ' . $preview;
+        }
+    }
+
+    return implode(' | ', $parts);
+}
+
+function updateReadFilePreview($filePath, $maxBytes = 180)
+{
+    $maxBytes = (int) $maxBytes;
+    if ($maxBytes < 32) {
+        $maxBytes = 32;
+    }
+    if (!is_file($filePath)) {
+        return '';
+    }
+
+    $handle = @fopen($filePath, 'rb');
+    if ($handle === false) {
+        return '';
+    }
+    $raw = fread($handle, $maxBytes);
+    fclose($handle);
+
+    if (!is_string($raw) || $raw === '') {
+        return '';
+    }
+
+    $clean = preg_replace('/[^\x20-\x7E\r\n\t]/', '?', $raw);
+    return trim((string) $clean);
+}
+
 function updateZipOpenErrorMessage($statusCode)
 {
     $map = [
         0 => 'No error',
         1 => 'Multi-disk zip archives are not supported',
         2 => 'Zip archive was renamed and no longer exists',
-        3 => 'Zip archive is in inconsistent state',
-        4 => 'Memory allocation failure',
+        3 => 'Failed to close zip archive',
+        4 => 'Seek error',
         5 => 'Read error',
-        6 => 'Compression method not supported',
-        7 => 'Premature EOF',
-        8 => 'Invalid zip archive',
+        6 => 'Write error',
+        7 => 'CRC error',
+        8 => 'Zip archive has been closed',
         9 => 'Zip archive missing',
-        10 => 'Seek error',
-        11 => 'Read error',
-        12 => 'Zip extension not available',
+        10 => 'Entry already exists',
+        11 => 'Unable to open file',
+        12 => 'Temporary file open failure',
+        13 => 'Zlib error',
+        14 => 'Memory allocation failure',
+        15 => 'Zip entry changed unexpectedly',
+        16 => 'Compression method not supported',
+        17 => 'Premature EOF',
+        18 => 'Invalid argument',
+        19 => 'Not a zip archive',
+        20 => 'Internal zip error',
+        21 => 'Zip archive inconsistent',
+        22 => 'Failed to remove file',
+        23 => 'Entry has been deleted',
     ];
     $statusCode = (int) $statusCode;
     if (isset($map[$statusCode])) {
