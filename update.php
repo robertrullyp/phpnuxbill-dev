@@ -2918,7 +2918,6 @@ function createDatabaseBackup($backupDir)
                                     style="width: 0%;">
                                 </div>
                             </div>
-                            <small class="text-muted">Single-page updater aktif. Semua step diproses pada halaman ini tanpa perpindahan halaman.</small>
                             <div class="updater-mode-hint">
                                 <span class="label label-<?= $initialStartStep === 5 ? 'warning' : 'primary' ?>" id="updater-mode-label">
                                     <?= $initialStartStep === 5 ? 'Database Only' : 'Full Update' ?>
@@ -2931,9 +2930,6 @@ function createDatabaseBackup($backupDir)
                                     <span id="updater-wait-text">Sedang memproses...</span>
                                 </span>
                             </div>
-                            <?php if ($isCloudflareProxy) { ?>
-                                <br><small class="text-muted">Cloudflare/Cloudflared detected: updater is using keepalive heartbeat and resumable step state.</small>
-                            <?php } ?>
                         </div>
                     </div>
                     <?php if (!empty($msgType) && !empty($msg)) { ?>
