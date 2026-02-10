@@ -250,7 +250,8 @@ class User
             $id = User::getID();
         }
         $d = ORM::for_table('tbl_user_recharges')
-            ->select('tbl_user_recharges.id', 'id')
+            ->table_alias('tur')
+            ->select('tur.id', 'id')
             ->selects([
                 'customer_id',
                 'username',
@@ -263,16 +264,27 @@ class User
                 'status',
                 'method',
                 'plan_type',
-                ['tbl_user_recharges.routers', 'routers'],
-                ['tbl_user_recharges.type', 'type'],
+                ['tur.routers', 'routers'],
+                ['tur.type', 'type'],
                 'admin_id',
                 'prepaid'
             ])
-            ->left_outer_join('tbl_plans', ['tbl_plans.id', '=', 'tbl_user_recharges.plan_id'])
+            ->left_outer_join('tbl_plans', ['tbl_plans.id', '=', 'tur.plan_id'])
             ->left_outer_join('tbl_bandwidth', ['tbl_bandwidth.id', '=', 'tbl_plans.id_bw'])
             ->select('tbl_bandwidth.name_bw', 'name_bw')
             ->select('tbl_plans.price', 'price')
-            ->where('customer_id', $id)
+            ->where('tur.customer_id', $id)
+            ->where_raw(
+                "`tur`.`id` = (
+                    SELECT MAX(`t2`.`id`)
+                    FROM `tbl_user_recharges` `t2`
+                    WHERE `t2`.`customer_id` = `tur`.`customer_id`
+                      AND `t2`.`plan_id` = `tur`.`plan_id`
+                      AND `t2`.`routers` = `tur`.`routers`
+                      AND `t2`.`type` = `tur`.`type`
+                )"
+            )
+            ->order_by_desc('tur.id')
             ->find_many();
         return $d;
     }

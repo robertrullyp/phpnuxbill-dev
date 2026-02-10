@@ -1022,16 +1022,18 @@ switch ($action) {
             $d->save();
 
             if ((string) $validity_unit === 'Period' && (int) $validity <= 0) {
-                $activeRecharges = ORM::for_table('tbl_user_recharges')
-                    ->where('plan_id', (int) $id)
-                    ->where('status', 'on')
-                    ->find_many();
-                foreach ($activeRecharges as $activeRecharge) {
-                    $activeRecharge->expiration = '2099-12-31';
-                    $activeRecharge->time = '23:59:59';
-                    $activeRecharge->status = 'on';
-                    $activeRecharge->save();
-                }
+                // Normalize latest recharge row per user for this plan to unlimited expiry.
+                ORM::raw_execute(
+                    "UPDATE `tbl_user_recharges` `tur`
+                    INNER JOIN (
+                        SELECT MAX(`id`) AS `id`
+                        FROM `tbl_user_recharges`
+                        WHERE `plan_id` = ?
+                        GROUP BY `customer_id`, `plan_id`, `routers`, `type`, `username`
+                    ) `latest` ON `latest`.`id` = `tur`.`id`
+                    SET `tur`.`expiration` = ?, `tur`.`time` = ?, `tur`.`status` = 'on'",
+                    [(int) $id, '2099-12-31', '23:59:59']
+                );
             }
 
             $linkedPlanIds = Package::normalizeLinkedPlanIds($linkedPlans);

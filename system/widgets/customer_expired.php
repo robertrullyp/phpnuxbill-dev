@@ -26,13 +26,44 @@ class customer_expired
             'tur.routers'
         ])
         ->innerJoin('tbl_customers', ['tur.customer_id', '=', 'c.id'], 'c')
-        ->where_lte('expiration', $current_date)
-        ->order_by_desc('expiration');
+        ->left_outer_join('tbl_plans', ['tur.plan_id', '=', 'p.id'], 'p')
+        ->where('tur.status', 'off')
+        ->where_lte('tur.expiration', $current_date)
+        ->where_raw(
+            "(`p`.`id` IS NULL OR LOWER(TRIM(`p`.`validity_unit`)) <> 'period' OR CAST(`p`.`validity` AS SIGNED) > 0)"
+        )
+        ->where_raw(
+            "`tur`.`id` = (
+                SELECT MAX(`t2`.`id`)
+                FROM `tbl_user_recharges` `t2`
+                WHERE `t2`.`customer_id` = `tur`.`customer_id`
+                  AND `t2`.`plan_id` = `tur`.`plan_id`
+                  AND `t2`.`routers` = `tur`.`routers`
+                  AND `t2`.`type` = `tur`.`type`
+            )"
+        )
+        ->order_by_desc('tur.expiration');
         $expire = Paginator::findMany($query);
 
         // Get the total count of expired records for pagination
         $totalCount = ORM::for_table('tbl_user_recharges')
-        ->where_lte('expiration', $current_date)
+        ->table_alias('tur')
+        ->left_outer_join('tbl_plans', ['tur.plan_id', '=', 'p.id'], 'p')
+        ->where('tur.status', 'off')
+        ->where_lte('tur.expiration', $current_date)
+        ->where_raw(
+            "(`p`.`id` IS NULL OR LOWER(TRIM(`p`.`validity_unit`)) <> 'period' OR CAST(`p`.`validity` AS SIGNED) > 0)"
+        )
+        ->where_raw(
+            "`tur`.`id` = (
+                SELECT MAX(`t2`.`id`)
+                FROM `tbl_user_recharges` `t2`
+                WHERE `t2`.`customer_id` = `tur`.`customer_id`
+                  AND `t2`.`plan_id` = `tur`.`plan_id`
+                  AND `t2`.`routers` = `tur`.`routers`
+                  AND `t2`.`type` = `tur`.`type`
+            )"
+        )
         ->count();
 
         // Pass the total count and current page to the paginator

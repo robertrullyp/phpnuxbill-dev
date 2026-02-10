@@ -147,7 +147,22 @@ switch ($action) {
         }
         break;
     case 'plan_is_active':
-        $ds = ORM::for_table('tbl_user_recharges')->where('customer_id', $routes['2'])->find_array();
+        $ds = ORM::for_table('tbl_user_recharges')
+            ->table_alias('tur')
+            ->select('tur.*')
+            ->where('tur.customer_id', $routes['2'])
+            ->where_raw(
+                "`tur`.`id` = (
+                    SELECT MAX(`t2`.`id`)
+                    FROM `tbl_user_recharges` `t2`
+                    WHERE `t2`.`customer_id` = `tur`.`customer_id`
+                      AND `t2`.`plan_id` = `tur`.`plan_id`
+                      AND `t2`.`routers` = `tur`.`routers`
+                      AND `t2`.`type` = `tur`.`type`
+                )"
+            )
+            ->order_by_desc('tur.id')
+            ->find_array();
         if ($ds) {
             $ps = [];
             $c = ORM::for_table('tbl_customers')->find_one($routes['2']);
