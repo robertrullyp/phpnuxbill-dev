@@ -12,6 +12,10 @@ if (!isset($GLOBALS['update_replace_registered'])) {
     register_shutdown_function('finalizeDeferredReplacements');
     $GLOBALS['update_replace_registered'] = true;
 }
+if (!isset($GLOBALS['update_lock_registered'])) {
+    register_shutdown_function('updateReleaseProcessLock');
+    $GLOBALS['update_lock_registered'] = true;
+}
 
 processDeferredReplacements();
 
@@ -37,6 +41,13 @@ if (!is_writeable(pathFixer('.'))) {
 }
 
 $step = isset($_GET['step']) ? (int)$_GET['step'] : 0;
+if ($step < 0 || $step > 6) {
+    $step = 0;
+}
+if ($step <= 1 || empty($_SESSION['update_flow_token']) || !is_string($_SESSION['update_flow_token'])) {
+    $_SESSION['update_flow_token'] = updateGenerateRandomToken(32);
+}
+$updateFlowToken = (string) $_SESSION['update_flow_token'];
 if ($step <= 1) {
     unset($_SESSION['update_extract_dir']);
 }
@@ -45,6 +56,25 @@ if (!extension_loaded('zip')) {
     $msg = "No PHP ZIP extension is available";
     $msgType = "danger";
     $continue = false;
+}
+
+if ($step > 0 && $continue) {
+    $requestFlowToken = isset($_GET['flow']) ? (string) $_GET['flow'] : '';
+    if ($requestFlowToken === '' || !hash_equals($updateFlowToken, $requestFlowToken)) {
+        $msg = "Invalid update session token. Please restart updater from step 1.";
+        $msgType = "danger";
+        $continue = false;
+        $step = 0;
+    }
+}
+
+if ($continue) {
+    $lockError = '';
+    if (!updateAcquireProcessLock(pathFixer('system/cache/update.lock'), $lockError)) {
+        $msg = $lockError;
+        $msgType = "danger";
+        $continue = false;
+    }
 }
 
 
@@ -81,72 +111,168 @@ if (!empty($_SESSION['update_extract_dir'])) {
 if (empty($step)) {
     $displayStep = 1;
 } else if ($step == 1) {
-    if (file_exists($file)) unlink($file);
+    $fp = null;
+    $ch = null;
+    try {
+        if (!function_exists('curl_init')) {
+            throw new Exception('PHP cURL extension is required for updater download step.');
+        }
+        if (file_exists($file) && !@unlink($file)) {
+            throw new Exception('Unable to remove stale update archive before downloading.');
+        }
 
-    // Download update
-    $fp = fopen($file, 'w+');
-    $ch = curl_init($update_url);
-    curl_setopt($ch, CURLOPT_POST, 0);
-    curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 600);
-    curl_setopt($ch, CURLOPT_TIMEOUT, 600);
-    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-    curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
-    curl_setopt($ch, CURLOPT_FILE, $fp);
-    curl_exec($ch);
-    curl_close($ch);
-    fclose($fp);
-    if (file_exists($file)) {
+        $fp = fopen($file, 'wb');
+        if ($fp === false) {
+            throw new Exception('Unable to create update archive file in system/cache/.');
+        }
+
+        $ch = curl_init($update_url);
+        if ($ch === false) {
+            throw new Exception('Unable to initialize cURL for update download.');
+        }
+        curl_setopt_array($ch, [
+            CURLOPT_POST => 0,
+            CURLOPT_CONNECTTIMEOUT => 30,
+            CURLOPT_TIMEOUT => 600,
+            CURLOPT_FOLLOWLOCATION => true,
+            CURLOPT_FILE => $fp,
+            CURLOPT_RETURNTRANSFER => false,
+            CURLOPT_SSL_VERIFYPEER => true,
+            CURLOPT_SSL_VERIFYHOST => 2,
+            CURLOPT_FAILONERROR => false,
+            CURLOPT_USERAGENT => 'PHPNuxBill-Updater',
+        ]);
+
+        $downloadOk = curl_exec($ch);
+        $curlErrNo = curl_errno($ch);
+        $curlError = curl_error($ch);
+        $httpCode = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+        $ch = null;
+        fclose($fp);
+        $fp = null;
+
+        if ($downloadOk === false || $curlErrNo !== 0) {
+            throw new Exception('Download failed: ' . ($curlError !== '' ? $curlError : 'Unknown cURL error.'));
+        }
+        if ($httpCode < 200 || $httpCode >= 300) {
+            throw new Exception('Download failed with HTTP status ' . $httpCode . '.');
+        }
+        if (!file_exists($file)) {
+            throw new Exception('Downloaded archive file is missing.');
+        }
+        $downloadedSize = filesize($file);
+        if ($downloadedSize === false || $downloadedSize < 1024) {
+            throw new Exception('Downloaded archive appears incomplete.');
+        }
+
+        $downloadZip = new ZipArchive();
+        $zipOpenStatus = $downloadZip->open($file);
+        if ($zipOpenStatus !== true) {
+            throw new Exception('Downloaded file is not a valid zip archive (' . updateZipOpenErrorMessage($zipOpenStatus) . ').');
+        }
+        $unsafeZipEntry = '';
+        if (!updateZipEntriesAreSafe($downloadZip, $unsafeZipEntry)) {
+            $downloadZip->close();
+            throw new Exception('Downloaded archive contains unsafe path: ' . $unsafeZipEntry);
+        }
+        if ((int) $downloadZip->numFiles < 1) {
+            $downloadZip->close();
+            throw new Exception('Downloaded archive is empty.');
+        }
+        $downloadZip->close();
+
         $nextStep = 2;
-    } else {
-        $msg = "Failed to download Update file";
+    } catch (Exception $e) {
+        if ($ch !== null) {
+            @curl_close($ch);
+        }
+        if (is_resource($fp)) {
+            fclose($fp);
+        }
+        if (file_exists($file)) {
+            @unlink($file);
+        }
+        $msg = 'Failed to download update file: ' . $e->getMessage();
         $msgType = "danger";
         $continue = false;
     }
 } else if ($step == 2) {
-    $zip = new ZipArchive();
-    $zip->open($file);
-    $zip->extractTo(pathFixer('system/cache/'));
-    $zip->close();
+    try {
+        if (!file_exists($file)) {
+            throw new Exception('Downloaded archive not found. Please restart update from step 1.');
+        }
 
-    $folder = resolveExtractedFolder($repo, $zipBase, $folder);
+        $zip = new ZipArchive();
+        $zipStatus = $zip->open($file);
+        if ($zipStatus !== true) {
+            throw new Exception('Failed to open update archive (' . updateZipOpenErrorMessage($zipStatus) . ').');
+        }
+        $unsafeZipEntry = '';
+        if (!updateZipEntriesAreSafe($zip, $unsafeZipEntry)) {
+            $zip->close();
+            throw new Exception('Unsafe archive entry detected: ' . $unsafeZipEntry);
+        }
+        if (!$zip->extractTo(pathFixer('system/cache/'))) {
+            $zip->close();
+            throw new Exception('Zip extraction returned failure status.');
+        }
+        $zip->close();
 
-    if (is_dir($folder)) {
-        $nextStep = 3;
-    } else {
-        unset($_SESSION['update_extract_dir']);
-        $msg = "Failed to extract update file";
+        $folder = resolveExtractedFolder($repo, $zipBase, $folder);
+
+        if (is_dir($folder)) {
+            $nextStep = 3;
+        } else {
+            unset($_SESSION['update_extract_dir']);
+            throw new Exception('Extracted update folder was not found.');
+        }
+    } catch (Exception $e) {
+        $msg = "Failed to extract update file: " . $e->getMessage();
         $msgType = "danger";
         $continue = false;
     }
     // remove downloaded zip
-    if (file_exists($file)) unlink($file);
+    if (file_exists($file)) {
+        @unlink($file);
+    }
 } else if ($step == 3) {
     // Step 3: Create Backup
     $backupDir = pathFixer('system/backup/');
-    if (!is_dir($backupDir)) {
-        mkdir($backupDir, 0755, true);
-    }
-    $backupFile = $backupDir . 'pre_update_backup_' . time() . '.zip';
-    $_SESSION['backup_file'] = $backupFile;
-
-    try {
-        $zip = new ZipArchive();
-        if ($zip->open($backupFile, ZipArchive::CREATE | ZipArchive::OVERWRITE) !== TRUE) {
-            throw new Exception("Cannot open zip archive for writing: " . $backupFile);
-        }
-
-        zipFolder(pathFixer('.'), $zip, strlen(pathFixer('.')));
-
-        $zip->close();
-        $dbBackupFile = createDatabaseBackup($backupDir);
-        if (!empty($dbBackupFile)) {
-            $_SESSION['db_backup_file'] = $dbBackupFile;
-        }
-        $nextStep = 4;
-    } catch (Exception $e) {
-        $msg = "Failed to create backup: " . $e->getMessage();
+    if (!is_dir($backupDir) && !mkdir($backupDir, 0755, true) && !is_dir($backupDir)) {
+        $msg = "Failed to create backup directory.";
         $msgType = "danger";
         $continue = false;
+    }
+    if ($continue && !is_writable($backupDir)) {
+        $msg = "Backup directory is not writable.";
+        $msgType = "danger";
+        $continue = false;
+    }
+
+    if ($continue) {
+        $backupFile = $backupDir . 'pre_update_backup_' . time() . '.zip';
+        $_SESSION['backup_file'] = $backupFile;
+
+        try {
+            $zip = new ZipArchive();
+            if ($zip->open($backupFile, ZipArchive::CREATE | ZipArchive::OVERWRITE) !== TRUE) {
+                throw new Exception("Cannot open zip archive for writing: " . $backupFile);
+            }
+
+            zipFolder(pathFixer('.'), $zip, strlen(pathFixer('.')));
+
+            $zip->close();
+            $dbBackupFile = createDatabaseBackup($backupDir);
+            if (!empty($dbBackupFile)) {
+                $_SESSION['db_backup_file'] = $dbBackupFile;
+            }
+            $nextStep = 4;
+        } catch (Exception $e) {
+            $msg = "Failed to create backup: " . $e->getMessage();
+            $msgType = "danger";
+            $continue = false;
+        }
     }
 
 } else if ($step == 4) {
@@ -237,7 +363,11 @@ if (empty($step)) {
 
         unset($_SESSION['update_extract_dir']);
 
-        $msg = 'Failed to install update files: ' . $e->getMessage() . ' A backup has been created at: ' . htmlspecialchars($_SESSION['backup_file']);
+        $backupHint = '';
+        if (!empty($_SESSION['backup_file'])) {
+            $backupHint = ' A backup has been created at: ' . htmlspecialchars($_SESSION['backup_file']);
+        }
+        $msg = 'Failed to install update files: ' . $e->getMessage() . $backupHint;
         $msgType = 'danger';
         $continue = false;
     }
@@ -388,6 +518,7 @@ $progressAnimateTo = $progressPercent;
 if ($continue && $nextStep !== $currentStep && $progressAnimateTo < 100) {
     $progressAnimateTo = min(99, $progressAnimateTo + 12);
 }
+$nextUrl = './update.php?step=' . (int) $nextStep . '&flow=' . rawurlencode($updateFlowToken);
 
 function pathFixer($path)
 {
@@ -572,6 +703,176 @@ function r2($to, $ntype = 'e', $msg = '')
     die();
 }
 
+function updateGenerateRandomToken($length = 32)
+{
+    $length = (int) $length;
+    if ($length < 8) {
+        $length = 8;
+    }
+    if ($length % 2 !== 0) {
+        $length += 1;
+    }
+    $bytes = (int) ($length / 2);
+    try {
+        return bin2hex(random_bytes($bytes));
+    } catch (Exception $e) {
+        if (function_exists('openssl_random_pseudo_bytes')) {
+            $strong = false;
+            $raw = openssl_random_pseudo_bytes($bytes, $strong);
+            if ($raw !== false) {
+                return bin2hex($raw);
+            }
+        }
+    }
+    return sha1(uniqid((string) mt_rand(), true));
+}
+
+function updateAcquireProcessLock($lockFile, &$error = '')
+{
+    $error = '';
+    if (!empty($GLOBALS['update_lock_handle']) && is_resource($GLOBALS['update_lock_handle'])) {
+        return true;
+    }
+
+    $lockDir = dirname($lockFile);
+    if (!is_dir($lockDir) && !mkdir($lockDir, 0755, true) && !is_dir($lockDir)) {
+        $error = 'Unable to create lock directory for updater.';
+        return false;
+    }
+
+    $handle = fopen($lockFile, 'c+');
+    if ($handle === false) {
+        $error = 'Unable to open updater lock file.';
+        return false;
+    }
+
+    if (!flock($handle, LOCK_EX | LOCK_NB)) {
+        fclose($handle);
+        $error = 'Another update process is currently running. Please wait until it finishes.';
+        return false;
+    }
+
+    $payload = json_encode([
+        'pid' => getmypid(),
+        'time' => date('c'),
+        'session' => session_id(),
+    ]);
+    if ($payload !== false) {
+        ftruncate($handle, 0);
+        rewind($handle);
+        fwrite($handle, $payload);
+        fflush($handle);
+    }
+
+    $GLOBALS['update_lock_handle'] = $handle;
+    return true;
+}
+
+function updateReleaseProcessLock()
+{
+    if (empty($GLOBALS['update_lock_handle']) || !is_resource($GLOBALS['update_lock_handle'])) {
+        return;
+    }
+    $handle = $GLOBALS['update_lock_handle'];
+    @ftruncate($handle, 0);
+    @fflush($handle);
+    @flock($handle, LOCK_UN);
+    @fclose($handle);
+    $GLOBALS['update_lock_handle'] = null;
+}
+
+function updateZipOpenErrorMessage($statusCode)
+{
+    $map = [
+        0 => 'No error',
+        1 => 'Multi-disk zip archives are not supported',
+        2 => 'Zip archive was renamed and no longer exists',
+        3 => 'Zip archive is in inconsistent state',
+        4 => 'Memory allocation failure',
+        5 => 'Read error',
+        6 => 'Compression method not supported',
+        7 => 'Premature EOF',
+        8 => 'Invalid zip archive',
+        9 => 'Zip archive missing',
+        10 => 'Seek error',
+        11 => 'Read error',
+        12 => 'Zip extension not available',
+    ];
+    $statusCode = (int) $statusCode;
+    if (isset($map[$statusCode])) {
+        return $map[$statusCode];
+    }
+    return 'zip_status_' . $statusCode;
+}
+
+function updateZipEntriesAreSafe($zip, &$unsafeEntry = '')
+{
+    $unsafeEntry = '';
+    if (!($zip instanceof ZipArchive)) {
+        $unsafeEntry = 'invalid-zip-object';
+        return false;
+    }
+    $total = (int) $zip->numFiles;
+    for ($i = 0; $i < $total; $i++) {
+        $name = (string) $zip->getNameIndex($i);
+        $normalized = str_replace('\\', '/', $name);
+        if ($normalized === '' || strpos($normalized, "\0") !== false) {
+            $unsafeEntry = $name;
+            return false;
+        }
+        if ($normalized[0] === '/' || preg_match('/^[A-Za-z]:\//', $normalized)) {
+            $unsafeEntry = $name;
+            return false;
+        }
+        $parts = explode('/', $normalized);
+        foreach ($parts as $part) {
+            if ($part === '..') {
+                $unsafeEntry = $name;
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
+function updateCopyFileAtomic($sourcePath, $targetPath, $label = '')
+{
+    $label = trim((string) $label);
+    if ($label === '') {
+        $label = $targetPath;
+    }
+    $targetDir = dirname($targetPath);
+    if (!is_dir($targetDir) && !mkdir($targetDir, 0755, true) && !is_dir($targetDir)) {
+        throw new Exception('Failed to create directory for file: ' . $label);
+    }
+
+    $tempFile = $targetPath . '.update-tmp-' . updateGenerateRandomToken(8);
+    if (file_exists($tempFile) && !@unlink($tempFile)) {
+        throw new Exception('Failed to prepare temporary file for: ' . $label);
+    }
+    if (!copy($sourcePath, $tempFile)) {
+        throw new Exception('Failed to stage file copy: ' . $label);
+    }
+
+    if (file_exists($targetPath) && !@unlink($targetPath)) {
+        @unlink($tempFile);
+        throw new Exception('Failed to overwrite file: ' . $label);
+    }
+
+    if (!@rename($tempFile, $targetPath)) {
+        if (!@copy($tempFile, $targetPath)) {
+            @unlink($tempFile);
+            throw new Exception('Failed to copy file: ' . $label);
+        }
+        @unlink($tempFile);
+    }
+
+    $sourcePerms = @fileperms($sourcePath);
+    if ($sourcePerms !== false) {
+        @chmod($targetPath, $sourcePerms & 0777);
+    }
+}
+
 function updateReadDoneVersions($filePath)
 {
     if (!file_exists($filePath)) {
@@ -612,7 +913,7 @@ function updateWriteDoneVersions($filePath, $versions)
         throw new Exception('Failed to encode update marker file.');
     }
 
-    if (file_put_contents($filePath, $payload) === false) {
+    if (file_put_contents($filePath, $payload, LOCK_EX) === false) {
         throw new Exception('Failed to write update marker file: ' . $filePath);
     }
 }
@@ -1265,88 +1566,92 @@ function copyFolder($from, $to, $exclude = [], $base = null)
             continue;
         }
 
+        if (is_link($sourcePath)) {
+            continue;
+        }
+
         if (is_dir($sourcePath)) {
             if (!is_dir($targetPath) && !mkdir($targetPath, 0755, true) && !is_dir($targetPath)) {
                 throw new Exception('Failed to create directory: ' . $relativePath);
             }
             copyFolder($sourcePath . DIRECTORY_SEPARATOR, $targetPath . DIRECTORY_SEPARATOR, $exclude, $base);
         } elseif (is_file($sourcePath)) {
-            $parent = dirname($targetPath);
-            if (!is_dir($parent) && !mkdir($parent, 0755, true) && !is_dir($parent)) {
-                throw new Exception('Failed to create directory for file: ' . $relativePath);
-            }
             if ($relativePath === 'update.php') {
                 $staged = pathFixer('system/cache/update.php.pending');
-                if (file_exists($staged) && !unlink($staged)) {
-                    throw new Exception('Failed to stage update.php for replacement.');
-                }
-                if (!copy($sourcePath, $staged)) {
-                    throw new Exception('Failed to stage update.php for replacement.');
-                }
+                updateCopyFileAtomic($sourcePath, $staged, 'update.php');
                 scheduleDeferredReplacement($staged, pathFixer(__DIR__ . DIRECTORY_SEPARATOR . 'update.php'));
                 continue;
             }
-            if (file_exists($targetPath) && !unlink($targetPath)) {
-                throw new Exception('Failed to overwrite file: ' . $relativePath);
-            }
-            if (!copy($sourcePath, $targetPath)) {
-                throw new Exception('Failed to copy file: ' . $relativePath);
-            }
+            updateCopyFileAtomic($sourcePath, $targetPath, $relativePath);
         }
     }
 }
 function deleteFolder($path)
 {
+    if (is_link($path)) {
+        @unlink($path);
+        return;
+    }
     if (!is_dir($path)) return;
     $files = scandir($path);
+    if ($files === false) {
+        return;
+    }
     foreach ($files as $file) {
-        if (is_file($path . $file)) {
-            unlink($path . $file);
-        } else if (is_dir($path . $file) && !in_array($file, ['.', '..'])) {
-            deleteFolder($path . $file . DIRECTORY_SEPARATOR);
-            rmdir($path . $file);
+        $itemPath = $path . $file;
+        if ($file === '.' || $file === '..') {
+            continue;
+        }
+        if (is_link($itemPath) || is_file($itemPath)) {
+            @unlink($itemPath);
+        } else if (is_dir($itemPath)) {
+            deleteFolder($itemPath . DIRECTORY_SEPARATOR);
+            @rmdir($itemPath);
         }
     }
-    rmdir($path);
+    @rmdir($path);
 }
 
 function zipFolder($source, &$zip, $stripPath)
 {
-    $source = pathFixer($source);
+    $sourceRoot = realpath(pathFixer($source));
+    if ($sourceRoot === false || !is_dir($sourceRoot)) {
+        throw new Exception('Invalid source path for backup: ' . $source);
+    }
+    $sourceRoot = rtrim($sourceRoot, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR;
+
     $files = new RecursiveIteratorIterator(
-        new RecursiveDirectoryIterator($source, RecursiveDirectoryIterator::SKIP_DOTS),
+        new RecursiveDirectoryIterator($sourceRoot, RecursiveDirectoryIterator::SKIP_DOTS),
         RecursiveIteratorIterator::SELF_FIRST
     );
 
     $exclude = [
-        pathFixer('system/cache'),
-        pathFixer('system/backup')
+        'system/cache',
+        'system/backup',
+        '.git'
     ];
 
-    foreach ($files as $file) {
-        $file = pathFixer($file);
-
-        // Exclude backup and cache directories
-        $excluded = false;
-        foreach($exclude as $ex) {
-            if (strpos($file, $ex) === 0) {
-                $excluded = true;
-                break;
-            }
+    foreach ($files as $fileInfo) {
+        $filePath = $fileInfo->getPathname();
+        $localPath = ltrim(str_replace('\\', '/', substr($filePath, strlen($sourceRoot))), '/');
+        if ($localPath === '') {
+            continue;
         }
-        if ($excluded) continue;
+        if (shouldSkipCopy($localPath, $exclude)) {
+            continue;
+        }
+        if ($fileInfo->isLink()) {
+            continue;
+        }
 
-
-        $filePath = $file;
-        $localPath = substr($filePath, $stripPath);
-        if(empty($localPath)) continue;
-        $localPath = ltrim($localPath, DIRECTORY_SEPARATOR);
-
-
-        if (is_dir($file)) {
-            $zip->addEmptyDir($localPath);
-        } else if (is_file($file)) {
-            $zip->addFile($filePath, $localPath);
+        if ($fileInfo->isDir()) {
+            if (!$zip->addEmptyDir($localPath)) {
+                throw new Exception('Failed to add directory to backup archive: ' . $localPath);
+            }
+        } else if ($fileInfo->isFile()) {
+            if (!$zip->addFile($filePath, $localPath)) {
+                throw new Exception('Failed to add file to backup archive: ' . $localPath);
+            }
         }
     }
 }
@@ -1369,86 +1674,98 @@ function createDatabaseBackup($backupDir)
         throw new Exception('Unable to create database backup file');
     }
 
-    $writer = function ($line) use ($handle, $useGzip) {
-        if ($useGzip) {
-            gzwrite($handle, $line);
-        } else {
-            fwrite($handle, $line);
+    try {
+        $writer = function ($line) use ($handle, $useGzip) {
+            if ($useGzip) {
+                gzwrite($handle, $line);
+            } else {
+                fwrite($handle, $line);
+            }
+        };
+
+        $options = [
+            PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+        ];
+        if (defined('PDO::MYSQL_ATTR_USE_BUFFERED_QUERY')) {
+            $options[PDO::MYSQL_ATTR_USE_BUFFERED_QUERY] = false;
         }
-    };
+        $dsn = "mysql:host=$db_host;dbname=$db_name;charset=utf8mb4";
+        $pdo = new PDO($dsn, $db_user, $db_pass, $options);
 
-    $options = [
-        PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-    ];
-    if (defined('PDO::MYSQL_ATTR_USE_BUFFERED_QUERY')) {
-        $options[PDO::MYSQL_ATTR_USE_BUFFERED_QUERY] = false;
-    }
-    $dsn = "mysql:host=$db_host;dbname=$db_name;charset=utf8mb4";
-    $pdo = new PDO($dsn, $db_user, $db_pass, $options);
+        $writer("-- PHPNuxBill Database Backup\n");
+        $writer("-- Generated at " . date('Y-m-d H:i:s') . "\n\n");
+        $writer("SET NAMES utf8mb4;\n");
+        $writer("SET FOREIGN_KEY_CHECKS=0;\n\n");
 
-    $writer("-- PHPNuxBill Database Backup\n");
-    $writer("-- Generated at " . date('Y-m-d H:i:s') . "\n\n");
-    $writer("SET NAMES utf8mb4;\n");
-    $writer("SET FOREIGN_KEY_CHECKS=0;\n\n");
+        $tables = $pdo->query('SHOW TABLES')->fetchAll(PDO::FETCH_NUM);
+        foreach ($tables as $row) {
+            $table = $row[0];
+            if ($table === '') {
+                continue;
+            }
+            $createStmt = $pdo->query("SHOW CREATE TABLE `{$table}`")->fetch(PDO::FETCH_ASSOC);
+            $createSql = $createStmt['Create Table'] ?? '';
+            if ($createSql === '') {
+                continue;
+            }
 
-    $tables = $pdo->query('SHOW TABLES')->fetchAll(PDO::FETCH_NUM);
-    foreach ($tables as $row) {
-        $table = $row[0];
-        if ($table === '') {
-            continue;
-        }
-        $createStmt = $pdo->query("SHOW CREATE TABLE `{$table}`")->fetch(PDO::FETCH_ASSOC);
-        $createSql = $createStmt['Create Table'] ?? '';
-        if ($createSql === '') {
-            continue;
-        }
+            $writer("\n-- Table: `{$table}`\n");
+            $writer("DROP TABLE IF EXISTS `{$table}`;\n");
+            $writer($createSql . ";\n\n");
 
-        $writer("\n-- Table: `{$table}`\n");
-        $writer("DROP TABLE IF EXISTS `{$table}`;\n");
-        $writer($createSql . ";\n\n");
+            $colStmt = $pdo->query("SHOW COLUMNS FROM `{$table}`");
+            $columns = [];
+            while ($col = $colStmt->fetch(PDO::FETCH_ASSOC)) {
+                $columns[] = $col['Field'];
+            }
+            if (empty($columns)) {
+                continue;
+            }
 
-        $colStmt = $pdo->query("SHOW COLUMNS FROM `{$table}`");
-        $columns = [];
-        while ($col = $colStmt->fetch(PDO::FETCH_ASSOC)) {
-            $columns[] = $col['Field'];
-        }
-        if (empty($columns)) {
-            continue;
-        }
+            $columnList = '`' . implode('`,`', array_map(function ($col) {
+                return str_replace('`', '``', $col);
+            }, $columns)) . '`';
 
-        $columnList = '`' . implode('`,`', array_map(function ($col) {
-            return str_replace('`', '``', $col);
-        }, $columns)) . '`';
+            $stmt = $pdo->query("SELECT * FROM `{$table}`");
+            $stmt->setFetchMode(PDO::FETCH_ASSOC);
+            $batch = [];
+            $batchSize = 200;
 
-        $stmt = $pdo->query("SELECT * FROM `{$table}`");
-        $stmt->setFetchMode(PDO::FETCH_ASSOC);
-        $batch = [];
-        $batchSize = 200;
-
-        while ($rowData = $stmt->fetch()) {
-            $values = [];
-            foreach ($columns as $col) {
-                $val = $rowData[$col] ?? null;
-                if ($val === null) {
-                    $values[] = 'NULL';
-                } elseif (is_bool($val)) {
-                    $values[] = $val ? '1' : '0';
-                } else {
-                    $values[] = $pdo->quote((string) $val);
+            while ($rowData = $stmt->fetch()) {
+                $values = [];
+                foreach ($columns as $col) {
+                    $val = $rowData[$col] ?? null;
+                    if ($val === null) {
+                        $values[] = 'NULL';
+                    } elseif (is_bool($val)) {
+                        $values[] = $val ? '1' : '0';
+                    } else {
+                        $values[] = $pdo->quote((string) $val);
+                    }
+                }
+                $batch[] = '(' . implode(',', $values) . ')';
+                if (count($batch) >= $batchSize) {
+                    $writer("INSERT INTO `{$table}` ({$columnList}) VALUES\n" . implode(",\n", $batch) . ";\n");
+                    $batch = [];
                 }
             }
-            $batch[] = '(' . implode(',', $values) . ')';
-            if (count($batch) >= $batchSize) {
+            if (!empty($batch)) {
                 $writer("INSERT INTO `{$table}` ({$columnList}) VALUES\n" . implode(",\n", $batch) . ";\n");
-                $batch = [];
             }
         }
-        if (!empty($batch)) {
-            $writer("INSERT INTO `{$table}` ({$columnList}) VALUES\n" . implode(",\n", $batch) . ";\n");
-        }
-    }
 
-    $writer("\nSET FOREIGN_KEY_CHECKS=1;\n");
+        $writer("\nSET FOREIGN_KEY_CHECKS=1;\n");
+    } catch (Throwable $e) {
+        if ($useGzip) {
+            @gzclose($handle);
+        } else {
+            @fclose($handle);
+        }
+        if (file_exists($dbBackupFile)) {
+            @unlink($dbBackupFile);
+        }
+        throw $e;
+    }
 
     if ($useGzip) {
         gzclose($handle);
@@ -1477,7 +1794,7 @@ function createDatabaseBackup($backupDir)
     <link rel="stylesheet" href="ui/ui/styles/modern-AdminLTE.min.css">
 
     <?php if ($continue && $nextStep !== $currentStep) { ?>
-        <meta http-equiv="refresh" content="3; ./update.php?step=<?= $nextStep ?>">
+        <meta http-equiv="refresh" content="3; <?= htmlspecialchars($nextUrl, ENT_QUOTES, 'UTF-8') ?>">
     <?php } ?>
     <style>
         ::-moz-selection {
