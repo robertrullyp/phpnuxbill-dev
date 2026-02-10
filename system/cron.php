@@ -39,8 +39,31 @@ $_c = $config;
 
 
 $textExpired = Lang::getNotifText('expired');
+$unlimitedExpirationDate = '2099-12-31';
+$unlimitedExpirationTime = '23:59:59';
 
-$d = ORM::for_table('tbl_user_recharges')->where('status', 'on')->where_lte('expiration', date("Y-m-d"))->find_many();
+// Normalize existing active rows for unlimited Period plans before expiry scan.
+ORM::raw_execute(
+    "UPDATE `tbl_user_recharges` AS `tur`
+    INNER JOIN `tbl_plans` AS `p` ON `p`.`id` = `tur`.`plan_id`
+    SET `tur`.`expiration` = ?, `tur`.`time` = ?, `tur`.`status` = 'on'
+    WHERE `tur`.`status` = 'on'
+      AND LOWER(TRIM(`p`.`validity_unit`)) = 'period'
+      AND CAST(`p`.`validity` AS SIGNED) <= 0
+      AND (`tur`.`expiration` <> ? OR `tur`.`time` <> ?)",
+    [$unlimitedExpirationDate, $unlimitedExpirationTime, $unlimitedExpirationDate, $unlimitedExpirationTime]
+);
+
+$d = ORM::for_table('tbl_user_recharges')
+    ->table_alias('tur')
+    ->select('tur.*')
+    ->left_outer_join('tbl_plans', ['tur.plan_id', '=', 'p.id'], 'p')
+    ->where('tur.status', 'on')
+    ->where_lte('tur.expiration', date("Y-m-d"))
+    ->where_raw(
+        "(`p`.`id` IS NULL OR LOWER(TRIM(`p`.`validity_unit`)) <> 'period' OR CAST(`p`.`validity` AS SIGNED) > 0)"
+    )
+    ->find_many();
 echo "Found " . count($d) . " user(s)\n";
 run_hook('cronjob'); #HOOK
 // Cleanup temporary WA media files (max 7 days retention)
@@ -55,8 +78,6 @@ foreach ($d as $ds) {
         echo $ds['expiration'] . " : " . ($isCli ? $ds['username'] : Lang::maskText($ds['username']));
 
         if ($date_now >= $expiration) {
-            echo " : EXPIRED \r\n";
-
             // Fetch user recharge details
             $u = ORM::for_table('tbl_user_recharges')->where('id', $ds['id'])->find_one();
             if (!$u) {
@@ -74,6 +95,20 @@ foreach ($d as $ds) {
             if (!$p) {
                 throw new Exception("Plan not found for ID: " . $u['plan_id']);
             }
+
+            $planValidityUnit = strtolower(trim((string) ($p['validity_unit'] ?? '')));
+            $planValidity = (int) ($p['validity'] ?? 0);
+            $isUnlimitedPeriodPlan = ($planValidityUnit === 'period' && $planValidity <= 0);
+            if ($isUnlimitedPeriodPlan) {
+                $u->expiration = $unlimitedExpirationDate;
+                $u->time = $unlimitedExpirationTime;
+                $u->status = 'on';
+                $u->save();
+                echo " : SKIP (UNLIMITED PERIOD)\r\n";
+                continue;
+            }
+
+            echo " : EXPIRED \r\n";
 
             $dvc = Package::getDevice($p);
             if ($_app_stage != 'demo') {
