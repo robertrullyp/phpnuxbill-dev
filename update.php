@@ -454,7 +454,7 @@ if (empty($step)) {
                     try {
                         $db->exec($q);
                     } catch (PDOException $e) {
-                        if (!updateIsIgnorableMigrationError($e)) {
+                        if (!updateIsIgnorableMigrationError($e) && !updateCanSkipKnownLengthMigration($q, $e)) {
                             throw new Exception(
                                 'Database migration failed at version ' . $version . ': ' . $e->getMessage(),
                                 0,
@@ -1548,6 +1548,48 @@ function updateIsIgnorableMigrationError($e)
     }
 
     return false;
+}
+
+function updateCanSkipKnownLengthMigration($query, $e)
+{
+    if (!($e instanceof PDOException)) {
+        return false;
+    }
+
+    $driverCode = 0;
+    if (!empty($e->errorInfo) && isset($e->errorInfo[1])) {
+        $driverCode = (int) $e->errorInfo[1];
+    }
+
+    $message = strtolower((string) $e->getMessage());
+    $query = strtolower(trim((string) $query));
+    if ($query === '') {
+        return false;
+    }
+
+    $isTooLongError = ($driverCode === 1406) || (strpos($message, 'data too long for column') !== false);
+    if (!$isTooLongError) {
+        return false;
+    }
+
+    $isPaymentGatewayAlter = (strpos($query, 'alter table `tbl_payment_gateway` change') === 0);
+    if (!$isPaymentGatewayAlter) {
+        return false;
+    }
+
+    $isKnownColumn = (strpos($query, '`pg_url_payment`') !== false) || (strpos($query, '`gateway_trx_id`') !== false);
+    if (!$isKnownColumn) {
+        return false;
+    }
+
+    $is512Target = strpos($query, 'varchar(512)') !== false;
+    if (!$is512Target) {
+        return false;
+    }
+
+    // Existing installations may already store values >512 chars.
+    // Keeping the wider existing schema is safer than aborting entire migration.
+    return true;
 }
 
 function updateTableExists($db, $table)
