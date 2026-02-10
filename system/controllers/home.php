@@ -169,38 +169,127 @@ if (_post('send') == 'balance') {
 
     GenieACS::saveWifiCache($user['id'], $ssid, $password);
     r2(getUrl('home'), 's', Lang::T('WiFi settings updated successfully'));
+} else if (_post('send') == 'genieacs_reboot_device') {
+    $csrf_token = _post('csrf_token');
+    if (!Csrf::check($csrf_token)) {
+        r2(getUrl('home'), 'e', Lang::T('Invalid or Expired CSRF Token') . '.');
+    }
+    Csrf::generateAndStoreToken();
+
+    if (!class_exists('GenieACS') || !GenieACS::isEnabled($config)) {
+        r2(getUrl('home'), 'e', Lang::T('GenieACS integration is disabled'));
+    }
+
+    $assignedDeviceId = GenieACS::getAssignedDeviceId($user['id']);
+    if ($assignedDeviceId === '') {
+        r2(getUrl('home'), 'e', Lang::T('Device not assigned. Contact admin.'));
+    }
+
+    $deviceId = trim((string) _post('device_id'));
+    if ($deviceId !== '' && $deviceId !== $assignedDeviceId) {
+        r2(getUrl('home'), 'e', Lang::T('Invalid device assignment'));
+    }
+
+    $bills = User::_billing();
+    if (!GenieACS::hasEligiblePppoeBill($bills)) {
+        r2(getUrl('home'), 'e', Lang::T('No active PPPoE package'));
+    }
+
+    $reboot = GenieACS::rebootDevice($config, $assignedDeviceId);
+    if (empty($reboot['success'])) {
+        $error = trim((string) ($reboot['error'] ?? ''));
+        if ($error === '') {
+            $error = Lang::T('Failed to submit reboot command');
+        }
+        r2(getUrl('home'), 'e', $error);
+    }
+
+    r2(getUrl('home'), 's', Lang::T('Reboot command has been sent'));
 }
 
 
 // Sync plan to router
 if (isset($_GET['sync']) && !empty($_GET['sync'])) {
-    foreach ($_bill as $tur) {
+    $syncId = (int) _get('sync');
+    $syncBills = User::_billing();
+    $targetBills = [];
+    foreach ($syncBills as $billItem) {
+        if ($billItem instanceof ORM) {
+            $billItem = $billItem->as_array();
+        }
+        if (!is_array($billItem)) {
+            continue;
+        }
+        if ($syncId > 0 && (int) ($billItem['id'] ?? 0) !== $syncId) {
+            continue;
+        }
+        $targetBills[] = $billItem;
+    }
+
+    $log = '';
+    foreach ($targetBills as $tur) {
         if ($tur['status'] == 'on') {
-            $p = ORM::for_table('tbl_plans')->findOne($tur['plan_id']);
-            if ($p) {
-                $c = ORM::for_table('tbl_customers')->findOne($tur['customer_id']);
-                if ($c) {
-                    $dvc = Package::getDevice($p);
-                    if ($_app_stage != 'demo') {
-                        if (file_exists($dvc)) {
-                            require_once $dvc;
-                            if (method_exists($dvc, 'sync_customer')) {
-                                (new $p['device'])->sync_customer($c, $p);
-                            }else{
-                                (new $p['device'])->add_customer($c, $p);
+            try {
+                $p = ORM::for_table('tbl_plans')->findOne($tur['plan_id']);
+                if ($p) {
+                    $c = ORM::for_table('tbl_customers')->findOne($tur['customer_id']);
+                    if ($c) {
+                        $dvc = Package::getDevice($p);
+                        if ($_app_stage != 'demo') {
+                            if (file_exists($dvc)) {
+                                require_once $dvc;
+                                if (method_exists($dvc, 'sync_customer')) {
+                                    (new $p['device'])->sync_customer($c, $p);
+                                } else {
+                                    (new $p['device'])->add_customer($c, $p);
+                                }
+                            } else {
+                                throw new Exception(Lang::T("Devices Not Found"));
                             }
-                        } else {
-                            new Exception(Lang::T("Devices Not Found"));
                         }
+                        $log .= "DONE : {$tur['namebp']}, {$tur['type']}, {$tur['routers']}<br>";
+                    } else {
+                        $log .= "Customer NOT FOUND : {$tur['namebp']}, {$tur['type']}, {$tur['routers']}<br>";
                     }
-                    $log .= "DONE : $ptur[namebp], $tur[type], $tur[routers]<br>";
                 } else {
-                    $log .= "Customer NOT FOUND : $tur[namebp], $tur[type], $tur[routers]<br>";
+                    $log .= "PLAN NOT FOUND : {$tur['namebp']}, {$tur['type']}, {$tur['routers']}<br>";
                 }
-            } else {
-                $log .= "PLAN NOT FOUND : $tur[namebp], $tur[type], $tur[routers]<br>";
+            } catch (Throwable $e) {
+                $syncError = trim((string) $e->getMessage());
+                if ($syncError === '') {
+                    $syncError = 'Unknown sync error.';
+                }
+                $log .= "SYNC FAILED : {$tur['namebp']}, {$tur['type']}, {$tur['routers']} ({$syncError})<br>";
             }
         }
+    }
+
+    if (class_exists('GenieACS') && GenieACS::isEnabled($config)) {
+        try {
+            $assignedDeviceId = GenieACS::getAssignedDeviceId($user['id']);
+            if ($assignedDeviceId !== '' && GenieACS::hasEligiblePppoeBill($targetBills)) {
+                $summon = GenieACS::summonDevice($config, $assignedDeviceId);
+                if (!empty($summon['success'])) {
+                    $log .= "GENIEACS SUMMON : DONE<br>";
+                } else {
+                    $summonError = trim((string) ($summon['error'] ?? 'Unknown error.'));
+                    if ($summonError === '') {
+                        $summonError = 'Unknown error.';
+                    }
+                    $log .= "GENIEACS SUMMON : {$summonError}<br>";
+                }
+            }
+        } catch (Throwable $e) {
+            $summonRuntimeError = trim((string) $e->getMessage());
+            if ($summonRuntimeError === '') {
+                $summonRuntimeError = 'Unknown error.';
+            }
+            $log .= "GENIEACS SUMMON : {$summonRuntimeError}<br>";
+        }
+    }
+
+    if (trim((string) $log) === '') {
+        $log = Lang::T('No active package found');
     }
     r2(getUrl('home'), 's', $log);
 }

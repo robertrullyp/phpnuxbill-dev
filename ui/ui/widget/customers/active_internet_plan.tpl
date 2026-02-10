@@ -200,6 +200,20 @@
                                         <input type="hidden" name="wifi_password" id="wifi_password_hidden_{$_bill['id']}"
                                             value="{$genieacs['password']|escape}">
                                     </form>
+                                    <form method="post" action="{Text::url('home')}"
+                                        id="genieacs_reboot_form_{$_bill['id']}" style="display: inline-block;"
+                                        onsubmit="return confirmGenieacsReboot('{$_bill['id']}');">
+                                        <input type="hidden" name="csrf_token" value="{$csrf_token|escape}">
+                                        <input type="hidden" name="send" value="genieacs_reboot_device">
+                                        <input type="hidden" name="device_id" value="{$genieacs['device_id']|escape}">
+                                        <button type="submit" class="btn btn-danger btn-sm"
+                                            id="wifi_reboot_btn_{$_bill['id']}"
+                                            data-confirm-text="{Lang::T('Restart/Reboot device now?')}"
+                                            data-label-default="Restart"
+                                            data-label-loading="{Lang::T('Rebooting...')}">
+                                            <span class="glyphicon glyphicon-repeat" aria-hidden="true"></span> Restart
+                                        </button>
+                                    </form>
                                 {/if}
                                 <a class="btn btn-warning text-black btn-sm"
                                     href="{Text::url('home&sync=', $_bill['id'], '&stoken=', App::getToken())}"
@@ -333,6 +347,25 @@
             closeWifiEdit(billId);
             form.submit();
             return false;
+        }
+
+        function confirmGenieacsReboot(billId) {
+            var rebootButton = document.getElementById('wifi_reboot_btn_' + billId);
+            var confirmText = 'Restart/Reboot device now?';
+            if (rebootButton) {
+                confirmText = rebootButton.getAttribute('data-confirm-text') || confirmText;
+            }
+
+            if (!window.confirm(confirmText)) {
+                return false;
+            }
+
+            if (rebootButton) {
+                var loadingLabel = rebootButton.getAttribute('data-label-loading') || 'Rebooting...';
+                rebootButton.setAttribute('disabled', 'disabled');
+                rebootButton.innerHTML = '<span class="glyphicon glyphicon-time" aria-hidden="true"></span> ' + loadingLabel;
+            }
+            return true;
         }
     </script>
 {/if}

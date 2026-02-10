@@ -528,6 +528,93 @@ class GenieACS
         ];
     }
 
+    public static function rebootDevice($config, $deviceId)
+    {
+        $deviceId = trim((string) $deviceId);
+        if ($deviceId === '') {
+            return [
+                'success' => false,
+                'error' => 'Device ID is empty.',
+            ];
+        }
+        if (!self::isConfigured($config)) {
+            return [
+                'success' => false,
+                'error' => 'GenieACS integration is disabled or URL is empty.',
+            ];
+        }
+
+        $payload = [
+            'name' => 'reboot',
+        ];
+
+        $baseUrl = self::getBaseUrl($config);
+        $url = $baseUrl . '/devices/' . rawurlencode($deviceId) . '/tasks?connection_request';
+        $response = self::request('POST', $url, $payload);
+        if (!$response['ok']) {
+            return [
+                'success' => false,
+                'error' => self::buildErrorMessage($response, 'Failed to submit reboot task to GenieACS.'),
+            ];
+        }
+
+        return [
+            'success' => true,
+            'error' => '',
+        ];
+    }
+
+    public static function summonDevice($config, $deviceId)
+    {
+        $deviceId = trim((string) $deviceId);
+        if ($deviceId === '') {
+            return [
+                'success' => false,
+                'error' => 'Device ID is empty.',
+            ];
+        }
+        if (!self::isConfigured($config)) {
+            return [
+                'success' => false,
+                'error' => 'GenieACS integration is disabled or URL is empty.',
+            ];
+        }
+
+        $probePaths = [
+            'Device.DeviceInfo.SerialNumber',
+            'InternetGatewayDevice.DeviceInfo.SerialNumber',
+            'DeviceID.SerialNumber',
+        ];
+        $probePath = $probePaths[0];
+        $deviceResult = self::fetchDevice($config, $deviceId);
+        if (!empty($deviceResult['success']) && is_array($deviceResult['device'])) {
+            $detectedPath = self::detectPath($deviceResult['device'], $probePaths);
+            if ($detectedPath !== '') {
+                $probePath = $detectedPath;
+            }
+        }
+
+        $payload = [
+            'name' => 'getParameterValues',
+            'parameterNames' => [$probePath],
+        ];
+
+        $baseUrl = self::getBaseUrl($config);
+        $url = $baseUrl . '/devices/' . rawurlencode($deviceId) . '/tasks?connection_request';
+        $response = self::request('POST', $url, $payload);
+        if (!$response['ok']) {
+            return [
+                'success' => false,
+                'error' => self::buildErrorMessage($response, 'Failed to submit summon task to GenieACS.'),
+            ];
+        }
+
+        return [
+            'success' => true,
+            'error' => '',
+        ];
+    }
+
     public static function syncPppoeCredentials($config, $deviceId, $username, $password, $usernamePath = '', $passwordPath = '')
     {
         $deviceId = trim((string) $deviceId);
