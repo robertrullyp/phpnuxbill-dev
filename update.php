@@ -51,6 +51,10 @@ if (!extension_loaded('zip')) {
 $currentStep = $step;
 $displayStep = $step > 0 ? $step : 1;
 $nextStep = $step <= 0 ? 1 : $step;
+$progressTotalSteps = 5;
+$completedSteps = 0;
+$progressPercent = 0;
+$progressAnimateTo = 0;
 
 
 $file = pathFixer('system/cache/phpnuxbill.zip');
@@ -364,6 +368,25 @@ if (empty($step)) {
     }
 
     r2($target, 's', $message);
+}
+
+if ($continue) {
+    if ($nextStep > $currentStep) {
+        $completedSteps = max(0, min($progressTotalSteps, $nextStep - 1));
+    } else {
+        $completedSteps = max(0, min($progressTotalSteps, $currentStep));
+    }
+} else {
+    $completedSteps = max(0, min($progressTotalSteps, $currentStep - 1));
+}
+
+if ($progressTotalSteps > 0) {
+    $progressPercent = (int) round(($completedSteps / $progressTotalSteps) * 100);
+}
+
+$progressAnimateTo = $progressPercent;
+if ($continue && $nextStep !== $currentStep && $progressAnimateTo < 100) {
+    $progressAnimateTo = min(99, $progressAnimateTo + 12);
 }
 
 function pathFixer($path)
@@ -1467,6 +1490,24 @@ function createDatabaseBackup($backupDir)
             color: red;
             background: yellow;
         }
+
+        .updater-progress-panel {
+            margin-bottom: 15px;
+        }
+
+        .updater-progress-title {
+            font-weight: 600;
+        }
+
+        .updater-progress {
+            margin: 10px 0 6px;
+            height: 18px;
+        }
+
+        .updater-progress .progress-bar {
+            min-width: 2px;
+            transition: width 0.35s ease;
+        }
     </style>
 
 </head>
@@ -1483,6 +1524,26 @@ function createDatabaseBackup($backupDir)
             <div class="row">
                 <div class="col-md-4"></div>
                 <div class="col-md-4">
+                    <div class="panel panel-default updater-progress-panel">
+                        <div class="panel-body">
+                            <div class="clearfix">
+                                <span class="updater-progress-title">Update Progress</span>
+                                <span class="pull-right" id="update-progress-text"><?= (int) $progressPercent ?>%</span>
+                            </div>
+                            <div class="progress updater-progress">
+                                <div
+                                    id="update-progress-bar"
+                                    class="progress-bar progress-bar-info progress-bar-striped <?= $continue ? 'active' : '' ?>"
+                                    role="progressbar"
+                                    aria-valuemin="0"
+                                    aria-valuemax="100"
+                                    aria-valuenow="<?= (int) $progressPercent ?>"
+                                    style="width: <?= (int) max(0, $progressPercent) ?>%;">
+                                </div>
+                            </div>
+                            <small class="text-muted">Step <?= (int) max(1, min($progressTotalSteps, $displayStep)) ?> of <?= (int) $progressTotalSteps ?></small>
+                        </div>
+                    </div>
                     <?php if (!empty($msgType) && !empty($msg)) { ?>
                         <div class="alert alert-<?= $msgType ?>" role="alert">
                             <?= $msg ?>
@@ -1542,6 +1603,43 @@ function createDatabaseBackup($backupDir)
                 target="_blank">AdminLTE</a>
         </footer>
     </div>
+    <script>
+        (function() {
+            var bar = document.getElementById('update-progress-bar');
+            var text = document.getElementById('update-progress-text');
+            if (!bar || !text) {
+                return;
+            }
+
+            var current = <?= (int) $progressPercent ?>;
+            var target = <?= (int) $progressAnimateTo ?>;
+
+            function render(value) {
+                var safe = Math.max(0, Math.min(100, value));
+                bar.style.width = safe + '%';
+                bar.setAttribute('aria-valuenow', String(safe));
+                text.textContent = safe + '%';
+                if (safe >= 100 || <?= $continue ? 'false' : 'true' ?>) {
+                    bar.classList.remove('active');
+                }
+            }
+
+            render(current);
+            if (target <= current) {
+                return;
+            }
+
+            var delta = target - current;
+            var interval = Math.max(35, Math.floor(950 / delta));
+            var timer = setInterval(function() {
+                current += 1;
+                render(current);
+                if (current >= target) {
+                    clearInterval(timer);
+                }
+            }, interval);
+        })();
+    </script>
 </body>
 
 </html>
