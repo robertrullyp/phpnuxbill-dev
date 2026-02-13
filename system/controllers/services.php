@@ -1021,7 +1021,7 @@ switch ($action) {
             }
             $d->save();
 
-            if ((string) $validity_unit === 'Period' && (int) $validity <= 0) {
+            if ((int) $validity <= 0) {
                 // Normalize latest recharge row per user for this plan to unlimited expiry.
                 ORM::raw_execute(
                     "UPDATE `tbl_user_recharges` `tur`

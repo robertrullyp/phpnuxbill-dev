@@ -832,6 +832,11 @@ switch ($action) {
             r2(getUrl('settings/app'), 'e', Lang::T('Invalid or Expired CSRF Token') . ".");
         }
         Csrf::generateAndStoreToken();
+
+        // Ensure posted radius setting is available for validation below.
+        // When enabling RADIUS, we need to verify required tables/connection exist.
+        $radius_enable = ((int) _post('radius_enable', 0)) === 1;
+
         $company = _post('CompanyName');
         $custom_tax_rate = filter_var(_post('custom_tax_rate'), FILTER_SANITIZE_SPECIAL_CHARS);
         if (preg_match('/[^0-9.]/', $custom_tax_rate)) {

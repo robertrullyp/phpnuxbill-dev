@@ -380,7 +380,7 @@ class Package
         return '';
     }
 
-    protected static function isUnlimitedPeriodPlan($plan): bool
+    protected static function isUnlimitedPlan($plan): bool
     {
         if (!$plan) {
             return false;
@@ -388,9 +388,8 @@ class Package
         if (!is_array($plan)) {
             $plan = $plan->as_array();
         }
-        return isset($plan['validity_unit'], $plan['validity'])
-            && $plan['validity_unit'] === 'Period'
-            && (int) $plan['validity'] <= 0;
+        // Treat validity <= 0 as unlimited for all validity_unit values (Mins/Hrs/Days/Months/Period).
+        return isset($plan['validity']) && (int) $plan['validity'] <= 0;
     }
 
     protected static function getUnlimitedExpirationDate(): string
@@ -448,7 +447,7 @@ class Package
         if (!$skipInvoiceNotification && $p && isset($p['invoice_notification']) && (int) $p['invoice_notification'] === 0) {
             $skipInvoiceNotification = true;
         }
-        $isUnlimitedPeriod = self::isUnlimitedPeriodPlan($p);
+        $isUnlimitedPlan = self::isUnlimitedPlan($p);
 
         if (!$isVoucher) {
             $c = ORM::for_table('tbl_customers')->where('id', $id_customer)->find_one();
@@ -490,7 +489,7 @@ class Package
             }
         }
 
-        if ($p['validity_unit'] == 'Period' && !$isUnlimitedPeriod) {
+        if ($p['validity_unit'] == 'Period' && !$isUnlimitedPlan) {
             // if customer has attribute Expired Date use it
             $day_exp = User::getAttribute("Expired Date", $c['id']);
             if (!$day_exp) {
@@ -554,7 +553,7 @@ class Package
 
         run_hook("recharge_user");
 
-        if ($isUnlimitedPeriod) {
+        if ($isUnlimitedPlan) {
             $date_exp = self::getUnlimitedExpirationDate();
             $time = self::getUnlimitedExpirationTime();
         } else if ($p['validity_unit'] == 'Months') {
@@ -613,34 +612,34 @@ class Package
             $isChangePlan = false;
             if ($b['namebp'] == $p['name_plan'] && $b['status'] == 'on' && $config['extend_expiry'] == 'yes') {
                 // if it same internet plan, expired will extend
-                switch ($p['validity_unit']) {
-                    case 'Months':
-                        $date_exp = date("Y-m-d", strtotime($b['expiration'] . ' +' . $p['validity'] . ' months'));
-                        $time = $b['time'];
-                        break;
-                    case 'Period':
-                        if ($isUnlimitedPeriod) {
-                            $date_exp = self::getUnlimitedExpirationDate();
-                            $time = self::getUnlimitedExpirationTime();
-                        } else {
+                if ($isUnlimitedPlan) {
+                    $date_exp = self::getUnlimitedExpirationDate();
+                    $time = self::getUnlimitedExpirationTime();
+                } else {
+                    switch ($p['validity_unit']) {
+                        case 'Months':
+                            $date_exp = date("Y-m-d", strtotime($b['expiration'] . ' +' . $p['validity'] . ' months'));
+                            $time = $b['time'];
+                            break;
+                        case 'Period':
                             $date_exp = date("Y-m-$day_exp", strtotime($b['expiration'] . ' +' . $p['validity'] . ' months'));
                             $time = date("23:59:00");
-                        }
-                        break;
-                    case 'Days':
-                        $date_exp = date("Y-m-d", strtotime($b['expiration'] . ' +' . $p['validity'] . ' days'));
-                        $time = $b['time'];
-                        break;
-                    case 'Hrs':
-                        $datetime = explode(' ', date("Y-m-d H:i:s", strtotime($b['expiration'] . ' ' . $b['time'] . ' +' . $p['validity'] . ' hours')));
-                        $date_exp = $datetime[0];
-                        $time = $datetime[1];
-                        break;
-                    case 'Mins':
-                        $datetime = explode(' ', date("Y-m-d H:i:s", strtotime($b['expiration'] . ' ' . $b['time'] . ' +' . $p['validity'] . ' minutes')));
-                        $date_exp = $datetime[0];
-                        $time = $datetime[1];
-                        break;
+                            break;
+                        case 'Days':
+                            $date_exp = date("Y-m-d", strtotime($b['expiration'] . ' +' . $p['validity'] . ' days'));
+                            $time = $b['time'];
+                            break;
+                        case 'Hrs':
+                            $datetime = explode(' ', date("Y-m-d H:i:s", strtotime($b['expiration'] . ' ' . $b['time'] . ' +' . $p['validity'] . ' hours')));
+                            $date_exp = $datetime[0];
+                            $time = $datetime[1];
+                            break;
+                        case 'Mins':
+                            $datetime = explode(' ', date("Y-m-d H:i:s", strtotime($b['expiration'] . ' ' . $b['time'] . ' +' . $p['validity'] . ' minutes')));
+                            $date_exp = $datetime[0];
+                            $time = $datetime[1];
+                            break;
+                    }
                 }
             } else {
                 $isChangePlan = true;
@@ -710,7 +709,7 @@ class Package
                 //its already paid
                 $t->price = 0;
             } else {
-                if ($p['validity_unit'] == 'Period' && !$isUnlimitedPeriod) {
+                if ($p['validity_unit'] == 'Period' && !$isUnlimitedPlan) {
                     // Postpaid price from field
                     $add_inv = User::getAttribute("Invoice", $id_customer);
                     if (empty($add_inv) or $add_inv == 0) {
@@ -738,7 +737,7 @@ class Package
             $t->save();
             $transactionForNotification = $t;
 
-            if ($p['validity_unit'] == 'Period' && !$isUnlimitedPeriod) {
+            if ($p['validity_unit'] == 'Period' && !$isUnlimitedPlan) {
                 // insert price to fields for invoice next month
                 $fl = ORM::for_table('tbl_customers_fields')->where('field_name', 'Invoice')->where('customer_id', $c['id'])->find_one();
                 if (!$fl) {
@@ -827,7 +826,7 @@ class Package
                 $t->price = 0;
                 // its already paid
             } else {
-                if ($p['validity_unit'] == 'Period' && !$isUnlimitedPeriod) {
+                if ($p['validity_unit'] == 'Period' && !$isUnlimitedPlan) {
                     // Postpaid price always zero for first time
                     $bills = [];
                     $t->price = 0;
@@ -851,7 +850,7 @@ class Package
             $t->save();
             $transactionForNotification = $t;
 
-            if ($p['validity_unit'] == 'Period' && !$isUnlimitedPeriod && (int) $p['validity'] > 0 && $p['price'] != 0) {
+            if ($p['validity_unit'] == 'Period' && !$isUnlimitedPlan && (int) $p['validity'] > 0 && $p['price'] != 0) {
                 // insert price to fields for invoice next month
                 $fl = ORM::for_table('tbl_customers_fields')->where('field_name', 'Invoice')->where('customer_id', $c['id'])->find_one();
                 if (!$fl) {

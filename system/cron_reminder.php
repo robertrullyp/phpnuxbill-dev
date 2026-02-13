@@ -40,9 +40,8 @@ foreach ($d as $ds) {
         if (!$p) {
             continue;
         }
-        $planValidityUnit = strtolower(trim((string) ($p['validity_unit'] ?? '')));
         $planValidity = (int) ($p['validity'] ?? 0);
-        if ($planValidityUnit === 'period' && $planValidity <= 0) {
+        if ($planValidity <= 0) {
             $u->expiration = '2099-12-31';
             $u->time = '23:59:59';
             $u->status = 'on';
