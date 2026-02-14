@@ -929,7 +929,8 @@ class Package
         Balance::plus($customer['id'], $plan['price']);
         $balance = $customer['balance'] + $plan['price'];
 
-        $textInvoice = Lang::getNotifText('invoice_balance');
+	        // invoice_balance is treated as global (no per plan/category override).
+	        $textInvoice = Lang::getNotifText('invoice_balance');
         $textInvoice = str_replace('[[company_name]]', $config['CompanyName'], $textInvoice);
         $textInvoice = str_replace('[[address]]', $config['address'], $textInvoice);
         $textInvoice = str_replace('[[phone]]', $config['phone'], $textInvoice);
@@ -996,7 +997,8 @@ class Package
         Balance::plus($customer['id'], $plan['price']);
         $balance = $customer['balance'] + $plan['price'];
 
-        $textInvoice = Lang::getNotifText('invoice_balance');
+	        // invoice_balance is treated as global (no per plan/category override).
+	        $textInvoice = Lang::getNotifText('invoice_balance');
         $textInvoice = str_replace('[[company_name]]', $config['CompanyName'], $textInvoice);
         $textInvoice = str_replace('[[address]]', $config['address'], $textInvoice);
         $textInvoice = str_replace('[[phone]]', $config['phone'], $textInvoice);

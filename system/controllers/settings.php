@@ -1885,15 +1885,42 @@ switch ($action) {
             _alert(Lang::T('You do not have permission to access this page'), 'danger', "dashboard");
         }
         run_hook('view_notifications'); #HOOK
-        if (file_exists($UPLOAD_PATH . DIRECTORY_SEPARATOR . "notifications.json")) {
-            $ui->assign('_json', json_decode(file_get_contents($UPLOAD_PATH . DIRECTORY_SEPARATOR . 'notifications.json'), true));
-        } else {
-            $ui->assign('_json', json_decode(file_get_contents($UPLOAD_PATH . DIRECTORY_SEPARATOR . 'notifications.default.json'), true));
+        $defaultNotif = json_decode(file_get_contents($UPLOAD_PATH . DIRECTORY_SEPARATOR . 'notifications.default.json'), true);
+        if (!is_array($defaultNotif)) {
+            $defaultNotif = [];
         }
+
+        $currentNotif = null;
+        if (file_exists($UPLOAD_PATH . DIRECTORY_SEPARATOR . "notifications.json")) {
+            $currentNotif = json_decode(file_get_contents($UPLOAD_PATH . DIRECTORY_SEPARATOR . 'notifications.json'), true);
+        }
+        if (!is_array($currentNotif)) {
+            $currentNotif = $defaultNotif;
+        }
+
+        $ui->assign('_json', $currentNotif);
 
         $csrf_token = Csrf::generateAndStoreToken();
         $ui->assign('csrf_token', $csrf_token);
-        $ui->assign('_default', json_decode(file_get_contents($UPLOAD_PATH . DIRECTORY_SEPARATOR . 'notifications.default.json'), true));
+        $ui->assign('_default', $defaultNotif);
+
+        $templateOverrides = [];
+        if (isset($currentNotif['template_overrides']) && is_array($currentNotif['template_overrides'])) {
+            $templateOverrides = $currentNotif['template_overrides'];
+        }
+        $templateOverridesJson = json_encode($templateOverrides, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+        if ($templateOverridesJson === false) {
+            $templateOverridesJson = '{}';
+        }
+        $ui->assign('template_overrides_json', $templateOverridesJson);
+
+        $plans = ORM::for_table('tbl_plans')
+            ->select_many('id', 'name_plan', 'type')
+            ->order_by_asc('type')
+            ->order_by_asc('name_plan')
+            ->find_array();
+        $ui->assign('plans', is_array($plans) ? $plans : []);
+
         $ui->display('admin/settings/notifications.tpl');
         break;
     case 'notifications-post':
@@ -1908,8 +1935,246 @@ switch ($action) {
             r2(getUrl('settings/notifications'), 'e', Lang::T('Invalid or Expired CSRF Token') . ".");
         }
         Csrf::generateAndStoreToken();
-        file_put_contents($UPLOAD_PATH . "/notifications.json", json_encode($_POST));
+        $payload = $_POST;
+        unset($payload['csrf_token']);
+
+        $existing = [];
+        $existingPath = $UPLOAD_PATH . DIRECTORY_SEPARATOR . 'notifications.json';
+        if (file_exists($existingPath)) {
+            $existing = json_decode(file_get_contents($existingPath), true);
+            if (!is_array($existing)) {
+                $existing = [];
+            }
+        }
+        if (!isset($payload['template_overrides']) && isset($existing['template_overrides']) && is_array($existing['template_overrides'])) {
+            $payload['template_overrides'] = $existing['template_overrides'];
+        }
+
+        file_put_contents(
+            $existingPath,
+            json_encode($payload, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE)
+        );
         r2(getUrl('settings/notifications'), 's', Lang::T('Settings Saved Successfully'));
+        break;
+    case 'notifications-override-type-post':
+        if ($_app_stage == 'Demo') {
+            r2(getUrl('settings/notifications'), 'e', 'You cannot perform this action in Demo mode');
+        }
+        if (!in_array($admin['user_type'], ['SuperAdmin', 'Admin'])) {
+            _alert(Lang::T('You do not have permission to access this page'), 'danger', "dashboard");
+        }
+
+        $csrf_token = _post('csrf_token');
+        if (!Csrf::check($csrf_token)) {
+            r2(getUrl('settings/notifications'), 'e', Lang::T('Invalid or Expired CSRF Token') . ".");
+        }
+        Csrf::generateAndStoreToken();
+
+        $templateKey = trim((string) _post('template_key'));
+        $typeKey = strtoupper(trim((string) _post('type_key')));
+        $message = isset($_POST['message']) ? (string) $_POST['message'] : '';
+
+        if ($templateKey === '' || !preg_match('/^[a-z0-9_]+$/i', $templateKey)) {
+            r2(getUrl('settings/notifications'), 'e', 'Template tidak valid.');
+        }
+        $overrideSupportedTemplates = ['expired', 'reminder_7_day', 'reminder_3_day', 'reminder_1_day', 'invoice_paid', 'edit_expiry_message'];
+        if (!in_array($templateKey, $overrideSupportedTemplates, true)) {
+            r2(getUrl('settings/notifications'), 'e', 'Override tidak tersedia untuk template ini.');
+        }
+        if (!in_array($typeKey, ['HOTSPOT', 'PPPOE', 'VPN'], true)) {
+            r2(getUrl('settings/notifications'), 'e', 'Kategori tidak valid.');
+        }
+
+        $path = $UPLOAD_PATH . DIRECTORY_SEPARATOR . 'notifications.json';
+        $data = [];
+        if (file_exists($path)) {
+            $data = json_decode(file_get_contents($path), true);
+        } else {
+            $data = json_decode(file_get_contents($UPLOAD_PATH . DIRECTORY_SEPARATOR . 'notifications.default.json'), true);
+        }
+        if (!is_array($data)) {
+            $data = [];
+        }
+
+        if (!isset($data['template_overrides']) || !is_array($data['template_overrides'])) {
+            $data['template_overrides'] = [];
+        }
+        if (!isset($data['template_overrides']['type']) || !is_array($data['template_overrides']['type'])) {
+            $data['template_overrides']['type'] = [];
+        }
+        if (!isset($data['template_overrides']['type'][$typeKey]) || !is_array($data['template_overrides']['type'][$typeKey])) {
+            $data['template_overrides']['type'][$typeKey] = [];
+        }
+
+        if (trim($message) === '') {
+            unset($data['template_overrides']['type'][$typeKey][$templateKey]);
+        } else {
+            $data['template_overrides']['type'][$typeKey][$templateKey] = $message;
+        }
+
+        if (empty($data['template_overrides']['type'][$typeKey])) {
+            unset($data['template_overrides']['type'][$typeKey]);
+        }
+        if (empty($data['template_overrides']['type'])) {
+            unset($data['template_overrides']['type']);
+        }
+        if (empty($data['template_overrides'])) {
+            unset($data['template_overrides']);
+        }
+
+        file_put_contents($path, json_encode($data, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
+        r2(getUrl('settings/notifications'), 's', 'Override kategori disimpan.');
+        break;
+    case 'notifications-override-plan-post':
+        if ($_app_stage == 'Demo') {
+            r2(getUrl('settings/notifications'), 'e', 'You cannot perform this action in Demo mode');
+        }
+        if (!in_array($admin['user_type'], ['SuperAdmin', 'Admin'])) {
+            _alert(Lang::T('You do not have permission to access this page'), 'danger', "dashboard");
+        }
+
+        $csrf_token = _post('csrf_token');
+        if (!Csrf::check($csrf_token)) {
+            r2(getUrl('settings/notifications'), 'e', Lang::T('Invalid or Expired CSRF Token') . ".");
+        }
+        Csrf::generateAndStoreToken();
+
+        $planId = (int) _post('plan_id');
+        $templateKey = trim((string) _post('template_key'));
+        $message = isset($_POST['message']) ? (string) $_POST['message'] : '';
+
+        if ($planId < 1) {
+            r2(getUrl('settings/notifications'), 'e', 'Plan belum dipilih.');
+        }
+        if ($templateKey === '' || !preg_match('/^[a-z0-9_]+$/i', $templateKey)) {
+            r2(getUrl('settings/notifications'), 'e', 'Template tidak valid.');
+        }
+        $overrideSupportedTemplates = ['expired', 'reminder_7_day', 'reminder_3_day', 'reminder_1_day', 'invoice_paid', 'edit_expiry_message'];
+        if (!in_array($templateKey, $overrideSupportedTemplates, true)) {
+            r2(getUrl('settings/notifications'), 'e', 'Override tidak tersedia untuk template ini.');
+        }
+
+        $path = $UPLOAD_PATH . DIRECTORY_SEPARATOR . 'notifications.json';
+        $data = [];
+        if (file_exists($path)) {
+            $data = json_decode(file_get_contents($path), true);
+        } else {
+            $data = json_decode(file_get_contents($UPLOAD_PATH . DIRECTORY_SEPARATOR . 'notifications.default.json'), true);
+        }
+        if (!is_array($data)) {
+            $data = [];
+        }
+
+        if (!isset($data['template_overrides']) || !is_array($data['template_overrides'])) {
+            $data['template_overrides'] = [];
+        }
+        if (!isset($data['template_overrides']['plan']) || !is_array($data['template_overrides']['plan'])) {
+            $data['template_overrides']['plan'] = [];
+        }
+        if (!isset($data['template_overrides']['plan'][$planId]) || !is_array($data['template_overrides']['plan'][$planId])) {
+            $data['template_overrides']['plan'][$planId] = [];
+        }
+
+        if (trim($message) === '') {
+            unset($data['template_overrides']['plan'][$planId][$templateKey]);
+        } else {
+            $data['template_overrides']['plan'][$planId][$templateKey] = $message;
+        }
+
+        if (empty($data['template_overrides']['plan'][$planId])) {
+            unset($data['template_overrides']['plan'][$planId]);
+        }
+        if (empty($data['template_overrides']['plan'])) {
+            unset($data['template_overrides']['plan']);
+        }
+        if (empty($data['template_overrides'])) {
+            unset($data['template_overrides']);
+        }
+
+        file_put_contents($path, json_encode($data, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
+        r2(getUrl('settings/notifications'), 's', 'Override plan disimpan.');
+        break;
+    case 'notifications-override-purpose-post':
+        if ($_app_stage == 'Demo') {
+            r2(getUrl('settings/notifications'), 'e', 'You cannot perform this action in Demo mode');
+        }
+        if (!in_array($admin['user_type'], ['SuperAdmin', 'Admin'])) {
+            _alert(Lang::T('You do not have permission to access this page'), 'danger', "dashboard");
+        }
+
+        $csrf_token = _post('csrf_token');
+        if (!Csrf::check($csrf_token)) {
+            r2(getUrl('settings/notifications'), 'e', Lang::T('Invalid or Expired CSRF Token') . ".");
+        }
+        Csrf::generateAndStoreToken();
+
+        $templateKey = trim((string) _post('template_key'));
+        $purposeKey = strtolower(trim((string) _post('purpose_key')));
+        $message = isset($_POST['message']) ? (string) $_POST['message'] : '';
+
+        if ($templateKey === '' || !preg_match('/^[a-z0-9_]+$/i', $templateKey)) {
+            r2(getUrl('settings/notifications'), 'e', 'Template tidak valid.');
+        }
+
+        $overrideSupportedTemplates = ['otp_message', 'welcome_message'];
+        if (!in_array($templateKey, $overrideSupportedTemplates, true)) {
+            r2(getUrl('settings/notifications'), 'e', 'Override tidak tersedia untuk template ini.');
+        }
+
+        if ($purposeKey === '' || !preg_match('/^[a-z0-9_]+$/', $purposeKey)) {
+            r2(getUrl('settings/notifications'), 'e', 'Purpose tidak valid.');
+        }
+
+        $allowedPurposes = [];
+        if ($templateKey === 'otp_message') {
+            $allowedPurposes = ['register', 'verify', 'forgot'];
+        } elseif ($templateKey === 'welcome_message') {
+            $allowedPurposes = ['admin_register', 'self_register'];
+        }
+
+        if (!in_array($purposeKey, $allowedPurposes, true)) {
+            r2(getUrl('settings/notifications'), 'e', 'Purpose tidak valid.');
+        }
+
+        $path = $UPLOAD_PATH . DIRECTORY_SEPARATOR . 'notifications.json';
+        $data = [];
+        if (file_exists($path)) {
+            $data = json_decode(file_get_contents($path), true);
+        } else {
+            $data = json_decode(file_get_contents($UPLOAD_PATH . DIRECTORY_SEPARATOR . 'notifications.default.json'), true);
+        }
+        if (!is_array($data)) {
+            $data = [];
+        }
+
+        if (!isset($data['template_overrides']) || !is_array($data['template_overrides'])) {
+            $data['template_overrides'] = [];
+        }
+        if (!isset($data['template_overrides']['purpose']) || !is_array($data['template_overrides']['purpose'])) {
+            $data['template_overrides']['purpose'] = [];
+        }
+        if (!isset($data['template_overrides']['purpose'][$purposeKey]) || !is_array($data['template_overrides']['purpose'][$purposeKey])) {
+            $data['template_overrides']['purpose'][$purposeKey] = [];
+        }
+
+        if (trim($message) === '') {
+            unset($data['template_overrides']['purpose'][$purposeKey][$templateKey]);
+        } else {
+            $data['template_overrides']['purpose'][$purposeKey][$templateKey] = $message;
+        }
+
+        if (empty($data['template_overrides']['purpose'][$purposeKey])) {
+            unset($data['template_overrides']['purpose'][$purposeKey]);
+        }
+        if (empty($data['template_overrides']['purpose'])) {
+            unset($data['template_overrides']['purpose']);
+        }
+        if (empty($data['template_overrides'])) {
+            unset($data['template_overrides']);
+        }
+
+        file_put_contents($path, json_encode($data, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
+        r2(getUrl('settings/notifications'), 's', 'Override purpose disimpan.');
         break;
     case 'notifications-test':
         header('Content-Type: application/json');
@@ -1955,7 +2220,7 @@ switch ($action) {
         $footer = $config['note'] ?? '';
         $samplePrice = Lang::moneyFormat(10000);
         $sampleBalance = Lang::moneyFormat(5000);
-        $replacements = [
+	        $replacements = [
             '[[company_name]]' => $companyName,
             '[[company]]' => $companyName,
             '[[company_address]]' => $companyAddress,
@@ -1989,10 +2254,20 @@ switch ($action) {
             '[[balance]]' => $sampleBalance,
             '[[balance_before]]' => Lang::moneyFormat(10000),
             '[[current_balance]]' => Lang::moneyFormat(15000),
-            '[[bills]]' => "Tax : " . Lang::moneyFormat(1000) . "\nTotal : " . Lang::moneyFormat(11000),
-            '[[old_plan]]' => 'Paket Lama',
-            '[[new_plan]]' => 'Paket Baru',
-            '[[payment_link]]' => '?_route=home&recharge=0&uid=test',
+	            '[[otp]]' => '123456',
+	            '[[purpose]]' => 'Verification',
+	            '[[otp_expires_at]]' => Lang::dateTimeFormat(date('Y-m-d H:i:s', time() + (int) ($_c['otp_expiry'] ?? 600))),
+	            '[[otp_expired_at]]' => Lang::dateTimeFormat(date('Y-m-d H:i:s', time() + (int) ($_c['otp_expiry'] ?? 600))),
+	            '[[otp_request_allowed_at]]' => Lang::dateTimeFormat(date('Y-m-d H:i:s', time() + (int) ($_c['otp_wait'] ?? 60))),
+	            '[[otp_request_at]]' => Lang::dateTimeFormat(date('Y-m-d H:i:s', time() + (int) ($_c['otp_wait'] ?? 60))),
+	            '[[otp_expiry_seconds]]' => (string) (int) ($_c['otp_expiry'] ?? 600),
+	            '[[otp_expiry]]' => (string) (int) ($_c['otp_expiry'] ?? 600),
+	            '[[otp_wait_seconds]]' => (string) (int) ($_c['otp_wait'] ?? 60),
+	            '[[otp_wait]]' => (string) (int) ($_c['otp_wait'] ?? 60),
+	            '[[bills]]' => "Tax : " . Lang::moneyFormat(1000) . "\nTotal : " . Lang::moneyFormat(11000),
+	            '[[old_plan]]' => 'Paket Lama',
+	            '[[new_plan]]' => 'Paket Baru',
+	            '[[payment_link]]' => '?_route=home&recharge=0&uid=test',
             '[[url]]' => APP_URL . '/?_route=login',
         ];
 
@@ -2082,11 +2357,12 @@ switch ($action) {
         }
         $message = strtr($message, $replacements);
 
-        $sent = Message::sendWhatsapp($phone, $message, ['skip_queue' => true, 'queue_context' => 'test']);
-        $newToken = Csrf::generateAndStoreToken();
-        if ($sent === false || $sent === 'kosong') {
-            echo json_encode(['ok' => false, 'message' => 'Gagal mengirim.', 'csrf_token' => $newToken]);
-            exit;
+	        $sendOptions = ['skip_queue' => true, 'queue_context' => 'test'];
+	        $sent = Message::sendWhatsapp($phone, $message, $sendOptions);
+	        $newToken = Csrf::generateAndStoreToken();
+	        if ($sent === false || $sent === 'kosong') {
+	            echo json_encode(['ok' => false, 'message' => 'Gagal mengirim.', 'csrf_token' => $newToken]);
+	            exit;
         }
         echo json_encode(['ok' => true, 'message' => 'Test terkirim.', 'csrf_token' => $newToken]);
         exit;

@@ -110,8 +110,12 @@ if ($isApi) {
 }
 
 // notification message
+$_notifmsg = [];
 if (file_exists($UPLOAD_PATH . DIRECTORY_SEPARATOR . "notifications.json")) {
-    $_notifmsg = json_decode(file_get_contents($UPLOAD_PATH . DIRECTORY_SEPARATOR . 'notifications.json'), true);
+    $decodedNotif = json_decode(file_get_contents($UPLOAD_PATH . DIRECTORY_SEPARATOR . 'notifications.json'), true);
+    if (is_array($decodedNotif)) {
+        $_notifmsg = $decodedNotif;
+    }
 }
 $_notifmsg_default = json_decode(file_get_contents($UPLOAD_PATH . DIRECTORY_SEPARATOR . 'notifications.default.json'), true);
 

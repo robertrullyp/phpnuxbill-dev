@@ -167,6 +167,76 @@ switch ($do) {
                         Package::rechargeUser($user, $plan['routers'], $plan['id'], 'Welcome', 'Auto');
                     }
                 }
+
+	                // Send welcome message on successful self-registration (optional).
+	                if (isset($config['reg_send_welcome_message']) && $config['reg_send_welcome_message'] === 'yes') {
+	                    $welcomeMessage = Lang::getNotifText('welcome_message', ['purpose' => 'self_register']);
+	                    $welcomeMessage = str_replace('[[company]]', $config['CompanyName'], $welcomeMessage);
+	                    $welcomeMessage = str_replace('[[name]]', $d['fullname'], $welcomeMessage);
+	                    $welcomeMessage = str_replace('[[username]]', $d['username'], $welcomeMessage);
+	                    $welcomeMessage = str_replace('[[password]]', $d['password'], $welcomeMessage);
+	                    $welcomeMessage = str_replace('[[url]]', APP_URL . '/?_route=login', $welcomeMessage);
+	                    $subject = "Welcome to " . $config['CompanyName'];
+
+	                    $phone = trim((string) ($d['phonenumber'] ?? ''));
+	                    $emailTarget = trim((string) ($d['email'] ?? ''));
+
+	                    $hasViaConfig = array_key_exists('reg_welcome_via_whatsapp', $config)
+	                        || array_key_exists('reg_welcome_via_sms', $config)
+	                        || array_key_exists('reg_welcome_via_email', $config)
+	                        || array_key_exists('reg_welcome_via_inbox', $config);
+
+	                    if ($hasViaConfig) {
+	                        $viaWhatsapp = (isset($config['reg_welcome_via_whatsapp']) && $config['reg_welcome_via_whatsapp'] === 'yes');
+	                        $viaSms = (isset($config['reg_welcome_via_sms']) && $config['reg_welcome_via_sms'] === 'yes');
+	                        $viaEmail = (isset($config['reg_welcome_via_email']) && $config['reg_welcome_via_email'] === 'yes');
+	                        $viaInbox = (isset($config['reg_welcome_via_inbox']) && $config['reg_welcome_via_inbox'] === 'yes');
+	                    } else {
+	                        // Backward-compatibility: default to OTP method behavior (WA/SMS),
+	                        // and only use email when phone is missing.
+	                        $otpType = strtolower(trim((string) ($config['phone_otp_type'] ?? 'sms')));
+	                        if (!in_array($otpType, ['sms', 'whatsapp', 'both'], true)) {
+	                            $otpType = 'sms';
+	                        }
+	                        $viaWhatsapp = ($otpType === 'whatsapp' || $otpType === 'both');
+	                        $viaSms = ($otpType === 'sms' || $otpType === 'both');
+	                        $viaEmail = ($phone === '');
+	                        $viaInbox = false;
+	                    }
+
+	                    $waOptions = Message::isWhatsappQueueEnabledForNotificationTemplate('welcome_message')
+	                        ? ['queue' => true, 'queue_context' => 'notification']
+	                        : [];
+
+	                    if ($viaWhatsapp && $phone !== '') {
+	                        try {
+	                            Message::sendWhatsapp($phone, $welcomeMessage, $waOptions);
+	                        } catch (Throwable $e) {
+	                            _log('Failed to send welcome message via WhatsApp: ' . $e->getMessage());
+	                        }
+	                    }
+	                    if ($viaSms && $phone !== '') {
+	                        try {
+	                            Message::sendSMS($phone, $welcomeMessage);
+	                        } catch (Throwable $e) {
+	                            _log('Failed to send welcome message via SMS: ' . $e->getMessage());
+	                        }
+	                    }
+	                    if ($viaEmail && $emailTarget !== '' && Validator::Email($emailTarget)) {
+	                        try {
+	                            Message::sendEmail($emailTarget, $subject, $welcomeMessage, $emailTarget);
+	                        } catch (Throwable $e) {
+	                            _log('Failed to send welcome message via Email: ' . $e->getMessage());
+	                        }
+	                    }
+	                    if ($viaInbox) {
+	                        try {
+	                            Message::addToInbox($user, $subject, $welcomeMessage);
+	                        } catch (Throwable $e) {
+	                            _log('Failed to add welcome message to Inbox: ' . $e->getMessage());
+	                        }
+	                    }
+	                }
                 $msg .= Lang::T('Registration successful') . '<br>';
                 if ($config['reg_nofify_admin'] == 'yes') {
                     sendTelegram($config['CompanyName'] . ' - ' . Lang::T('New User Registration') . "\n\nFull Name: " . $fullname . "\nUsername: " . $username . "\nEmail: " . $email . "\nPhone Number: " . $phone_number . "\nAddress: " . $address);
@@ -297,33 +367,42 @@ switch ($do) {
                     $ui->assign('csrf_token', $csrf_token);
                     $ui->display('customer/register-rotp.tpl');
                     return;
-                } else {
-                    $otp = rand(100000, 999999);
-                    file_put_contents($otpPath, $otp);
-                    if ($config['phone_otp_type'] == 'whatsapp') {
-                        $waSent = Message::sendWhatsapp($phone_number, $config['CompanyName'] . "\n\n" . Lang::T("Registration code") . "\n$otp");
-                        if ($waSent === false) {
-                            $ui->assign('notify', Lang::T('OTP not sent: phone number isn\'t registered on WhatsApp'));
-                            $ui->assign('notify_t', 'd');
-                            $ui->assign('_title', Lang::T('Register'));
+	                } else {
+	                    $otp = rand(100000, 999999);
+	                    file_put_contents($otpPath, $otp);
+	                    $otpMessage = Message::renderOtpMessage($otp, Lang::T("Registration code"), 'register');
+	                    $otpPlainMessage = Message::whatsappTemplateToPlainText($otpMessage);
+	                    if ($otpPlainMessage === '') {
+	                        $otpPlainMessage = 'Kode OTP: ' . $otp;
+	                    } elseif (strpos($otpPlainMessage, (string) $otp) === false) {
+	                        $otpPlainMessage .= "\n\nKode OTP: " . $otp;
+	                    }
+		                    if ($config['phone_otp_type'] == 'whatsapp') {
+		                        // Template decides text vs interactive (via [[wa]] block). Gateway support decides whether
+		                        // interactive is delivered or downgraded to plain text (fallback).
+		                        $waSent = Message::sendWhatsapp($phone_number, $otpMessage);
+		                        if ($waSent === false) {
+		                            $ui->assign('notify', Lang::T('OTP not sent: phone number isn\'t registered on WhatsApp'));
+		                            $ui->assign('notify_t', 'd');
+		                            $ui->assign('_title', Lang::T('Register'));
                             run_hook('view_otp_register'); #HOOK
                             $ui->display('customer/register-rotp.tpl');
-                            return;
-                        }
-                    } else if ($config['phone_otp_type'] == 'both') {
-                        $waSent = Message::sendWhatsapp($phone_number, $config['CompanyName'] . "\n\n" . Lang::T("Registration code") . "\n$otp");
-                        if ($waSent === false) {
-                            $ui->assign('notify', Lang::T('OTP not sent: phone number isn\'t registered on WhatsApp'));
-                            $ui->assign('notify_t', 'd');
-                            $ui->assign('_title', Lang::T('Register'));
+	                            return;
+	                        }
+	                    } else if ($config['phone_otp_type'] == 'both') {
+	                        $waSent = Message::sendWhatsapp($phone_number, $otpMessage);
+	                        if ($waSent === false) {
+	                            $ui->assign('notify', Lang::T('OTP not sent: phone number isn\'t registered on WhatsApp'));
+	                            $ui->assign('notify_t', 'd');
+	                            $ui->assign('_title', Lang::T('Register'));
                             run_hook('view_otp_register'); #HOOK
                             $ui->display('customer/register-rotp.tpl');
-                            return;
-                        }
-                        Message::sendSMS($phone_number, $config['CompanyName'] . "\n\n" . Lang::T("Registration code") . "\n$otp");
-                    } else {
-                        Message::sendSMS($phone_number, $config['CompanyName'] . "\n\n" . Lang::T("Registration code") . "\n$otp");
-                    }
+	                            return;
+	                        }
+	                        Message::sendSMS($phone_number, $otpPlainMessage);
+	                    } else {
+	                        Message::sendSMS($phone_number, $otpPlainMessage);
+	                    }
                     $ui->assign('phone_number', $phone_number);
                     $ui->assign('notify', 'Registration code has been sent to your phone');
                     $ui->assign('notify_t', 's');

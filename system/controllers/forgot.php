@@ -49,28 +49,35 @@ if ($step == 1) {
             $sec = time() - filemtime($otpPath);
             $ui->assign('notify_t', 's');
             $ui->assign('notify', Lang::T("Verification Code already Sent to Your Phone/Email/Whatsapp, please wait")." $sec seconds.");
-        } else {
-            $via = $config['user_notification_reminder'];
-            if ($via == 'email') {
-                $via = 'sms';
-            }
-            $otp = mt_rand(100000, 999999);
-            file_put_contents($otpPath, $otp);
-            if ($via == 'sms') {
-                Message::sendSMS($user['phonenumber'], $config['CompanyName'] . " C0de: $otp");
-                Message::sendEmail(
-                    $user['email'],
+	        } else {
+	            $via = $config['user_notification_reminder'];
+	            if ($via == 'email') {
+	                $via = 'sms';
+	            }
+	            $otp = mt_rand(100000, 999999);
+	            file_put_contents($otpPath, $otp);
+	            $otpMessage = Message::renderOtpMessage($otp, Lang::T("Your Verification Code"), 'forgot');
+	            $otpPlainMessage = Message::whatsappTemplateToPlainText($otpMessage);
+	            if ($otpPlainMessage === '') {
+	                $otpPlainMessage = 'Kode OTP: ' . $otp;
+	            } elseif (strpos($otpPlainMessage, (string) $otp) === false) {
+	                $otpPlainMessage .= "\n\nKode OTP: " . $otp;
+	            }
+	            if ($via == 'sms') {
+	                Message::sendSMS($user['phonenumber'], $otpPlainMessage);
+	                Message::sendEmail(
+	                    $user['email'],
                     $config['CompanyName'] . Lang::T("Your Verification Code") . ' : ' . $otp,
-                    Lang::T("Your Verification Code") . ' : <b>' . $otp . '</b>'
+                    $otpPlainMessage
                 );
-                $ui->assign('notify_t', 's');
-                $ui->assign('notify', Lang::T("Verification Code has been Sent to Your Phone/Email/Whatsapp"));
-            } else {
-                $waSent = Message::sendWhatsapp($user['phonenumber'], $config['CompanyName'] . " C0de: $otp");
-                Message::sendEmail(
-                    $user['email'],
-                    $config['CompanyName'] . Lang::T("Your Verification Code") . ' : ' . $otp,
-                    Lang::T("Your Verification Code") . ' : <b>' . $otp . '</b>'
+	                $ui->assign('notify_t', 's');
+	                $ui->assign('notify', Lang::T("Verification Code has been Sent to Your Phone/Email/Whatsapp"));
+	            } else {
+	                $waSent = Message::sendWhatsapp($user['phonenumber'], $otpMessage);
+	                Message::sendEmail(
+	                    $user['email'],
+	                    $config['CompanyName'] . Lang::T("Your Verification Code") . ' : ' . $otp,
+	                    $otpPlainMessage
                 );
                 if ($waSent === false) {
                     $ui->assign('notify_t', 'e');

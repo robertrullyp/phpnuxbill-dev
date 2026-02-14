@@ -49,7 +49,6 @@ system/devices/**
 !system/devices/Radius.php
 !system/devices/RadiusRest.php
 !system/devices/MikrotikPppoe.php
-!system/devices/MikrotikPppoeCustom.php
 !system/devices/MikrotikHotspot.php
 /.vs
 docker-compose.yml

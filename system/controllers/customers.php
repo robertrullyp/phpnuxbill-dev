@@ -747,7 +747,7 @@ switch ($action) {
 
             // Send welcome message
             if (isset($_POST['send_welcome_message']) && $_POST['send_welcome_message'] == true) {
-                $welcomeMessage = Lang::getNotifText('welcome_message');
+                $welcomeMessage = Lang::getNotifText('welcome_message', ['purpose' => 'admin_register']);
                 $welcomeMessage = str_replace('[[company]]', $config['CompanyName'], $welcomeMessage);
                 $welcomeMessage = str_replace('[[name]]', $d['fullname'], $welcomeMessage);
                 $welcomeMessage = str_replace('[[username]]', $d['username'], $welcomeMessage);

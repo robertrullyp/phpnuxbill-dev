@@ -536,34 +536,34 @@ switch ($action) {
             // Send  Notifications
             if (isset($_POST['notify']) && $_POST['notify'] == true) {
                 $templateKey = 'plan_change_message';
-                if ($oldPlanID != $id_plan) {
-                    $oldPlan = ORM::for_table('tbl_plans')->find_one($oldPlanID);
-                    $oldPlanName = $oldPlan ? $oldPlan['name_plan'] : 'Old Plan';
-                    $notifyMessage = Lang::getNotifText('plan_change_message');
-                    if (empty($notifyMessage)) {
-                        $notifyMessage = Lang::T('Great news') . ', [[name]]! ' .
-                            Lang::T('Your plan has been successfully upgraded from ') . ' [[old_plan]] ' .
-                            Lang::T('to') . ' [[new_plan]]. ' .
+	                if ($oldPlanID != $id_plan) {
+	                    $oldPlan = ORM::for_table('tbl_plans')->find_one($oldPlanID);
+	                    $oldPlanName = $oldPlan ? $oldPlan['name_plan'] : 'Old Plan';
+	                    // plan_change_message is treated as global (no per plan/category override).
+	                    $notifyMessage = Lang::getNotifText('plan_change_message');
+	                    if (empty($notifyMessage)) {
+	                        $notifyMessage = Lang::T('Great news') . ', [[name]]! ' .
+	                            Lang::T('Your plan has been successfully upgraded from ') . ' [[old_plan]] ' .
+	                            Lang::T('to') . ' [[new_plan]]. ' .
                             Lang::T('You can now enjoy seamless internet access until') . ' [[expiry]]. ' .
                             Lang::T('Thank you for choosing') . ' [[company]] ' .
                             Lang::T('for your internet needs') . ', ' .
                             Lang::T('Enjoy enhanced features and benefits starting today') . '!';
-                    } else {
-                        $notifyMessage = Lang::getNotifText('plan_change_message');
                     }
                     $notifyMessage = str_replace('[[old_plan]]', $oldPlanName, $notifyMessage);
                     $notifyMessage = str_replace('[[new_plan]]', $planName, $notifyMessage);
                 } else {
                     $templateKey = 'edit_expiry_message';
-                    $notifyMessage = Lang::getNotifText('edit_expiry_message');
+                    $notifyMessage = Lang::getNotifText('edit_expiry_message', [
+                        'plan_id' => (int) ($newPlan['id'] ?? 0),
+                        'type' => (string) ($newPlan['type'] ?? ''),
+                    ]);
                     if (empty($notifyMessage)) {
                         $notifyMessage = Lang::T('Dear') . ' [[name]], ' .
                             Lang::T('your') . ' [[plan]] ' .
                             Lang::T('has been extended! You can now enjoy seamless internet access until') . ' [[expiry]]. ' .
                             Lang::T('Thank you for choosing') . ' [[company]] ' .
                             Lang::T('for your internet needs') . '!';
-                    } else {
-                        $notifyMessage = Lang::getNotifText('edit_expiry_message');
                     }
                     $notifyMessage = str_replace('[[plan]]', $planName, $notifyMessage);
                 }

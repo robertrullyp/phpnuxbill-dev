@@ -38,7 +38,6 @@ while ($row = $statement->fetch(PDO::FETCH_ASSOC)) {
 $_c = $config;
 
 
-$textExpired = Lang::getNotifText('expired');
 $unlimitedExpirationDate = '2099-12-31';
 $unlimitedExpirationTime = '23:59:59';
 
@@ -184,6 +183,10 @@ foreach ($d as $ds) {
 
             // Send notification and update user status
             try {
+                $textExpired = Lang::getNotifText('expired', [
+                    'plan_id' => (int) ($p['id'] ?? 0),
+                    'type' => (string) ($p['type'] ?? ''),
+                ]);
                 echo Message::sendPackageNotification(
                     $c,
                     $u['namebp'],

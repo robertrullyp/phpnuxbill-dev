@@ -65,11 +65,15 @@ foreach ($d as $ds) {
         }
         if ($ds['expiration'] == $day7 && $config['notification_reminder_7days'] !== 'no') {
             try {
+                $template = Lang::getNotifText('reminder_7_day', [
+                    'plan_id' => (int) ($p['id'] ?? 0),
+                    'type' => (string) ($p['type'] ?? ''),
+                ]);
                 echo Message::sendPackageNotification(
                     $c,
                     $p['name_plan'],
                     $price,
-                    Message::getMessageType($p['type'], Lang::getNotifText('reminder_7_day')),
+                    Message::getMessageType($p['type'], $template),
                     $config['user_notification_reminder'],
                     'reminder_7_day'
                 ) . "\n";
@@ -79,11 +83,15 @@ foreach ($d as $ds) {
             }
         } else if ($ds['expiration'] == $day3 && $config['notification_reminder_3days'] !== 'no') {
             try {
+                $template = Lang::getNotifText('reminder_3_day', [
+                    'plan_id' => (int) ($p['id'] ?? 0),
+                    'type' => (string) ($p['type'] ?? ''),
+                ]);
                 echo Message::sendPackageNotification(
                     $c,
                     $p['name_plan'],
                     $price,
-                    Message::getMessageType($p['type'], Lang::getNotifText('reminder_3_day')),
+                    Message::getMessageType($p['type'], $template),
                     $config['user_notification_reminder'],
                     'reminder_3_day'
                 ) . "\n";
@@ -93,11 +101,15 @@ foreach ($d as $ds) {
             }
         } else if ($ds['expiration'] == $day1 && $config['notification_reminder_1day'] !== 'no') {
             try {
+                $template = Lang::getNotifText('reminder_1_day', [
+                    'plan_id' => (int) ($p['id'] ?? 0),
+                    'type' => (string) ($p['type'] ?? ''),
+                ]);
                 echo Message::sendPackageNotification(
                     $c,
                     $p['name_plan'],
                     $price,
-                    Message::getMessageType($p['type'], Lang::getNotifText('reminder_1_day')),
+                    Message::getMessageType($p['type'], $template),
                     $config['user_notification_reminder'],
                     'reminder_1_day'
                 ) . "\n";

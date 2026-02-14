@@ -470,11 +470,85 @@
                         {Lang::T('Notify Admin upon self registration')}
                     </p>
                 </div>
-                <div class="form-group">
-                    <label class="col-md-3 control-label">{Lang::T('Mandatory Fields')}:</label><br>
-                    <label class="col-md-3 control-label">
-                        <input type="checkbox" name="man_fields_email" value="yes"
-                            {if !isset($_c['man_fields_email']) || $_c['man_fields_email'] neq 'no'}checked{/if}>
+	                <div class="form-group">
+	                    <label class="col-md-3 control-label">{Lang::T('Send welcome message')}</label>
+	                    <div class="col-md-5">
+	                        <select name="reg_send_welcome_message" id="reg_send_welcome_message" class="form-control">
+	                            <option value="no">
+	                                {Lang::T('No')}
+	                            </option>
+	                            <option value="yes" {if isset($_c['reg_send_welcome_message']) && $_c['reg_send_welcome_message']=='yes' }selected="selected" {/if}>
+	                                {Lang::T('Yes')}
+	                            </option>
+	                        </select>
+	                    </div>
+	                    <p class="help-block col-md-4">
+	                        {Lang::T('Send Welcome Message template to customer after self registration')}
+	                    </p>
+	                </div>
+	                <div class="form-group" id="reg_welcome_via_group" {if !isset($_c['reg_send_welcome_message']) || $_c['reg_send_welcome_message'] neq 'yes'}style="display:none;"{/if}>
+	                    <label class="col-md-3 control-label">{Lang::T('Send via')}</label>
+	                    <div class="col-md-5">
+	                        <div class="row">
+	                            <div class="col-xs-6 col-sm-3">
+	                                <input type="hidden" name="reg_welcome_via_whatsapp" value="no">
+	                                <div class="checkbox" style="margin:0;">
+	                                    <label>
+	                                        <input type="checkbox" name="reg_welcome_via_whatsapp" value="yes"
+	                                            {if isset($_c['reg_welcome_via_whatsapp'])}
+	                                                {if $_c['reg_welcome_via_whatsapp']=='yes'}checked{/if}
+	                                            {else}
+	                                                {if isset($_c['phone_otp_type']) && ($_c['phone_otp_type']=='whatsapp' || $_c['phone_otp_type']=='both')}checked{/if}
+	                                            {/if}>
+	                                        {Lang::T('WhatsApp')}
+	                                    </label>
+	                                </div>
+	                            </div>
+	                            <div class="col-xs-6 col-sm-3">
+	                                <input type="hidden" name="reg_welcome_via_sms" value="no">
+	                                <div class="checkbox" style="margin:0;">
+	                                    <label>
+	                                        <input type="checkbox" name="reg_welcome_via_sms" value="yes"
+	                                            {if isset($_c['reg_welcome_via_sms'])}
+	                                                {if $_c['reg_welcome_via_sms']=='yes'}checked{/if}
+	                                            {else}
+	                                                {if isset($_c['phone_otp_type']) && ($_c['phone_otp_type']=='sms' || $_c['phone_otp_type']=='both')}checked{/if}
+	                                            {/if}>
+	                                        {Lang::T('SMS')}
+	                                    </label>
+	                                </div>
+	                            </div>
+	                            <div class="col-xs-6 col-sm-3">
+	                                <input type="hidden" name="reg_welcome_via_email" value="no">
+	                                <div class="checkbox" style="margin:0;">
+	                                    <label>
+	                                        <input type="checkbox" name="reg_welcome_via_email" value="yes"
+	                                            {if isset($_c['reg_welcome_via_email']) && $_c['reg_welcome_via_email']=='yes'}checked{/if}>
+	                                        {Lang::T('Email')}
+	                                    </label>
+	                                </div>
+	                            </div>
+	                            <div class="col-xs-6 col-sm-3">
+	                                <input type="hidden" name="reg_welcome_via_inbox" value="no">
+	                                <div class="checkbox" style="margin:0;">
+	                                    <label>
+	                                        <input type="checkbox" name="reg_welcome_via_inbox" value="yes"
+	                                            {if isset($_c['reg_welcome_via_inbox']) && $_c['reg_welcome_via_inbox']=='yes'}checked{/if}>
+	                                        {Lang::T('Inbox')}
+	                                    </label>
+	                                </div>
+	                            </div>
+	                        </div>
+	                    </div>
+	                    <p class="help-block col-md-4">
+	                        {Lang::T('Select channels for welcome message')}
+	                    </p>
+	                </div>
+	                <div class="form-group">
+	                    <label class="col-md-3 control-label">{Lang::T('Mandatory Fields')}:</label><br>
+	                    <label class="col-md-3 control-label">
+	                        <input type="checkbox" name="man_fields_email" value="yes"
+	                            {if !isset($_c['man_fields_email']) || $_c['man_fields_email'] neq 'no'}checked{/if}>
                         {Lang::T('Email')}
                     </label>
                     <label class="col-md-3 control-label">
@@ -1745,11 +1819,11 @@
             genieAcsEnable.addEventListener('change', toggleGenieAcsUrlRequirement);
         }
 
-        if (sectionTimeoutCheckbox && timeoutDurationInput && timeoutDurationField) {
-            if (sectionTimeoutCheckbox.checked) {
-                timeoutDurationInput.style.display = 'block';
-                timeoutDurationField.required = true;
-            }
+	        if (sectionTimeoutCheckbox && timeoutDurationInput && timeoutDurationField) {
+	            if (sectionTimeoutCheckbox.checked) {
+	                timeoutDurationInput.style.display = 'block';
+	                timeoutDurationField.required = true;
+	            }
 
             sectionTimeoutCheckbox.addEventListener('change', function() {
                 if (this.checked) {
@@ -1785,8 +1859,22 @@
 	                        timeoutDurationField.focus();
 	                    }
 	                });
+		            }
+		        }
+
+	        var regWelcomeSelect = document.getElementById('reg_send_welcome_message');
+	        var regWelcomeViaGroup = document.getElementById('reg_welcome_via_group');
+	        function toggleRegWelcomeVia() {
+	            if (!regWelcomeSelect || !regWelcomeViaGroup) {
+	                return;
 	            }
+	            var enabled = (regWelcomeSelect.value === 'yes');
+	            regWelcomeViaGroup.style.display = enabled ? '' : 'none';
 	        }
+	        if (regWelcomeSelect) {
+	            regWelcomeSelect.addEventListener('change', toggleRegWelcomeVia);
+	        }
+	        toggleRegWelcomeVia();
 	    });
 	</script>
 

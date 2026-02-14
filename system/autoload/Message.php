@@ -17,6 +17,124 @@ require $root_path . 'system/autoload/mail/SMTP.php';
 class Message
 {
 
+    public static function stripWhatsappTemplateBlocks($text)
+    {
+        if (!is_string($text)) {
+            return '';
+        }
+        return trim((string) preg_replace('/\\[\\[wa\\]\\].*?\\[\\[\\/wa\\]\\]/is', '', $text));
+    }
+
+    /**
+     * Convert a WhatsApp template (plain text, [[wa]] block, or JSON payload) to a plain text message.
+     * Used for non-interactive fallback channels (SMS/Email) and for interactive-to-text fallback.
+     */
+    public static function whatsappTemplateToPlainText($text)
+    {
+        if (!is_string($text)) {
+            return '';
+        }
+
+        $payload = self::parseWhatsappPayloadFromText($text);
+        if (is_array($payload)) {
+            // If the template is an interactive/WA payload, prefer its explicit text fallback.
+            return trim((string) self::extractWhatsappTextFallback($payload));
+        }
+
+        return trim((string) preg_replace('/\\[\\[wa\\]\\].*?\\[\\[\\/wa\\]\\]/is', '', $text));
+    }
+
+    public static function buildWhatsappCopyCodeInteractivePayload($text, $copyCode, $buttonText = 'Salin Code')
+    {
+        $text = trim((string) $text);
+        $copyCode = trim((string) $copyCode);
+        $buttonText = trim((string) $buttonText);
+        if ($buttonText === '') {
+            $buttonText = 'Salin Code';
+        }
+
+        if ($text === '' && $copyCode !== '') {
+            $text = $copyCode;
+        }
+
+        return [
+            'action' => 'send',
+            'interactive' => [
+                'type' => 'template',
+                'text' => $text,
+                'buttons' => [
+                    [
+                        'type' => 'copy',
+                        'text' => $buttonText,
+                        'copyCode' => $copyCode,
+                    ],
+                ],
+            ],
+        ];
+    }
+
+    public static function renderOtpMessage($otp, $purpose = '', $purposeKey = '')
+    {
+        global $config;
+        global $_c;
+
+        $otp = trim((string) $otp);
+        $purpose = trim((string) $purpose);
+        $purposeKey = strtolower(trim((string) $purposeKey));
+
+        $templateContext = null;
+        if ($purposeKey !== '') {
+            $templateContext = ['purpose' => $purposeKey];
+        }
+
+        $template = Lang::getNotifText('otp_message', $templateContext);
+        if (!is_string($template)) {
+            $template = '';
+        }
+
+        if (trim($template) === '') {
+            $company = (string) ($config['CompanyName'] ?? 'Company');
+            $template = $company . "\n\nKode OTP: [[otp]]";
+        }
+
+        $companyName = (string) ($config['CompanyName'] ?? '');
+        $now = time();
+        $otpExpirySeconds = isset($_c['otp_expiry']) ? (int) $_c['otp_expiry'] : 0;
+        $otpWaitSeconds = isset($_c['otp_wait']) ? (int) $_c['otp_wait'] : 0;
+
+        $otpExpiresAt = '';
+        if ($otpExpirySeconds > 0) {
+            $otpExpiresAt = Lang::dateTimeFormat(date('Y-m-d H:i:s', $now + $otpExpirySeconds));
+        }
+        $otpRequestAllowedAt = '';
+        if ($otpWaitSeconds > 0) {
+            $otpRequestAllowedAt = Lang::dateTimeFormat(date('Y-m-d H:i:s', $now + $otpWaitSeconds));
+        }
+
+        $rendered = strtr($template, [
+            '[[company]]' => $companyName,
+            '[[company_name]]' => $companyName,
+            '[[otp]]' => $otp,
+            '[[purpose]]' => $purpose,
+            // OTP timing placeholders.
+            '[[otp_expires_at]]' => $otpExpiresAt,
+            '[[otp_expired_at]]' => $otpExpiresAt,
+            '[[otp_request_allowed_at]]' => $otpRequestAllowedAt,
+            '[[otp_request_at]]' => $otpRequestAllowedAt,
+            '[[otp_expiry_seconds]]' => (string) max(0, $otpExpirySeconds),
+            '[[otp_expiry]]' => (string) max(0, $otpExpirySeconds),
+            '[[otp_wait_seconds]]' => (string) max(0, $otpWaitSeconds),
+            '[[otp_wait]]' => (string) max(0, $otpWaitSeconds),
+        ]);
+
+        // Safety: if admin removes [[otp]] from template, still include the code.
+        if ($otp !== '' && strpos($rendered, $otp) === false) {
+            $rendered .= "\n\nKode OTP: " . $otp;
+        }
+
+        return $rendered;
+    }
+
     public static function sendTelegram($txt, $chat_id = null, $topik = '')
     {
         global $config;
@@ -103,6 +221,7 @@ class Message
         $queueRequested = !empty($options['queue']);
         $skipQueue = !empty($options['skip_queue']);
         $queueContext = $options['queue_context'] ?? '';
+        $wasInteractive = false; // indicates template/payload contained interactive parts and was downgraded to text
         $payloadOptions = $options;
         unset($payloadOptions['queue'], $payloadOptions['skip_queue'], $payloadOptions['queue_context']);
         $payload = null;
@@ -134,6 +253,10 @@ class Message
             }
         }
 
+        if (is_array($payload) && $textForLog === '') {
+            $textForLog = self::extractWhatsappTextFallback($payload);
+        }
+
         $method = strtolower(trim((string)($config['wa_gateway_method'] ?? '')));
         $hasGatewayConfig = !empty($config['wa_gateway_url']) || !empty($config['wa_gateway_secret']);
         $useGateway = ($method === 'post') || ($method === '' && $hasGatewayConfig);
@@ -155,6 +278,11 @@ class Message
         }
 
         if ($useGateway) {
+            // If the message is interactive (e.g., template contains [[wa]] block), we try sending it as-is.
+            // If gateway/device rejects interactive payload, we fallback to sending plain text (when possible).
+            $interactiveFallbackText = '';
+            $shouldFallbackToText = false;
+
             if ($payload === null) {
                 $payload = $payloadOptions;
                 if (!is_array($payload)) {
@@ -177,16 +305,19 @@ class Message
                 } elseif (!isset($payload['text']) && !isset($payload['body']) && !empty($txt)) {
                     $payload['text'] = $txt;
                 }
-            } else {
-                if (!isset($payload['action'])) {
-                    $payload['action'] = 'send';
-                }
-                if (!isset($payload['to']) && (!isset($payload['contacts']) || !is_array($payload['contacts']))) {
-                    $payload['to'] = Lang::phoneFormat($phone);
-                }
-                if (
-                    $payloadFromText &&
-                    !isset($payload['text']) &&
+	            } else {
+	                if (!isset($payload['action'])) {
+	                    $payload['action'] = 'send';
+	                }
+	                if (!isset($payload['to']) && (!isset($payload['contacts']) || !is_array($payload['contacts']))) {
+	                    $toCandidate = is_string($phone) ? $phone : (is_string($phoneForLog) ? $phoneForLog : '');
+	                    if ($toCandidate !== '') {
+	                        $payload['to'] = Lang::phoneFormat($toCandidate);
+	                    }
+	                }
+	                if (
+	                    $payloadFromText &&
+	                    !isset($payload['text']) &&
                     !isset($payload['body']) &&
                     !isset($payload['message']) &&
                     !isset($payload['interactive']) &&
@@ -199,7 +330,86 @@ class Message
                 }
             }
 
-            return self::sendWhatsappGatewayPayload($payload, $phoneForLog, $textForLog);
+            // Decide whether this payload is interactive/non-text and can be downgraded to plain text.
+            if (is_array($payload)) {
+                $action = strtolower(trim((string) ($payload['action'] ?? 'send')));
+                $hasInteractive = isset($payload['interactive']) && is_array($payload['interactive']);
+                $hasRawMessage = isset($payload['message']) && ($payload['message'] !== '' && $payload['message'] !== null);
+                $hasRequestPhone = !empty($payload['requestPhoneNumber']);
+                $hasContacts = isset($payload['contacts']) && is_array($payload['contacts']);
+
+                if ($action === 'send' && !$hasContacts && ($hasInteractive || $hasRawMessage || $hasRequestPhone)) {
+                    $interactiveFallbackText = trim((string) self::extractWhatsappTextFallback($payload));
+                    if ($interactiveFallbackText !== '') {
+                        $shouldFallbackToText = true;
+                    }
+                }
+            }
+
+            $gatewayErrorMeta = null;
+            $result = self::sendWhatsappGatewayPayload(
+                $payload,
+                $phoneForLog,
+                $textForLog,
+                $gatewayErrorMeta,
+                $shouldFallbackToText
+            );
+            if ($result !== false || !$shouldFallbackToText) {
+                return $result;
+            }
+
+            // Interactive send failed; retry once with plain text fallback.
+            $toCandidate = is_string($phone) ? $phone : (is_string($phoneForLog) ? $phoneForLog : '');
+            $fallbackPayload = [
+                'action' => 'send',
+                'to' => isset($payload['to']) ? $payload['to'] : ($toCandidate !== '' ? Lang::phoneFormat($toCandidate) : ''),
+                'text' => $interactiveFallbackText,
+            ];
+            if (isset($payload['thread_id'])) {
+                $fallbackPayload['thread_id'] = $payload['thread_id'];
+            }
+            if (isset($payload['session_id'])) {
+                $fallbackPayload['session_id'] = $payload['session_id'];
+            }
+
+            $fallbackResult = self::sendWhatsappGatewayPayload($fallbackPayload, $phoneForLog, $interactiveFallbackText);
+            if ($fallbackResult !== false) {
+                $errorMessage = '';
+                if (is_array($gatewayErrorMeta)) {
+                    $code = trim((string)($gatewayErrorMeta['code'] ?? ''));
+                    $msg = trim((string)($gatewayErrorMeta['message'] ?? ''));
+                    if ($msg !== '' && $code !== '') {
+                        $errorMessage = '[' . $code . '] ' . $msg;
+                    } elseif ($msg !== '') {
+                        $errorMessage = $msg;
+                    }
+                }
+                self::logMessage(
+                    'WhatsApp Fallback',
+                    $phoneForLog,
+                    $interactiveFallbackText,
+                    'Success',
+                    $errorMessage !== ''
+                        ? ('Interactive template failed, delivered as plain text fallback. ' . $errorMessage)
+                        : 'Interactive template failed, delivered as plain text fallback.'
+                );
+                return $fallbackResult;
+            }
+
+            if (is_array($gatewayErrorMeta)) {
+                $code = trim((string)($gatewayErrorMeta['code'] ?? ''));
+                $msg = trim((string)($gatewayErrorMeta['message'] ?? ''));
+                $payloadForLog = $gatewayErrorMeta['payload'] ?? '';
+                $errorMessage = $msg !== '' ? $msg : 'Interactive send failed';
+                if ($code !== '') {
+                    $errorMessage = '[' . $code . '] ' . $errorMessage;
+                }
+                self::logMessage('WhatsApp Gateway Response', $phoneForLog, $textForLog, 'Error', $errorMessage);
+                if (is_string($payloadForLog) && $payloadForLog !== '') {
+                    self::logMessage('WhatsApp Gateway Payload', $phoneForLog, $payloadForLog, 'Error', 'Debug payload');
+                }
+            }
+            return false;
         }
 
         if ($payload !== null) {
@@ -208,14 +418,20 @@ class Message
                 self::logMessage('WhatsApp HTTP Request', $phoneForLog, $textForLog, 'Error', 'Interactive payload requires POST gateway');
                 return false;
             }
+            $wasInteractive = is_array($payload) && (
+                (isset($payload['interactive']) && is_array($payload['interactive'])) ||
+                (isset($payload['message']) && ($payload['message'] !== '' && $payload['message'] !== null)) ||
+                !empty($payload['requestPhoneNumber'])
+            );
             $txt = $fallbackText;
             $textForLog = $fallbackText;
             $payload = null;
-        }
+	        }
 
-        if (!empty($config['wa_url'])) {
-            $waurl = str_replace('[number]', urlencode(Lang::phoneFormat($phone)), $config['wa_url']);
-            $waurl = str_replace('[text]', urlencode($txt), $waurl);
+	        if (!empty($config['wa_url'])) {
+	            $toCandidate = is_string($phone) ? $phone : (is_string($phoneForLog) ? $phoneForLog : '');
+	            $waurl = str_replace('[number]', urlencode(Lang::phoneFormat($toCandidate)), $config['wa_url']);
+	            $waurl = str_replace('[text]', urlencode($txt), $waurl);
 
             try {
                 $response = Http::getData($waurl);
@@ -232,6 +448,15 @@ class Message
                     }
                     if ($ok === true) {
                         self::logMessage('WhatsApp HTTP Response', $phone, $txt, 'Success', $response);
+                        if (!empty($wasInteractive)) {
+                            self::logMessage(
+                                'WhatsApp Fallback',
+                                $phoneForLog,
+                                $txt,
+                                'Success',
+                                'Interactive template downgraded to plain text because gateway method does not support interactive payloads.'
+                            );
+                        }
                         return $response;
                     }
                 }
@@ -243,6 +468,15 @@ class Message
                     return false;
                 }
                 self::logMessage('WhatsApp HTTP Response', $phone, $txt, 'Success', $response);
+                if (!empty($wasInteractive)) {
+                    self::logMessage(
+                        'WhatsApp Fallback',
+                        $phoneForLog,
+                        $txt,
+                        'Success',
+                        'Interactive template downgraded to plain text because gateway method does not support interactive payloads.'
+                    );
+                }
                 return $response;
             } catch (Throwable $e) {
                 self::logMessage('WhatsApp HTTP Request', $phone, $txt, 'Error', $e->getMessage());
@@ -250,40 +484,71 @@ class Message
         }
     }
 
-    private static function sendWhatsappGatewayPayload($payload, $phoneForLog, $textForLog)
+    private static function sendWhatsappGatewayPayload($payload, $phoneForLog, $textForLog, &$errorMeta = null, $suppressErrorLog = false)
     {
         global $config;
         $payload = is_array($payload) ? $payload : [];
+        $errorMeta = [];
 
         $gatewayUrl = isset($config['wa_gateway_url']) ? trim($config['wa_gateway_url']) : '';
         $gatewaySecret = isset($config['wa_gateway_secret']) ? trim($config['wa_gateway_secret']) : '';
         if ($gatewayUrl === '') {
-            self::logMessage('WhatsApp Gateway', $phoneForLog, $textForLog, 'Error', 'WhatsApp Gateway URL is empty');
+            $errorMeta = [
+                'code' => 'CONFIG',
+                'message' => 'WhatsApp Gateway URL is empty',
+            ];
+            if (!$suppressErrorLog) {
+                self::logMessage('WhatsApp Gateway', $phoneForLog, $textForLog, 'Error', $errorMeta['message']);
+            }
             return false;
         }
 
         $endpoint = $gatewayUrl;
         if (strpos($endpoint, '{secret}') !== false) {
             if ($gatewaySecret === '') {
-                self::logMessage('WhatsApp Gateway', $phoneForLog, $textForLog, 'Error', 'WhatsApp Gateway secret is missing');
+                $errorMeta = [
+                    'code' => 'CONFIG',
+                    'message' => 'WhatsApp Gateway secret is missing',
+                ];
+                if (!$suppressErrorLog) {
+                    self::logMessage('WhatsApp Gateway', $phoneForLog, $textForLog, 'Error', $errorMeta['message']);
+                }
                 return false;
             }
             $endpoint = str_replace('{secret}', rawurlencode($gatewaySecret), $endpoint);
         } elseif (strpos($endpoint, ':secret') !== false) {
             if ($gatewaySecret === '') {
-                self::logMessage('WhatsApp Gateway', $phoneForLog, $textForLog, 'Error', 'WhatsApp Gateway secret is missing');
+                $errorMeta = [
+                    'code' => 'CONFIG',
+                    'message' => 'WhatsApp Gateway secret is missing',
+                ];
+                if (!$suppressErrorLog) {
+                    self::logMessage('WhatsApp Gateway', $phoneForLog, $textForLog, 'Error', $errorMeta['message']);
+                }
                 return false;
             }
             $endpoint = str_replace(':secret', rawurlencode($gatewaySecret), $endpoint);
         } elseif (strpos($endpoint, '[secret]') !== false) {
             if ($gatewaySecret === '') {
-                self::logMessage('WhatsApp Gateway', $phoneForLog, $textForLog, 'Error', 'WhatsApp Gateway secret is missing');
+                $errorMeta = [
+                    'code' => 'CONFIG',
+                    'message' => 'WhatsApp Gateway secret is missing',
+                ];
+                if (!$suppressErrorLog) {
+                    self::logMessage('WhatsApp Gateway', $phoneForLog, $textForLog, 'Error', $errorMeta['message']);
+                }
                 return false;
             }
             $endpoint = str_replace('[secret]', rawurlencode($gatewaySecret), $endpoint);
         } elseif (stripos($endpoint, '/ext/') === false && stripos($endpoint, '/wa') === false) {
             if ($gatewaySecret === '') {
-                self::logMessage('WhatsApp Gateway', $phoneForLog, $textForLog, 'Error', 'WhatsApp Gateway secret is missing');
+                $errorMeta = [
+                    'code' => 'CONFIG',
+                    'message' => 'WhatsApp Gateway secret is missing',
+                ];
+                if (!$suppressErrorLog) {
+                    self::logMessage('WhatsApp Gateway', $phoneForLog, $textForLog, 'Error', $errorMeta['message']);
+                }
                 return false;
             }
             $endpoint = rtrim($endpoint, '/') . '/ext/' . rawurlencode($gatewaySecret) . '/wa';
@@ -307,7 +572,14 @@ class Message
                 $user = trim((string)($config['wa_gateway_auth_username'] ?? ''));
                 $pass = trim((string)($config['wa_gateway_auth_password'] ?? ''));
                 if ($user === '' || $pass === '') {
-                    self::logMessage('WhatsApp Gateway', $phoneForLog, $textForLog, 'Error', 'Basic auth requires username and password');
+                    $errorMeta = [
+                        'code' => 'AUTH_CONFIG_INCOMPLETE',
+                        'message' => 'Basic auth requires username and password',
+                        'payload' => $payloadForLog,
+                    ];
+                    if (!$suppressErrorLog) {
+                        self::logMessage('WhatsApp Gateway', $phoneForLog, $textForLog, 'Error', $errorMeta['message']);
+                    }
                     return false;
                 }
                 $basicAuth = $user . ':' . $pass;
@@ -316,7 +588,14 @@ class Message
                 $headerName = trim((string)($config['wa_gateway_auth_header_name'] ?? ''));
                 $token = trim((string)($config['wa_gateway_auth_token'] ?? ''));
                 if ($headerName === '' || $token === '') {
-                    self::logMessage('WhatsApp Gateway', $phoneForLog, $textForLog, 'Error', 'Header auth requires header name and token');
+                    $errorMeta = [
+                        'code' => 'AUTH_CONFIG_INCOMPLETE',
+                        'message' => 'Header auth requires header name and token',
+                        'payload' => $payloadForLog,
+                    ];
+                    if (!$suppressErrorLog) {
+                        self::logMessage('WhatsApp Gateway', $phoneForLog, $textForLog, 'Error', $errorMeta['message']);
+                    }
                     return false;
                 }
                 $headers[] = $headerName . ': ' . $token;
@@ -324,7 +603,14 @@ class Message
             case 'jwt':
                 $token = trim((string)($config['wa_gateway_auth_token'] ?? ''));
                 if ($token === '') {
-                    self::logMessage('WhatsApp Gateway', $phoneForLog, $textForLog, 'Error', 'JWT auth requires token');
+                    $errorMeta = [
+                        'code' => 'AUTH_CONFIG_INCOMPLETE',
+                        'message' => 'JWT auth requires token',
+                        'payload' => $payloadForLog,
+                    ];
+                    if (!$suppressErrorLog) {
+                        self::logMessage('WhatsApp Gateway', $phoneForLog, $textForLog, 'Error', $errorMeta['message']);
+                    }
                     return false;
                 }
                 $headers[] = 'Authorization: Bearer ' . $token;
@@ -357,8 +643,16 @@ class Message
                     if (is_array($errorMessage)) {
                         $errorMessage = json_encode($errorMessage);
                     }
-                    self::logMessage('WhatsApp Gateway Response', $phoneForLog, $textForLog, 'Error', $errorMessage);
-                    self::logMessage('WhatsApp Gateway Payload', $phoneForLog, $payloadForLog, 'Error', 'Debug payload');
+                    $errorMeta = [
+                        'code' => (string) ($errorCode ?? ''),
+                        'message' => (string) $errorMessage,
+                        'response' => $response,
+                        'payload' => $payloadForLog,
+                    ];
+                    if (!$suppressErrorLog) {
+                        self::logMessage('WhatsApp Gateway Response', $phoneForLog, $textForLog, 'Error', $errorMessage);
+                        self::logMessage('WhatsApp Gateway Payload', $phoneForLog, $payloadForLog, 'Error', 'Debug payload');
+                    }
                     self::updateWaTempMediaUsage($mediaUsage, false, $phoneForLog);
                     self::cleanupExpiredWhatsappMedia();
                     if ($errorCode === 'NUMBER_NOT_REGISTERED') {
@@ -376,8 +670,16 @@ class Message
                 stripos($response, 'not registered') !== false ||
                 stripos($response, 'failed') !== false
             ) {
-                self::logMessage('WhatsApp Gateway Response', $phoneForLog, $textForLog, 'Error', $response);
-                self::logMessage('WhatsApp Gateway Payload', $phoneForLog, $payloadForLog, 'Error', 'Debug payload');
+                $errorMeta = [
+                    'code' => '',
+                    'message' => (string) $response,
+                    'response' => $response,
+                    'payload' => $payloadForLog,
+                ];
+                if (!$suppressErrorLog) {
+                    self::logMessage('WhatsApp Gateway Response', $phoneForLog, $textForLog, 'Error', $response);
+                    self::logMessage('WhatsApp Gateway Payload', $phoneForLog, $payloadForLog, 'Error', 'Debug payload');
+                }
                 self::updateWaTempMediaUsage($mediaUsage, false, $phoneForLog);
                 self::cleanupExpiredWhatsappMedia();
                 return false;
@@ -387,8 +689,15 @@ class Message
             self::cleanupExpiredWhatsappMedia();
             return $response;
         } catch (Throwable $e) {
-            self::logMessage('WhatsApp Gateway Request', $phoneForLog, $textForLog, 'Error', $e->getMessage());
-            self::logMessage('WhatsApp Gateway Payload', $phoneForLog, $payloadForLog, 'Error', 'Debug payload');
+            $errorMeta = [
+                'code' => 'EXCEPTION',
+                'message' => $e->getMessage(),
+                'payload' => $payloadForLog,
+            ];
+            if (!$suppressErrorLog) {
+                self::logMessage('WhatsApp Gateway Request', $phoneForLog, $textForLog, 'Error', $e->getMessage());
+                self::logMessage('WhatsApp Gateway Payload', $phoneForLog, $payloadForLog, 'Error', 'Debug payload');
+            }
             self::updateWaTempMediaUsage($mediaUsage, false, $phoneForLog);
             self::cleanupExpiredWhatsappMedia();
         }
@@ -407,6 +716,23 @@ class Message
         }
         if (isset($payload['sessionId']) && !isset($payload['session_id'])) {
             $payload['session_id'] = $payload['sessionId'];
+        }
+        if (isset($payload['autoRetry']) && !isset($payload['auto_retry'])) {
+            $payload['auto_retry'] = $payload['autoRetry'];
+        }
+        if (isset($payload['messageSendAs']) && !isset($payload['message_send_as'])) {
+            $payload['message_send_as'] = $payload['messageSendAs'];
+        }
+        if (isset($payload['request_phone_number']) && !isset($payload['requestPhoneNumber'])) {
+            $payload['requestPhoneNumber'] = $payload['request_phone_number'];
+        }
+        if (isset($payload['allow_empty_text']) && !isset($payload['allowEmptyText'])) {
+            $payload['allowEmptyText'] = $payload['allow_empty_text'];
+        }
+        foreach (['threadId', 'sessionId', 'autoRetry', 'messageSendAs', 'request_phone_number', 'allow_empty_text'] as $legacyKey) {
+            if (isset($payload[$legacyKey])) {
+                unset($payload[$legacyKey]);
+            }
         }
 
         if (isset($payload['action'])) {
@@ -755,46 +1081,86 @@ class Message
             $interactive['type'] = strtolower(trim((string)$interactive['type']));
         }
 
+        $interactiveType = $interactive['type'] ?? '';
+
+        if ($interactiveType === 'native_flow') {
+            if (isset($interactive['buttons']) && is_array($interactive['buttons'])) {
+                $buttons = [];
+                foreach ($interactive['buttons'] as $button) {
+                    if (!is_array($button)) {
+                        continue;
+                    }
+                    $name = trim((string) ($button['name'] ?? ''));
+                    $params = $button['buttonParamsJson'] ?? '';
+                    if ($name === '' || $params === '') {
+                        continue;
+                    }
+                    if (is_array($params)) {
+                        $params = json_encode($params, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+                    }
+                    $params = trim((string) $params);
+                    if ($params === '') {
+                        continue;
+                    }
+                    $buttons[] = [
+                        'name' => $name,
+                        'buttonParamsJson' => $params,
+                    ];
+                }
+                $interactive['buttons'] = $buttons;
+            }
+
+            if (empty($interactive['buttons'])) {
+                return null;
+            }
+
+            return $interactive;
+        }
+
         if (isset($interactive['buttons']) && is_array($interactive['buttons'])) {
             $buttons = [];
             foreach ($interactive['buttons'] as $button) {
                 if (!is_array($button)) {
                     continue;
                 }
-                $type = strtolower(trim((string)($button['type'] ?? '')));
-                if ($type !== '') {
-                    $button['type'] = $type;
+                $buttonType = strtolower(trim((string)($button['type'] ?? '')));
+                if ($buttonType !== '') {
+                    $button['type'] = $buttonType;
                 }
 
-                if ($type === 'url') {
+                if ($buttonType === 'url') {
                     $url = trim((string)($button['url'] ?? ''));
                     if ($url === '' || !preg_match('/^https?:\\/\\//i', $url)) {
                         continue;
                     }
                     $button['url'] = $url;
-                } elseif ($type === 'call') {
+                } elseif ($buttonType === 'call') {
                     $phone = trim((string)($button['phoneNumber'] ?? ''));
                     if ($phone === '') {
                         continue;
                     }
                     $button['phoneNumber'] = $phone;
-                } elseif ($type === 'quick') {
-                    $text = trim((string)($button['text'] ?? ''));
+                } elseif ($buttonType === 'quick') {
+                    $text = trim((string)($button['text'] ?? ($button['title'] ?? '')));
                     $id = trim((string)($button['id'] ?? ''));
                     if ($text === '' && $id === '') {
                         continue;
                     }
                     if ($text === '' && $id !== '') {
                         $button['text'] = $id;
+                    } elseif ($text !== '' && empty($button['text'])) {
+                        $button['text'] = $text;
                     }
                 } else {
-                    $text = trim((string)($button['text'] ?? ''));
+                    $text = trim((string)($button['text'] ?? ($button['title'] ?? '')));
                     $id = trim((string)($button['id'] ?? ''));
                     if ($text === '' && $id === '') {
                         continue;
                     }
                     if ($text === '' && $id !== '') {
                         $button['text'] = $id;
+                    } elseif ($text !== '' && empty($button['text'])) {
+                        $button['text'] = $text;
                     }
                 }
 
@@ -843,8 +1209,7 @@ class Message
             }
         }
 
-        $type = $interactive['type'] ?? '';
-        if ($type === 'list') {
+        if ($interactiveType === 'list') {
             if (empty($interactive['sections'])) {
                 return null;
             }
@@ -1220,7 +1585,7 @@ class Message
 
             if ($key === 'type') {
                 $typeValue = strtolower($value);
-                if (!in_array($typeValue, ['buttons', 'list', 'template'], true)) {
+                if (!in_array($typeValue, ['buttons', 'list', 'template', 'native_flow'], true)) {
                     $textLines[] = $line;
                     $textStarted = true;
                     continue;
@@ -1302,7 +1667,12 @@ class Message
             if ($key === 'button') {
                 $interactiveType = strtolower($interactive['type'] ?? '');
                 $parts = array_map('trim', explode('|', $value));
-                if ($interactiveType === 'template' || in_array(strtolower($parts[0] ?? ''), ['quick', 'url', 'call'], true)) {
+                if ($interactiveType === 'native_flow') {
+                    $interactive['buttons'][] = [
+                        'name' => $parts[0] ?? '',
+                        'buttonParamsJson' => $parts[1] ?? ''
+                    ];
+                } elseif ($interactiveType === 'template' || in_array(strtolower($parts[0] ?? ''), ['quick', 'url', 'call', 'copy'], true)) {
                     if ($interactiveType === '') {
                         $interactive['type'] = 'template';
                     }
@@ -1325,6 +1695,12 @@ class Message
                             'text' => $parts[1] ?? '',
                             'phoneNumber' => $parts[2] ?? ''
                         ];
+                    } elseif ($btnType === 'copy') {
+                        $interactive['buttons'][] = [
+                            'type' => 'copy',
+                            'text' => $parts[1] ?? '',
+                            'copyCode' => $parts[2] ?? ''
+                        ];
                     }
                     $templateButtonsUsed = true;
                 } else {
@@ -1342,7 +1718,7 @@ class Message
             }
 
             if ($key === 'allowemptytext') {
-                $interactive['allowEmptyText'] = in_array(strtolower($value), ['1', 'true', 'yes'], true);
+                $payload['allowEmptyText'] = in_array(strtolower($value), ['1', 'true', 'yes'], true);
                 continue;
             }
 
@@ -1599,7 +1975,31 @@ class Message
     public static function sendInvoice($cust, $trx)
     {
         global $config, $db_pass;
-        $textInvoice = Lang::getNotifText('invoice_paid');
+        $planType = (string) ($trx['type'] ?? '');
+        $planId = (int) ($trx['plan_id'] ?? 0);
+        if ($planId < 1) {
+            $planName = trim((string) ($trx['plan_name'] ?? ''));
+            if ($planName !== '') {
+                try {
+                    $q = ORM::for_table('tbl_plans')->where('name_plan', $planName);
+                    $typeNorm = strtoupper(trim((string) $planType));
+                    if ($typeNorm !== '') {
+                        $q->where_raw('UPPER(TRIM(`type`)) = ?', [$typeNorm]);
+                    }
+                    $planRow = $q->order_by_desc('id')->find_one();
+                    if ($planRow) {
+                        $planId = (int) ($planRow['id'] ?? 0);
+                    }
+                } catch (Throwable $e) {
+                    // ignore lookup errors, fall back to type-only override
+                }
+            }
+        }
+
+        $textInvoice = Lang::getNotifText('invoice_paid', [
+            'plan_id' => $planId,
+            'type' => $planType,
+        ]);
         $textInvoice = str_replace('[[company_name]]', $config['CompanyName'], $textInvoice);
         $textInvoice = str_replace('[[address]]', $config['address'], $textInvoice);
         $textInvoice = str_replace('[[phone]]', $config['phone'], $textInvoice);
@@ -1700,12 +2100,29 @@ class Message
         if (strpos($message, "<divider>") === false) {
             return $message;
         }
-        $msgs = explode("<divider>", $message);
-        if ($type == "PPPOE") {
-            return $msgs[1];
-        } else {
+        $msgs = array_values(explode("<divider>", (string) $message));
+        $type = strtoupper(trim((string) $type));
+
+        if (count($msgs) >= 3) {
+            // Backward-compatible convention:
+            // 0: Hotspot (default), 1: PPPoE, 2: VPN
+            if ($type === "PPPOE") {
+                return $msgs[1];
+            }
+            if ($type === "VPN") {
+                return $msgs[2];
+            }
             return $msgs[0];
         }
+
+        if (count($msgs) >= 2) {
+            if ($type === "PPPOE") {
+                return $msgs[1];
+            }
+            return $msgs[0];
+        }
+
+        return $message;
     }
 
     public static function logMessage($messageType, $recipient, $messageContent, $status, $errorMessage = null)

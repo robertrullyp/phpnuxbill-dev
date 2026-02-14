@@ -1,5 +1,6 @@
 {
   "expired": "Hello [[name]], your internet package [[package]] has been expired.",
+  "otp_message": "[[company]]\r\n\r\nKode OTP: [[otp]]\r\n\r\nJangan bagikan kode ini kepada siapapun.",
   "balance_send": "You sent [[balance]] to [[name]].",
   "balance_received": "You have received [[balance]] from [[name]].",
   "wa_queue_enabled": "0",
