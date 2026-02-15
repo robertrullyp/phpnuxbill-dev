@@ -113,6 +113,7 @@ CREATE TABLE `tbl_plans` (
   `routers` varchar(32) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL,
   `is_radius` tinyint(1) NOT NULL DEFAULT '0' COMMENT '1 is radius',
   `pool` varchar(40) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci DEFAULT NULL,
+  `pppoe_service` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL DEFAULT '' COMMENT 'PPPoE server service-name',
   `plan_expired` int NOT NULL DEFAULT '0',
   `expired_date` TINYINT(1) NOT NULL DEFAULT '20',
   `enabled` tinyint(1) NOT NULL DEFAULT '1' COMMENT '0 disabled\r\n',
@@ -239,7 +240,9 @@ CREATE TABLE `tbl_user_recharges` (
   `method` varchar(128) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL DEFAULT '',
   `routers` varchar(32) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL,
   `type` varchar(15) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL,
-  `admin_id` int NOT NULL DEFAULT '1'
+  `admin_id` int NOT NULL DEFAULT '1',
+  `usage_tx_bytes` bigint unsigned NOT NULL DEFAULT 0,
+  `usage_rx_bytes` bigint unsigned NOT NULL DEFAULT 0
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 DROP TABLE IF EXISTS `tbl_voucher`;
@@ -390,6 +393,59 @@ CREATE TABLE IF NOT EXISTS `tbl_wa_media_usage` (
     INDEX `recipient_idx` (`recipient`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
+DROP TABLE IF EXISTS `tbl_recharge_usage_cycles`;
+CREATE TABLE `tbl_recharge_usage_cycles` (
+  `id` bigint unsigned NOT NULL AUTO_INCREMENT,
+  `recharge_id` int unsigned NOT NULL DEFAULT 0,
+  `transaction_id` int unsigned NOT NULL DEFAULT 0,
+  `customer_id` int unsigned NOT NULL DEFAULT 0,
+  `plan_id` int unsigned NOT NULL DEFAULT 0,
+  `router_name` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL DEFAULT '',
+  `type` varchar(16) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL DEFAULT '',
+  `binding_name` varchar(128) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL DEFAULT '',
+  `binding_user` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL DEFAULT '',
+  `started_at` datetime NOT NULL,
+  `expires_at` datetime NOT NULL,
+  `ended_at` datetime DEFAULT NULL,
+  `status` enum('open','closed') CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL DEFAULT 'open',
+  `usage_tx_bytes` bigint unsigned NOT NULL DEFAULT 0,
+  `usage_rx_bytes` bigint unsigned NOT NULL DEFAULT 0,
+  `last_counter_tx` bigint unsigned NOT NULL DEFAULT 0,
+  `last_counter_rx` bigint unsigned NOT NULL DEFAULT 0,
+  `last_sample_at` datetime DEFAULT NULL,
+  `note` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL DEFAULT '',
+  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_usage_cycle_recharge_status` (`recharge_id`,`status`),
+  KEY `idx_usage_cycle_scope` (`customer_id`,`router_name`,`type`,`status`),
+  KEY `idx_usage_cycle_transaction` (`transaction_id`),
+  KEY `idx_usage_cycle_plan` (`plan_id`),
+  KEY `idx_usage_cycle_started` (`started_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+DROP TABLE IF EXISTS `tbl_recharge_usage_samples`;
+CREATE TABLE `tbl_recharge_usage_samples` (
+  `id` bigint unsigned NOT NULL AUTO_INCREMENT,
+  `cycle_id` bigint unsigned NOT NULL DEFAULT 0,
+  `recharge_id` int unsigned NOT NULL DEFAULT 0,
+  `sample_at` datetime NOT NULL,
+  `counter_tx` bigint unsigned NOT NULL DEFAULT 0,
+  `counter_rx` bigint unsigned NOT NULL DEFAULT 0,
+  `delta_tx` bigint unsigned NOT NULL DEFAULT 0,
+  `delta_rx` bigint unsigned NOT NULL DEFAULT 0,
+  `usage_tx_total` bigint unsigned NOT NULL DEFAULT 0,
+  `usage_rx_total` bigint unsigned NOT NULL DEFAULT 0,
+  `source` varchar(24) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL DEFAULT 'cron',
+  `note` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL DEFAULT '',
+  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_usage_sample_cycle` (`cycle_id`),
+  KEY `idx_usage_sample_recharge` (`recharge_id`),
+  KEY `idx_usage_sample_time` (`sample_at`),
+  KEY `idx_usage_sample_source` (`source`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
 ALTER TABLE `rad_acct`
   ADD PRIMARY KEY (`id`),
   ADD KEY `username` (`username`),
@@ -512,6 +568,14 @@ VALUES (1, 'CompanyName', 'PHPNuxBill'), (2, 'currency_code', 'Rp.'), (3, 'langu
 INSERT INTO
     `tbl_appconfig` (`setting`, `value`)
 VALUES ('genieacs_enable', 'no'), ('genieacs_url', '');
+
+INSERT INTO
+    `tbl_appconfig` (`setting`, `value`)
+VALUES
+    ('extend_expiry', 'yes'),
+    ('extend_expired', '1'),
+    ('extend_allow_prepaid', '0'),
+    ('notification_expiry_edit', 'yes');
 
 
 INSERT INTO

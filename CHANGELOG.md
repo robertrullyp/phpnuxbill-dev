@@ -10,6 +10,7 @@
 - **Expiry Edit Notification Control:** Added app-level toggle for `Expiry Edit Notification` and wired extend-success flow to send `edit_expiry_message` template through selected channels with queue-aware WhatsApp options.
 - **`[[extend_link]]` Placeholder Scope:** Added `[[extend_link]]` placeholder support in notification templating and constrained replacement to expired notification context to avoid leakage into unrelated templates.
 - **Customer Widget Labeling:** Updated GenieACS customer-facing wording to `WiFi Setting` and aligned usage wording to more readable Download/Upload terms in related views.
+- **Fresh Install Schema Sync:** Updated `install/phpnuxbill.sql` to include latest runtime schema (`tbl_plans.pppoe_service`, `tbl_user_recharges.usage_tx_bytes/usage_rx_bytes`, `tbl_recharge_usage_cycles`, `tbl_recharge_usage_samples`) plus default app settings for extend and expiry-edit notification behavior.
 - **Release Metadata:** Updated version references in `version.json`, `README.md`, `docs/openapi.yaml`, `docs/openapi.json`, updater registry (`system/updates.json`), and added release audit document.
 - Version bumped to `2026.2.15`.
 

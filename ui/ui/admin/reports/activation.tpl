@@ -40,8 +40,8 @@
                                 <th>{Lang::T('Created On')}</th>
                                 <th>{Lang::T('Expires On')}</th>
                                 <th>{Lang::T('Method')}</th>
-                                <th>{Lang::T('Download Usage')} (GB)</th>
-                                <th>{Lang::T('Upload Usage')} (GB)</th>
+                                <th>{Lang::T('DL')} (GB)</th>
+                                <th>{Lang::T('UL')} (GB)</th>
                             </tr>
                         </thead>
                         <tbody>

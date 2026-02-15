@@ -160,6 +160,8 @@ function collectPppoeUsageSampleForRecharge($rechargeRow, $planRow = null, $cust
             $sampleNote = ($source === 'expiry-final')
                 ? 'Final sample before expiry'
                 : 'Cron periodic sample';
+            // PPPoE server interface counters perspective:
+            // tx-byte = router -> customer (Download), rx-byte = customer -> router (Upload).
             PppoeUsage::recordSample(
                 $cycle,
                 (int) ($counters['tx_byte'] ?? 0),

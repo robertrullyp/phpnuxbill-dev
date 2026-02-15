@@ -836,6 +836,8 @@
     "Extend_for_prepaid_plan_is_disabled": "Extend for prepaid plan is disabled",
     "Download": "Download",
     "Upload": "Upload",
+    "DL": "DL",
+    "UL": "UL",
     "Device_not_assigned__Contact_admin_": "Device not assigned. Contact admin.",
     "Paid": "Paid",
     "Send_Expiry_Edit_Notification_template_when_extend_action_succeeds": "Send Expiry Edit Notification template when extend action succeeds",

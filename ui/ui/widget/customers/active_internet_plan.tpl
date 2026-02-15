@@ -58,9 +58,9 @@
                     <tr>
                         <td class="small text-info text-uppercase text-normal">{Lang::T('Traffic Usage')}</td>
                         <td class="small mb15">
-                            {Lang::T('Download')}: {($_bill['usage_tx_bytes']|default:0)/1073741824|number_format:2:'.':','} GB
+                            {Lang::T('DL')}: {($_bill['usage_tx_bytes']|default:0)/1073741824|number_format:2:'.':','} GB
                             <br>
-                            {Lang::T('Upload')}: {($_bill['usage_rx_bytes']|default:0)/1073741824|number_format:2:'.':','} GB
+                            {Lang::T('UL')}: {($_bill['usage_rx_bytes']|default:0)/1073741824|number_format:2:'.':','} GB
                         </td>
                     </tr>
                     <tr>
