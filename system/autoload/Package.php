@@ -266,7 +266,7 @@ class Package
         return '';
     }
 
-    protected static function activateLinkedPlans($customerId, $gateway, $channel, $note, array &$processedPlanIds, $plan, $skip, $primaryRouterName = '')
+    protected static function activateLinkedPlans($customerId, $gateway, $channel, $note, array &$processedPlanIds, $plan, $skip, $primaryRouterName = '', &$chargeSummary = null)
     {
         if ($skip || $customerId <= 0 || !$plan) {
             return;
@@ -327,7 +327,8 @@ class Package
                     $channel,
                     $combinedNote,
                     $processedPlanIds,
-                    $shouldSkipInvoiceNotification
+                    $shouldSkipInvoiceNotification,
+                    $chargeSummary
                 );
             } catch (Throwable $throwable) {
                 Message::sendTelegram(
@@ -359,6 +360,402 @@ class Package
         }
 
         return $primaryRouterName;
+    }
+
+    protected static function buildRouterTypeKey($routerName, $type)
+    {
+        $routerName = trim((string) $routerName);
+        $type = trim((string) $type);
+        if ($routerName === '' || $type === '') {
+            return '';
+        }
+        return strtolower($routerName) . '|' . strtolower($type);
+    }
+
+    protected static function loadRechargeStateMap($customerId)
+    {
+        $customerId = (int) $customerId;
+        if ($customerId <= 0) {
+            return [];
+        }
+        $rows = ORM::for_table('tbl_user_recharges')
+            ->select_many('routers', 'type')
+            ->where('customer_id', $customerId)
+            ->find_array();
+        if (empty($rows)) {
+            return [];
+        }
+        $state = [];
+        foreach ($rows as $row) {
+            $key = self::buildRouterTypeKey($row['routers'] ?? '', $row['type'] ?? '');
+            if ($key !== '') {
+                $state[$key] = true;
+            }
+        }
+        return $state;
+    }
+
+    protected static function calculateEstimatedRechargeTransactionPrice($customerId, array $plan, $routerName, $includeBills, array &$rechargeStateMap)
+    {
+        $isUnlimitedPlan = self::isUnlimitedPlan($plan);
+        $addCost = 0.0;
+        if ($includeBills) {
+            list($_bills, $addCostRaw) = User::getBills($customerId);
+            $addCost = (float) $addCostRaw;
+        }
+
+        $planPrice = (float) ($plan['price'] ?? 0);
+        if (($plan['validity_unit'] ?? '') === 'Period' && !$isUnlimitedPlan) {
+            $stateKey = self::buildRouterTypeKey($routerName, $plan['type'] ?? '');
+            $hasExistingByType = ($stateKey !== '' && !empty($rechargeStateMap[$stateKey]));
+            if (!$hasExistingByType) {
+                return 0.0;
+            }
+            $invoiceAttr = User::getAttribute('Invoice', $customerId);
+            if ($invoiceAttr !== null && $invoiceAttr !== '') {
+                $planPrice = (float) $invoiceAttr;
+            }
+        }
+
+        return max(0, $planPrice + $addCost);
+    }
+
+    protected static function estimateRechargeChargeGraphRecursive(
+        $customerId,
+        array $plan,
+        $routerName,
+        array &$processedPlanIds,
+        array &$rechargeStateMap,
+        array &$summary,
+        $includeBillsForCurrentPlan = false
+    ) {
+        $planId = (int) ($plan['id'] ?? 0);
+        if ($planId <= 0 || in_array($planId, $processedPlanIds, true)) {
+            return;
+        }
+        $processedPlanIds[] = $planId;
+
+        $charge = self::calculateEstimatedRechargeTransactionPrice(
+            $customerId,
+            $plan,
+            $routerName,
+            $includeBillsForCurrentPlan,
+            $rechargeStateMap
+        );
+        $summary['total_charge'] += $charge;
+        if (!isset($summary['primary_charge'])) {
+            $summary['primary_charge'] = $charge;
+            $summary['root_plan_id'] = $planId;
+        }
+
+        if (!isset($summary['plans']) || !is_array($summary['plans'])) {
+            $summary['plans'] = [];
+        }
+        $summary['plans'][] = [
+            'plan_id' => $planId,
+            'router' => (string) $routerName,
+            'charge' => $charge,
+            'is_linked' => ($planId !== (int) ($summary['root_plan_id'] ?? $planId)),
+        ];
+
+        $stateKey = self::buildRouterTypeKey($routerName, $plan['type'] ?? '');
+        if ($stateKey !== '') {
+            $rechargeStateMap[$stateKey] = true;
+        }
+
+        $linkedIds = self::getLinkedPlanIds($planId);
+        if (empty($linkedIds)) {
+            return;
+        }
+        foreach ($linkedIds as $linkedId) {
+            if (in_array((int) $linkedId, $processedPlanIds, true)) {
+                continue;
+            }
+            $linkedPlan = ORM::for_table('tbl_plans')->find_one((int) $linkedId);
+            if (!$linkedPlan) {
+                continue;
+            }
+            $linkedPlan = is_array($linkedPlan) ? $linkedPlan : $linkedPlan->as_array();
+            if (isset($linkedPlan['enabled']) && (int) $linkedPlan['enabled'] === 0) {
+                continue;
+            }
+            $linkedRouter = self::determineRouterNameForLinkedPlan(
+                $customerId,
+                $linkedPlan,
+                $plan,
+                $routerName
+            );
+            if ($linkedRouter === '') {
+                continue;
+            }
+            self::estimateRechargeChargeGraphRecursive(
+                $customerId,
+                $linkedPlan,
+                $linkedRouter,
+                $processedPlanIds,
+                $rechargeStateMap,
+                $summary,
+                false
+            );
+        }
+    }
+
+    public static function estimateRechargeChargeGraph($customerId, $plan, $routerName, $includeBillsForPrimaryPlan = true)
+    {
+        $customerId = (int) $customerId;
+        if ($customerId <= 0 || !$plan) {
+            return [
+                'total_charge' => 0.0,
+                'primary_charge' => 0.0,
+                'linked_charge' => 0.0,
+                'plans' => [],
+            ];
+        }
+        $plan = is_array($plan) ? $plan : $plan->as_array();
+        $rechargeStateMap = self::loadRechargeStateMap($customerId);
+        $processedPlanIds = [];
+        $summary = [
+            'total_charge' => 0.0,
+            'primary_charge' => null,
+            'linked_charge' => 0.0,
+            'plans' => [],
+        ];
+        self::estimateRechargeChargeGraphRecursive(
+            $customerId,
+            $plan,
+            $routerName,
+            $processedPlanIds,
+            $rechargeStateMap,
+            $summary,
+            (bool) $includeBillsForPrimaryPlan
+        );
+        $summary['linked_charge'] = max(0, (float) $summary['total_charge'] - (float) ($summary['primary_charge'] ?? 0));
+        return $summary;
+    }
+
+    protected static function estimateRefundChargeGraphRecursive(
+        $customerId,
+        array $plan,
+        $routerName,
+        $gateway,
+        array &$processedPlanIds,
+        array &$summary,
+        $isLinkedAction = false
+    ) {
+        $planId = (int) ($plan['id'] ?? 0);
+        if ($planId <= 0 || in_array($planId, $processedPlanIds, true)) {
+            return;
+        }
+        $processedPlanIds[] = $planId;
+
+        $charge = self::calculateRefundCharge($customerId, $plan, $gateway, $isLinkedAction);
+        $summary['total_refund'] += $charge;
+        if (!isset($summary['primary_refund'])) {
+            $summary['primary_refund'] = $charge;
+            $summary['root_plan_id'] = $planId;
+        }
+        if (!isset($summary['plans']) || !is_array($summary['plans'])) {
+            $summary['plans'] = [];
+        }
+        $summary['plans'][] = [
+            'plan_id' => $planId,
+            'router' => (string) $routerName,
+            'refund' => $charge,
+            'is_linked' => $isLinkedAction,
+        ];
+
+        $linkedIds = self::getLinkedPlanIds($planId);
+        if (empty($linkedIds)) {
+            return;
+        }
+        foreach ($linkedIds as $linkedId) {
+            if (in_array((int) $linkedId, $processedPlanIds, true)) {
+                continue;
+            }
+            $linkedPlan = ORM::for_table('tbl_plans')->find_one((int) $linkedId);
+            if (!$linkedPlan) {
+                continue;
+            }
+            $linkedPlan = is_array($linkedPlan) ? $linkedPlan : $linkedPlan->as_array();
+            $activeRecharge = self::findActiveRechargeRowForRefund($customerId, $linkedPlan, '');
+            if (!$activeRecharge) {
+                continue;
+            }
+
+            $linkedRouter = trim((string) ($activeRecharge['routers'] ?? ''));
+            if ($linkedRouter === '') {
+                $linkedRouter = self::resolveRouterNameForPlan($linkedPlan);
+            }
+            if ($linkedRouter === '') {
+                $linkedRouter = self::resolveRouterNameForPlan($plan);
+            }
+            if ($linkedRouter === '') {
+                $linkedRouter = trim((string) $routerName);
+            }
+            if ($linkedRouter === '') {
+                continue;
+            }
+
+            self::estimateRefundChargeGraphRecursive(
+                $customerId,
+                $linkedPlan,
+                $linkedRouter,
+                $gateway,
+                $processedPlanIds,
+                $summary,
+                true
+            );
+        }
+    }
+
+    public static function estimateRefundChargeGraph($customerId, $plan, $routerName, $gateway)
+    {
+        $customerId = (int) $customerId;
+        if ($customerId <= 0 || !$plan) {
+            return [
+                'total_refund' => 0.0,
+                'primary_refund' => 0.0,
+                'linked_refund' => 0.0,
+                'plans' => [],
+            ];
+        }
+        $plan = is_array($plan) ? $plan : $plan->as_array();
+        $processedPlanIds = [];
+        $summary = [
+            'total_refund' => 0.0,
+            'primary_refund' => null,
+            'linked_refund' => 0.0,
+            'plans' => [],
+        ];
+        self::estimateRefundChargeGraphRecursive(
+            $customerId,
+            $plan,
+            $routerName,
+            $gateway,
+            $processedPlanIds,
+            $summary,
+            false
+        );
+        $summary['linked_refund'] = max(0, (float) $summary['total_refund'] - (float) ($summary['primary_refund'] ?? 0));
+        return $summary;
+    }
+
+    protected static function normalizeDurationSeconds($seconds)
+    {
+        $seconds = (int) round($seconds);
+        if ($seconds < 1) {
+            $seconds = 1;
+        }
+        return $seconds;
+    }
+
+    protected static function resolvePlanValidityDurationSeconds($plan)
+    {
+        if (!$plan) {
+            return null;
+        }
+        if (!is_array($plan)) {
+            $plan = $plan->as_array();
+        }
+        $validity = (int) ($plan['validity'] ?? 0);
+        if ($validity <= 0) {
+            return null;
+        }
+        $unit = trim((string) ($plan['validity_unit'] ?? 'Days'));
+        switch ($unit) {
+            case 'Mins':
+                return self::normalizeDurationSeconds($validity * 60);
+            case 'Hrs':
+                return self::normalizeDurationSeconds($validity * 3600);
+            case 'Months':
+            case 'Period':
+                return self::normalizeDurationSeconds($validity * 30 * 86400);
+            case 'Days':
+            default:
+                return self::normalizeDurationSeconds($validity * 86400);
+        }
+    }
+
+    public static function resolveExtendDurationSeconds($plan, $requestedDays)
+    {
+        $requestedDays = (int) $requestedDays;
+        if ($requestedDays < 1) {
+            $requestedDays = 1;
+        }
+        $requestedSeconds = self::normalizeDurationSeconds($requestedDays * 86400);
+        $planSeconds = self::resolvePlanValidityDurationSeconds($plan);
+        if ($planSeconds !== null && $planSeconds > 0 && $planSeconds < $requestedSeconds) {
+            return $planSeconds;
+        }
+        return $requestedSeconds;
+    }
+
+    public static function secondsToDaysRoundedUp($seconds)
+    {
+        $seconds = self::normalizeDurationSeconds($seconds);
+        return (int) max(1, ceil($seconds / 86400));
+    }
+
+    protected static function appendRechargeChargeSummary(&$chargeSummary, $planId, $amount)
+    {
+        if (!is_array($chargeSummary)) {
+            return;
+        }
+        $amount = max(0, (float) $amount);
+        if (!isset($chargeSummary['total_charge'])) {
+            $chargeSummary['total_charge'] = 0.0;
+        }
+        if (!isset($chargeSummary['primary_charge'])) {
+            $chargeSummary['primary_charge'] = 0.0;
+        }
+        if (!isset($chargeSummary['plans']) || !is_array($chargeSummary['plans'])) {
+            $chargeSummary['plans'] = [];
+        }
+        $chargeSummary['total_charge'] += $amount;
+        if (!isset($chargeSummary['root_plan_id'])) {
+            $chargeSummary['root_plan_id'] = (int) $planId;
+        }
+        if ((int) $chargeSummary['root_plan_id'] === (int) $planId && empty($chargeSummary['primary_recorded'])) {
+            $chargeSummary['primary_charge'] = $amount;
+            $chargeSummary['primary_recorded'] = true;
+        }
+        $chargeSummary['plans'][] = [
+            'plan_id' => (int) $planId,
+            'charge' => $amount,
+            'is_linked' => ((int) $chargeSummary['root_plan_id'] !== (int) $planId),
+        ];
+        $chargeSummary['linked_charge'] = max(0, (float) $chargeSummary['total_charge'] - (float) ($chargeSummary['primary_charge'] ?? 0));
+    }
+
+    protected static function appendRefundSummary(&$refundSummary, $planId, $amount)
+    {
+        if (!is_array($refundSummary)) {
+            return;
+        }
+        $amount = max(0, (float) $amount);
+        if (!isset($refundSummary['total_refund'])) {
+            $refundSummary['total_refund'] = 0.0;
+        }
+        if (!isset($refundSummary['primary_refund'])) {
+            $refundSummary['primary_refund'] = 0.0;
+        }
+        if (!isset($refundSummary['plans']) || !is_array($refundSummary['plans'])) {
+            $refundSummary['plans'] = [];
+        }
+        $refundSummary['total_refund'] += $amount;
+        if (!isset($refundSummary['root_plan_id'])) {
+            $refundSummary['root_plan_id'] = (int) $planId;
+        }
+        if ((int) $refundSummary['root_plan_id'] === (int) $planId && empty($refundSummary['primary_recorded'])) {
+            $refundSummary['primary_refund'] = $amount;
+            $refundSummary['primary_recorded'] = true;
+        }
+        $refundSummary['plans'][] = [
+            'plan_id' => (int) $planId,
+            'refund' => $amount,
+            'is_linked' => ((int) $refundSummary['root_plan_id'] !== (int) $planId),
+        ];
+        $refundSummary['linked_refund'] = max(0, (float) $refundSummary['total_refund'] - (float) ($refundSummary['primary_refund'] ?? 0));
     }
 
     protected static function getExistingRouterForCustomerPlan($customerId, $planId)
@@ -547,7 +944,7 @@ class Package
      * @param bool        $skipInvoiceNotification whether to skip sending invoice notification
      * @return string|false
      */
-    public static function rechargeUser($id_customer, $router_name, $plan_id, $gateway, $channel, $note = '', &$processedPlanIds = null, $skipInvoiceNotification = false)
+    public static function rechargeUser($id_customer, $router_name, $plan_id, $gateway, $channel, $note = '', &$processedPlanIds = null, $skipInvoiceNotification = false, &$chargeSummary = null)
     {
         global $config, $admin, $c, $p, $b, $t, $d, $zero, $trx, $_app_stage, $isChangePlan;
         $transactionForNotification = null;
@@ -566,11 +963,22 @@ class Package
         if ($processedPlanIds === null) {
             $processedPlanIds = [];
         }
+        if ($chargeSummary !== null && !is_array($chargeSummary)) {
+            $chargeSummary = [];
+        }
         $planIdInt = (int) $plan_id;
         if ($planIdInt <= 0 || in_array($planIdInt, $processedPlanIds, true)) {
             return false;
         }
         $processedPlanIds[] = $planIdInt;
+        if (is_array($chargeSummary) && !isset($chargeSummary['root_plan_id'])) {
+            $chargeSummary['root_plan_id'] = $planIdInt;
+            $chargeSummary['total_charge'] = 0.0;
+            $chargeSummary['primary_charge'] = 0.0;
+            $chargeSummary['linked_charge'] = 0.0;
+            $chargeSummary['plans'] = [];
+            $chargeSummary['primary_recorded'] = false;
+        }
 
         if ($id_customer == '' or $router_name == '' or $planIdInt == 0) {
             return false;
@@ -644,13 +1052,13 @@ class Package
 
         if ($router_name == 'balance') {
             $result = self::rechargeBalance($c, $p, $gateway, $channel, $note);
-            self::activateLinkedPlans($id_customer, $gateway, $channel, $note, $processedPlanIds, $p, $isVoucher, $router_name);
+            self::activateLinkedPlans($id_customer, $gateway, $channel, $note, $processedPlanIds, $p, $isVoucher, $router_name, $chargeSummary);
             return $result;
         }
 
         if ($router_name == 'Custom Balance') {
             $result = self::rechargeCustomBalance($c, $p, $gateway, $channel, $note);
-            self::activateLinkedPlans($id_customer, $gateway, $channel, $note, $processedPlanIds, $p, $isVoucher, $router_name);
+            self::activateLinkedPlans($id_customer, $gateway, $channel, $note, $processedPlanIds, $p, $isVoucher, $router_name, $chargeSummary);
             return $result;
         }
 
@@ -924,6 +1332,7 @@ class Package
             }
             $t->save();
             $transactionForNotification = $t;
+            self::appendRechargeChargeSummary($chargeSummary, $planIdInt, (float) $t->price);
 
             if ($p['validity_unit'] == 'Period' && !$isUnlimitedPlan) {
                 // insert price to fields for invoice next month
@@ -1038,6 +1447,7 @@ class Package
             $t->type = $p['type'];
             $t->save();
             $transactionForNotification = $t;
+            self::appendRechargeChargeSummary($chargeSummary, $planIdInt, (float) $t->price);
 
             if ($p['validity_unit'] == 'Period' && !$isUnlimitedPlan && (int) $p['validity'] > 0 && $p['price'] != 0) {
                 // insert price to fields for invoice next month
@@ -1078,7 +1488,7 @@ class Package
             User::billsPaid($bills, $id_customer);
         }
         self::handlePppoeUsageActivation($c, $p, $rechargeForUsage, $transactionForNotification);
-        self::activateLinkedPlans($id_customer, $gateway, $channel, $note, $processedPlanIds, $p, $isVoucher, $router_name);
+        self::activateLinkedPlans($id_customer, $gateway, $channel, $note, $processedPlanIds, $p, $isVoucher, $router_name, $chargeSummary);
         run_hook("recharge_user_finish");
         if (!$skipInvoiceNotification && $transactionForNotification) {
             $t = $transactionForNotification;
@@ -1217,7 +1627,7 @@ class Package
         return max(0, (float) $planPrice + (float) $addCost + (float) $tax);
     }
 
-    protected static function reverseLinkedPlans($customerId, $gateway, $channel, $note, array &$processedPlanIds, $plan, $primaryRouterName = '')
+    protected static function reverseLinkedPlans($customerId, $gateway, $channel, $note, array &$processedPlanIds, $plan, $primaryRouterName = '', &$refundSummary = null)
     {
         if ($customerId <= 0 || !$plan) {
             return;
@@ -1279,7 +1689,8 @@ class Package
                     $linkedNote,
                     $processedPlanIds,
                     true,
-                    $skipInvoiceNotification
+                    $skipInvoiceNotification,
+                    $refundSummary
                 );
             } catch (Throwable $throwable) {
                 Message::sendTelegram(
@@ -1302,7 +1713,8 @@ class Package
         $note = '',
         &$processedPlanIds = null,
         $isLinkedAction = false,
-        $skipInvoiceNotification = false
+        $skipInvoiceNotification = false,
+        &$refundSummary = null
     ) {
         global $admin, $_app_stage;
 
@@ -1317,10 +1729,21 @@ class Package
         if ($processedPlanIds === null) {
             $processedPlanIds = [];
         }
+        if ($refundSummary !== null && !is_array($refundSummary)) {
+            $refundSummary = [];
+        }
         if ($id_customer <= 0 || $planIdInt <= 0 || in_array($planIdInt, $processedPlanIds, true)) {
             return false;
         }
         $processedPlanIds[] = $planIdInt;
+        if (is_array($refundSummary) && !isset($refundSummary['root_plan_id'])) {
+            $refundSummary['root_plan_id'] = $planIdInt;
+            $refundSummary['total_refund'] = 0.0;
+            $refundSummary['primary_refund'] = 0.0;
+            $refundSummary['linked_refund'] = 0.0;
+            $refundSummary['plans'] = [];
+            $refundSummary['primary_recorded'] = false;
+        }
 
         $plan = ORM::for_table('tbl_plans')->where('id', $planIdInt)->find_one();
         if (!$plan) {
@@ -1401,6 +1824,7 @@ class Package
         $activeRecharge->save();
 
         $totalRefund = self::calculateRefundCharge($id_customer, $plan, $gateway, $isLinkedAction);
+        self::appendRefundSummary($refundSummary, $planIdInt, $totalRefund);
         $trxPrice = (strpos(strtolower((string) $gateway), 'zero') !== false) ? 0 : (-1 * $totalRefund);
 
         $transaction = ORM::for_table('tbl_transactions')->create();
@@ -1437,7 +1861,7 @@ class Package
         }
 
         if (!$isLinkedAction) {
-            self::reverseLinkedPlans($id_customer, $gateway, $channel, $note, $processedPlanIds, $plan, $router_name);
+            self::reverseLinkedPlans($id_customer, $gateway, $channel, $note, $processedPlanIds, $plan, $router_name, $refundSummary);
         }
 
         Message::sendTelegram(

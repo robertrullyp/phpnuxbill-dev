@@ -312,6 +312,9 @@ switch ($action) {
             }
             // Tax calculation stop
             $total_cost = $plan['price'] + $add_cost + $tax;
+            $estimatedChargeGraph = Package::estimateRechargeChargeGraph((int) $id_customer, $plan, $server, true);
+            $estimatedLinkedCharge = max(0, (float) ($estimatedChargeGraph['linked_charge'] ?? 0));
+            $total_balance_cost = $total_cost + $estimatedLinkedCharge;
 
             if ($using == 'balance' && $config['enable_balance'] == 'yes') {
                 //$plan = ORM::for_table('tbl_plans')->find_one($planId);
@@ -321,7 +324,7 @@ switch ($action) {
                 if (!$plan) {
                     r2(getUrl('plan/recharge'), 'e', Lang::T('Plan not found'));
                 }
-                if ($cust['balance'] < $total_cost) {
+                if ($cust['balance'] < $total_balance_cost) {
                     r2(getUrl('plan/recharge'), 'e', Lang::T('insufficient balance'));
                 }
                 $gateway = 'Recharge Balance';
@@ -331,9 +334,13 @@ switch ($action) {
                 $zero = 1;
                 $gateway = 'Recharge Zero';
             }
-            if (Package::rechargeUser($id_customer, $server, $planId, $gateway, $channel, $note)) {
+            $processedPlanIds = [];
+            $chargeSummary = [];
+            if (Package::rechargeUser($id_customer, $server, $planId, $gateway, $channel, $note, $processedPlanIds, false, $chargeSummary)) {
                 if ($using == 'balance') {
-                    Balance::min($cust['id'], $total_cost);
+                    $actualLinkedCharge = max(0, (float) ($chargeSummary['linked_charge'] ?? 0));
+                    $finalBalanceCost = $total_cost + $actualLinkedCharge;
+                    Balance::min($cust['id'], $finalBalanceCost);
                 }
                 $in = ORM::for_table('tbl_transactions')->where('username', $cust['username'])->order_by_desc('id')->find_one();
                 Package::createInvoice($in);
@@ -454,7 +461,14 @@ switch ($action) {
         $custom_tax_rate = isset($config['custom_tax_rate']) ? (float) $config['custom_tax_rate'] : null;
         $tax_rate = ($tax_rate_setting === 'custom') ? $custom_tax_rate : $tax_rate_setting;
         $tax = ($tax_enable === 'yes' && strtolower($using) !== 'zero') ? Package::tax($planPrice, $tax_rate) : 0;
-        $total_refund = (strtolower($using) === 'zero') ? 0 : ($planPrice + $add_cost + $tax);
+        $gatewayPreview = 'Refund ' . ucwords($using);
+        if (strtolower($using) === 'balance') {
+            $gatewayPreview = 'Refund Balance';
+        } else if (strtolower($using) === 'zero') {
+            $gatewayPreview = 'Refund Zero';
+        }
+        $estimatedRefundGraph = Package::estimateRefundChargeGraph($id_customer, $planData, $server, $gatewayPreview);
+        $total_refund = max(0, (float) ($estimatedRefundGraph['total_refund'] ?? 0));
 
         $currentExpiry = trim((string) ($activeRecharge['expiration'] ?? '')) . ' ' . trim((string) ($activeRecharge['time'] ?? '00:00:00'));
         $currentExpiry = trim($currentExpiry);
@@ -588,7 +602,8 @@ switch ($action) {
         $custom_tax_rate = isset($config['custom_tax_rate']) ? (float) $config['custom_tax_rate'] : null;
         $tax_rate = ($tax_rate_setting === 'custom') ? $custom_tax_rate : $tax_rate_setting;
         $tax = ($tax_enable === 'yes' && strtolower($using) !== 'zero') ? Package::tax($planPrice, $tax_rate) : 0;
-        $total_refund = (strtolower($using) === 'zero') ? 0 : ($planPrice + $add_cost + $tax);
+        $estimatedRefundGraph = Package::estimateRefundChargeGraph($id_customer, $planData, $server, 'Refund ' . ucwords($using));
+        $total_refund = max(0, (float) ($estimatedRefundGraph['total_refund'] ?? 0));
 
         $gateway = 'Refund ' . ucwords($using);
         if (strtolower($using) === 'balance') {
@@ -599,11 +614,16 @@ switch ($action) {
         }
         $channel = $admin['fullname'];
 
-        $invoice = Package::refundUser($id_customer, $server, $planId, $gateway, $channel, $note);
+        $processedPlanIds = [];
+        $refundSummary = [];
+        $invoice = Package::refundUser($id_customer, $server, $planId, $gateway, $channel, $note, $processedPlanIds, false, false, $refundSummary);
         if (!$invoice) {
             r2(getUrl('plan/refund'), 'e', Lang::T('Failed to refund account'));
         }
 
+        if (is_array($refundSummary) && isset($refundSummary['total_refund'])) {
+            $total_refund = max(0, (float) $refundSummary['total_refund']);
+        }
         if (strtolower($using) === 'balance' && $total_refund > 0) {
             Balance::plus($id_customer, $total_refund);
         }
@@ -1622,14 +1642,16 @@ switch ($action) {
         if ($status == 'off') {
             $extendStartedAt = date('Y-m-d H:i:s');
             $extendStartedTs = strtotime($extendStartedAt);
-            $newExpiryTs = strtotime('+' . $days . ' day', $extendStartedTs);
-            $expiration = date('Y-m-d', $newExpiryTs);
-            $expirationTime = date('H:i:s', $newExpiryTs);
             App::setVoucher($svoucher, $id);
             $c = ORM::for_table('tbl_customers')->findOne($tur['customer_id']);
             if ($c) {
                 $p = ORM::for_table('tbl_plans')->find_one($tur['plan_id']);
                 if ($p) {
+                    $extendDurationSeconds = Package::resolveExtendDurationSeconds($p, $days);
+                    $effectiveDays = Package::secondsToDaysRoundedUp($extendDurationSeconds);
+                    $newExpiryTs = $extendStartedTs + $extendDurationSeconds;
+                    $expiration = date('Y-m-d', $newExpiryTs);
+                    $expirationTime = date('H:i:s', $newExpiryTs);
                     $dvc = Package::getDevice($p);
                     if ($_app_stage != 'Demo') {
                         if (file_exists($dvc)) {
@@ -1671,7 +1693,7 @@ switch ($action) {
                 "\nLocation: " . $p['routers'] .
                 "\nCustomer: " . $c['fullname'] .
                 "\nNew Expired: " . Lang::dateAndTimeFormat($expiration, $expirationTime));
-            _log("$admin[fullname] extend Customer $tur[customer_id] $tur[username] #$tur[customer_id] for $days days", $admin['user_type'], $admin['id']);
+            _log("$admin[fullname] extend Customer $tur[customer_id] $tur[username] #$tur[customer_id] for $effectiveDays days", $admin['user_type'], $admin['id']);
             r2(getUrl('plan'), 's', "Extend until $expiration");
         } else {
             r2(getUrl('plan'), 's', "Customer is not expired yet");

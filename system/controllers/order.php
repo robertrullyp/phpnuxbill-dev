@@ -255,17 +255,24 @@ switch ($action) {
         }
         // Tax calculation stop
         $total_cost = $plan['price'] + $add_cost + $tax;
-        if ($plan && $plan['enabled'] && $user['balance'] >= $total_cost) {
-            if (Package::rechargeUser($user['id'], $router_name, $plan['id'], 'Customer', 'Balance')) {
+        $estimatedChargeGraph = Package::estimateRechargeChargeGraph((int) $user['id'], $plan, $router_name, true);
+        $estimatedLinkedCharge = max(0, (float) ($estimatedChargeGraph['linked_charge'] ?? 0));
+        $total_balance_cost = $total_cost + $estimatedLinkedCharge;
+        if ($plan && $plan['enabled'] && $user['balance'] >= $total_balance_cost) {
+            $processedPlanIds = [];
+            $chargeSummary = [];
+            if (Package::rechargeUser($user['id'], $router_name, $plan['id'], 'Customer', 'Balance', '', $processedPlanIds, false, $chargeSummary)) {
                 // if success, then get the balance
-                Balance::min($user['id'], $total_cost);
+                $actualLinkedCharge = max(0, (float) ($chargeSummary['linked_charge'] ?? 0));
+                $finalBalanceCost = $total_cost + $actualLinkedCharge;
+                Balance::min($user['id'], $finalBalanceCost);
                 App::setToken($_GET['stoken'], "success");
                 r2(getUrl('voucher/invoice/'), 's', Lang::T("Success to buy package"));
             } else {
                 r2(getUrl('order/package'), 'e', Lang::T("Failed to buy package"));
                 Message::sendTelegram("Buy Package with Balance Failed\n\n#u$c[username] #buy \n" . $plan['name_plan'] .
                     "\nRouter: " . $router_name .
-                    "\nPrice: " . $total_cost);
+                    "\nPrice: " . $total_balance_cost);
             }
         } else {
             r2(getUrl('order/gateway/$routes[2]/$routes[3]'), 'e', Lang::T("Insufficient balance"));
@@ -327,6 +334,9 @@ switch ($action) {
             } else {
                 $target = ORM::for_table('tbl_customers')->where('username', $username)->find_one();
             }
+            if (!$target) {
+                r2(getUrl('home'), 'd', Lang::T('Username not found'));
+            }
             list($bills, $add_cost) = User::getBills($target['id']);
             if (!empty($add_cost)) {
                 $ui->assign('bills', $bills);
@@ -334,10 +344,10 @@ switch ($action) {
                 $plan['price'] += $add_cost;
             }
 
-            if (!$target) {
-                r2(getUrl('home'), 'd', Lang::T('Username not found'));
-            }
-            if ($user['balance'] < $plan['price']) {
+            $estimatedChargeGraph = Package::estimateRechargeChargeGraph((int) $target['id'], $plan, $router_name, false);
+            $estimatedLinkedCharge = max(0, (float) ($estimatedChargeGraph['linked_charge'] ?? 0));
+            $totalSendCost = (float) $plan['price'] + $estimatedLinkedCharge;
+            if ($user['balance'] < $totalSendCost) {
                 r2(getUrl('home'), 'd', Lang::T('insufficient balance'));
             }
             if ($user['username'] == $target['username']) {
@@ -355,10 +365,14 @@ switch ($action) {
             if ($active && $active['plan_id'] != $plan['id']) {
                 r2(getUrl('order/package'), 'e', Lang::T("Target has active plan, different with current plant.") . " [ <b>$active[namebp]</b> ]");
             }
-            $result = Package::rechargeUser($target['id'], $router_name, $plan['id'], $user['username'], 'Balance');
+            $processedPlanIds = [];
+            $chargeSummary = [];
+            $result = Package::rechargeUser($target['id'], $router_name, $plan['id'], $user['username'], 'Balance', '', $processedPlanIds, false, $chargeSummary);
             if (!empty($result)) {
                 // if success, then get the balance
-                Balance::min($user['id'], $plan['price']);
+                $actualLinkedCharge = max(0, (float) ($chargeSummary['linked_charge'] ?? 0));
+                $finalSendCost = (float) $plan['price'] + $actualLinkedCharge;
+                Balance::min($user['id'], $finalSendCost);
                 //sender
                 $d = ORM::for_table('tbl_payment_gateway')->create();
                 $d->username = $user['username'];
@@ -368,7 +382,7 @@ switch ($action) {
                 $d->plan_name = $plan['name_plan'];
                 $d->routers_id = $routes['2'];
                 $d->routers = $router_name;
-                $d->price = $plan['price'];
+                $d->price = $finalSendCost;
                 $d->payment_method = "Balance";
                 $d->payment_channel = "Send Plan";
                 $d->created_date = date('Y-m-d H:i:s');
@@ -388,7 +402,7 @@ switch ($action) {
                 $d->plan_name = $plan['name_plan'];
                 $d->routers_id = $routes['2'];
                 $d->routers = $router_name;
-                $d->price = $plan['price'];
+                $d->price = $finalSendCost;
                 $d->payment_method = "Balance";
                 $d->payment_channel = "Received Plan";
                 $d->created_date = date('Y-m-d H:i:s');
@@ -402,7 +416,7 @@ switch ($action) {
             } else {
                 $errorMessage = "Send Package with Balance Failed\n\n#u$user[username] #send \n" . $plan['name_plan'] .
                     "\nRouter: " . $router_name .
-                    "\nPrice: " . $plan['price'];
+                    "\nPrice: " . $totalSendCost;
 
                 if ($tax_enable === 'yes') {
                     $errorMessage .= "\nTax: " . $tax;

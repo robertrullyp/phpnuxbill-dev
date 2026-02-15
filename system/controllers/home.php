@@ -368,7 +368,9 @@ if (isset($_GET['recharge']) && !empty($_GET['recharge'])) {
             }
             $extendStartedAt = date('Y-m-d H:i:s');
             $extendStartedTs = strtotime($extendStartedAt);
-            $newExpiryTs = strtotime('+' . $days . ' day', $extendStartedTs);
+            $extendDurationSeconds = Package::resolveExtendDurationSeconds($p, $days);
+            $effectiveDays = Package::secondsToDaysRoundedUp($extendDurationSeconds);
+            $newExpiryTs = $extendStartedTs + $extendDurationSeconds;
             $expiration = date('Y-m-d', $newExpiryTs);
             $expirationTime = date('H:i:s', $newExpiryTs);
             Package::setExtendAnchorStartIfMissing((int) ($tur['customer_id'] ?? 0), (int) ($tur['id'] ?? 0), $extendStartedAt);
@@ -391,7 +393,7 @@ if (isset($_GET['recharge']) && !empty($_GET['recharge'])) {
             );
             App::setToken(_get('stoken'), $id);
             file_put_contents($path, $m);
-            _log("Customer $tur[customer_id] $user[fullname] ($tur[username]) extend for $days days", "Customer", $user['id']);
+            _log("Customer $tur[customer_id] $user[fullname] ($tur[username]) extend for $effectiveDays days", "Customer", $user['id']);
             Message::sendTelegram("#u$user[username] ($user[fullname]) #id$tur[customer_id] #extend #" . $p['type'] . " \n" . $p['name_plan'] .
                 "\nLocation: " . $p['routers'] .
                 "\nCustomer: " . $user['fullname'] .
