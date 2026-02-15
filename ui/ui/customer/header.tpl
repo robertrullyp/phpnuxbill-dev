@@ -74,13 +74,8 @@
                         </li>
                         <li class="dropdown user user-menu">
                             {assign var='customerPhotoPath' value=$_user['photo']}
-                            {assign var='customerAvatarFallback' value=$app_url|cat:'/'|cat:$UPLOAD_PATH|cat:'/user.default.jpg'}
-                            {if !$customerPhotoPath || strstr($customerPhotoPath, 'default')}
-                                {assign var='customerAvatarSrc' value=$customerAvatarFallback}
-                            {else}
-                                {assign var='cleanCustomerPhoto' value=$customerPhotoPath|trim:'/'}
-                                {assign var='customerAvatarSrc' value=$app_url|cat:'/'|cat:$UPLOAD_PATH|cat:'/'|cat:$cleanCustomerPhoto|cat:'.thumb.jpg'}
-                            {/if}
+                            {assign var='customerAvatarFallback' value=Text::resolveUploadPhotoUrl('', 'user.default.jpg')}
+                            {assign var='customerAvatarSrc' value=Text::resolveUploadPhotoUrl($customerPhotoPath, 'user.default.jpg')}
                             <a href="#" class="dropdown-toggle" data-toggle="dropdown">
                                 {if $_c['enable_balance'] == 'yes'}
                                     <span

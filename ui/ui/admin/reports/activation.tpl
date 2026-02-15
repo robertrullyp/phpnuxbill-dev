@@ -60,8 +60,8 @@
                                     </td>
                                     <td class="text-danger">{Lang::dateAndTimeFormat($ds['expiration'],$ds['time'])}</td>
                                     <td>{$ds['method']}</td>
-                                    <td>{($ds['usage_tx_bytes']|default:0)/1073741824|number_format:2:'.':','} GB</td>
-                                    <td>{($ds['usage_rx_bytes']|default:0)/1073741824|number_format:2:'.':','} GB</td>
+                                    <td>{(($ds['usage_tx_bytes']|default:0)/1073741824)|number_format:2:'.':','} GB</td>
+                                    <td>{(($ds['usage_rx_bytes']|default:0)/1073741824)|number_format:2:'.':','} GB</td>
                                 </tr>
                             {/foreach}
                         </tbody>

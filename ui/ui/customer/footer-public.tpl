@@ -43,6 +43,10 @@
 
 
 
+
+<!-- AI_CHATBOT_PLUGIN_START -->
+{include file="[plugin]ai_chatbot.tpl"}
+<!-- AI_CHATBOT_PLUGIN_END -->
 </body>
 
 </html>

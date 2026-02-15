@@ -852,5 +852,18 @@
     "Customer_can_login_but_cannot_buy_internet_package__Admin_cannot_recharge_customer": "Customer can login but cannot buy internet package, Admin cannot recharge customer",
     "Don_t_forget_to_deactivate_all_active_package_too": "Don't forget to deactivate all active package too",
     "Not_Working_with_Freeradius_Mysql": "Not Working with Freeradius Mysql",
-    "Continue_the_Customer_Data_change_process_": "Continue the Customer Data change process?"
+    "Continue_the_Customer_Data_change_process_": "Continue the Customer Data change process?",
+    "Timezone": "Timezone",
+    "Date_Format": "Date Format",
+    "Default_Language": "Default Language",
+    "Language_Editor": "Language Editor",
+    "Decimal_Point": "Decimal Point",
+    "Thousands_Separator": "Thousands Separator",
+    "Currency_Code": "Currency Code",
+    "Keep_it_blank_if_you_do_not_want_to_show_currency_code": "Keep it blank if you do not want to show currency code",
+    "Country_Code_Phone": "Country Code Phone",
+    "Radius_Package": "Radius Package",
+    "Change_title_in_user_Plan_order": "Change title in user Plan order",
+    "Hotspot_Package": "Hotspot Package",
+    "VPN_Package": "VPN Package"
 }

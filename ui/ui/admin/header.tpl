@@ -69,13 +69,8 @@
                         </li>
                         <li class="dropdown user user-menu">
                             {assign var='adminPhotoPath' value=$_admin['photo']}
-                            {assign var='adminAvatarFallback' value=$app_url|cat:'/'|cat:$UPLOAD_PATH|cat:'/admin.default.png'}
-                            {if !$adminPhotoPath || strstr($adminPhotoPath, 'default')}
-                                {assign var='adminAvatarSrc' value=$adminAvatarFallback}
-                            {else}
-                                {assign var='cleanAdminPhoto' value=$adminPhotoPath|trim:'/'}
-                                {assign var='adminAvatarSrc' value=$app_url|cat:'/'|cat:$UPLOAD_PATH|cat:'/'|cat:$cleanAdminPhoto|cat:'.thumb.jpg'}
-                            {/if}
+                            {assign var='adminAvatarFallback' value=Text::resolveUploadPhotoUrl('', 'admin.default.png')}
+                            {assign var='adminAvatarSrc' value=Text::resolveUploadPhotoUrl($adminPhotoPath, 'admin.default.png')}
                             <a href="#" class="dropdown-toggle" data-toggle="dropdown">
                                 <img src="{$adminAvatarSrc}"
                                     onerror="this.src='{$adminAvatarFallback}'" class="user-image"
