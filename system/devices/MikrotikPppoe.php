@@ -45,19 +45,15 @@ class MikrotikPppoe
             } else {
                 $setRequest->setArgument('password', $customer['password']);
             }
-            if (!empty($customer['pppoe_username'])) {
-                $setRequest->setArgument('name', $customer['pppoe_username']);
-            } else {
-                $setRequest->setArgument('name', $customer['username']);
-            }
+            $setRequest->setArgument('name', $this->resolveSecretUsername($customer));
             $unsetIP = false;
             if (!empty($customer['pppoe_ip']) && !$isExp){
                 $setRequest->setArgument('remote-address', $customer['pppoe_ip']);
             } else {
                 $unsetIP = true;
-			}
+				}
             $setRequest->setArgument('profile', $plan['name_plan']);
-            $setRequest->setArgument('comment', $customer['fullname'] . ' | ' . $customer['email'] . ' | ' . implode(', ', User::getBillNames($customer['id'])));
+            $setRequest->setArgument('comment', $this->resolvePppoeComment($customer));
             $client->sendSync($setRequest);
 
             if($unsetIP){
@@ -75,6 +71,12 @@ class MikrotikPppoe
                     $this->removePpoeActive($client, $customer['pppoe_username']);
                 }
             }
+        }
+
+        $bindingName = '';
+        $bindingWarning = '';
+        if (!$this->ensurePppoeServerBinding($customer, $plan, $bindingName, $bindingWarning) && $bindingWarning !== '') {
+            $this->logPppoeBindingWarning($plan, $customer, $bindingWarning, 'add_customer');
         }
     }
 
@@ -106,6 +108,10 @@ class MikrotikPppoe
         if (!empty($customer['pppoe_username'])) {
             $this->removePpoeActive($client, $customer['pppoe_username']);
         }
+        $bindingWarning = '';
+        if (!$this->removePppoeServerBinding($customer, $plan, $bindingWarning) && $bindingWarning !== '') {
+            $this->logPppoeBindingWarning($plan, $customer, $bindingWarning, 'remove_customer');
+        }
     }
 
     // customer change username
@@ -124,6 +130,7 @@ class MikrotikPppoe
             $client->sendSync($setRequest);
             //disconnect then
             $this->removePpoeActive($client, $from);
+            $this->renamePppoeServerBinding($client, $from, $to);
         }
     }
 
@@ -178,6 +185,438 @@ class MikrotikPppoe
             }
         }
         return $id;
+    }
+
+    public function resolveSecretUsername($customer)
+    {
+        $pppoeUsername = trim((string) ($customer['pppoe_username'] ?? ''));
+        if ($pppoeUsername !== '') {
+            return $pppoeUsername;
+        }
+        return trim((string) ($customer['username'] ?? ''));
+    }
+
+    public function resolvePppoeBindingName($customer)
+    {
+        $secretUsername = $this->resolveSecretUsername($customer);
+        if ($secretUsername === '') {
+            return '';
+        }
+        $safeUsername = preg_replace('/[^a-zA-Z0-9._-]/', '_', $secretUsername);
+        $safeUsername = trim((string) $safeUsername, '_');
+        if ($safeUsername === '') {
+            $safeUsername = 'user';
+        }
+        return 'pppoe-' . $safeUsername;
+    }
+
+    protected function resolvePppoeComment($customer)
+    {
+        $fullname = trim((string) ($customer['fullname'] ?? ''));
+        $email = trim((string) ($customer['email'] ?? ''));
+        $customerId = (int) ($customer['id'] ?? 0);
+        $billNames = [];
+        if ($customerId > 0) {
+            $billNames = User::getBillNames($customerId);
+        }
+        return $fullname . ' | ' . $email . ' | ' . implode(', ', $billNames);
+    }
+
+    protected function logPppoeBindingWarning($plan, $customer, $warning, $action = 'sync')
+    {
+        $warning = trim((string) $warning);
+        if ($warning === '') {
+            return;
+        }
+
+        $routerName = trim((string) ($plan['routers'] ?? ''));
+        $planName = trim((string) ($plan['name_plan'] ?? ''));
+        $username = trim((string) ($customer['username'] ?? ''));
+        $secretUsername = $this->resolveSecretUsername($customer);
+
+        $text = "PPPoE Binding Warning ({$action})\n" .
+            "Router: {$routerName}\n" .
+            "Plan: {$planName}\n" .
+            "Customer: {$username}\n" .
+            "Secret User: {$secretUsername}\n" .
+            "Detail: {$warning}";
+
+        if (function_exists('_log')) {
+            _log($text);
+        }
+        if (class_exists('Message')) {
+            Message::sendTelegram($text);
+        }
+    }
+
+    protected function readPppoeServerServices($client)
+    {
+        $services = [];
+        if (!$client) {
+            return $services;
+        }
+        $request = new RouterOS\Request('/interface/pppoe-server/server/print');
+        $responses = $client->sendSync($request);
+        foreach ($responses as $response) {
+            $service = trim((string) $response->getProperty('service-name'));
+            if ($service !== '') {
+                $services[$service] = $service;
+            }
+        }
+        $services = array_values($services);
+        sort($services, SORT_NATURAL | SORT_FLAG_CASE);
+        return $services;
+    }
+
+    public function listPppoeServerServices($routerName, &$error = '')
+    {
+        $error = '';
+        $routerName = trim((string) $routerName);
+        if ($routerName === '') {
+            return [];
+        }
+
+        try {
+            $mikrotik = $this->info($routerName);
+            if (!$mikrotik) {
+                $error = 'Router not found.';
+                return [];
+            }
+            $client = $this->getClient($mikrotik['ip_address'], $mikrotik['username'], $mikrotik['password']);
+            if (!$client) {
+                $error = 'Router client is unavailable.';
+                return [];
+            }
+            return $this->readPppoeServerServices($client);
+        } catch (Throwable $e) {
+            $error = $e->getMessage();
+            return [];
+        }
+    }
+
+    protected function resolvePlanPppoeService($client, $plan, &$warning = '')
+    {
+        $warning = '';
+        $service = trim((string) ($plan['pppoe_service'] ?? ''));
+        if ($service !== '') {
+            return $service;
+        }
+        $services = $this->readPppoeServerServices($client);
+        if (!empty($services)) {
+            return (string) $services[0];
+        }
+        $warning = 'PPPoE service is empty and router has no PPPoE server entries.';
+        return '';
+    }
+
+    protected function findPppoeBindingByField($client, $field, $value)
+    {
+        $value = trim((string) $value);
+        if ($value === '' || !$client) {
+            return null;
+        }
+
+        $request = new RouterOS\Request('/interface/pppoe-server/print');
+        $request->setQuery(RouterOS\Query::where($field, $value));
+        $responses = $client->sendSync($request);
+        foreach ($responses as $response) {
+            $id = trim((string) $response->getProperty('.id'));
+            if ($id === '') {
+                continue;
+            }
+            return [
+                'id' => $id,
+                'name' => trim((string) $response->getProperty('name')),
+                'user' => trim((string) $response->getProperty('user')),
+                'service' => trim((string) $response->getProperty('service')),
+            ];
+        }
+        return null;
+    }
+
+    protected function findInterfaceByName($client, $name)
+    {
+        $name = trim((string) $name);
+        if ($name === '' || !$client) {
+            return null;
+        }
+        $request = new RouterOS\Request('/interface/print');
+        $request->setQuery(RouterOS\Query::where('name', $name));
+        $responses = $client->sendSync($request);
+        foreach ($responses as $response) {
+            $id = trim((string) $response->getProperty('.id'));
+            if ($id === '') {
+                continue;
+            }
+            return [
+                'id' => $id,
+                'name' => trim((string) $response->getProperty('name')),
+                'rx-byte' => (int) $response->getProperty('rx-byte'),
+                'tx-byte' => (int) $response->getProperty('tx-byte'),
+            ];
+        }
+        return null;
+    }
+
+    public function ensurePppoeServerBinding($customer, $plan, &$bindingName = '', &$warning = '')
+    {
+        $bindingName = $this->resolvePppoeBindingName($customer);
+        $warning = '';
+        if ($bindingName === '') {
+            $warning = 'PPPoE binding name is empty.';
+            return false;
+        }
+
+        $routerName = trim((string) ($plan['routers'] ?? ''));
+        if ($routerName === '') {
+            $warning = 'Router name is empty.';
+            return false;
+        }
+
+        try {
+            $mikrotik = $this->info($routerName);
+            if (!$mikrotik) {
+                $warning = 'Router not found.';
+                return false;
+            }
+            $client = $this->getClient($mikrotik['ip_address'], $mikrotik['username'], $mikrotik['password']);
+            if (!$client) {
+                $warning = 'Router client is unavailable.';
+                return false;
+            }
+
+            $secretUsername = $this->resolveSecretUsername($customer);
+            if ($secretUsername === '') {
+                $warning = 'Secret username is empty.';
+                return false;
+            }
+
+            $serviceWarning = '';
+            $serviceName = $this->resolvePlanPppoeService($client, $plan, $serviceWarning);
+            if ($serviceName === '') {
+                $warning = $serviceWarning !== '' ? $serviceWarning : 'Unable to resolve PPPoE service.';
+                return false;
+            }
+
+            $comment = $this->resolvePppoeComment($customer);
+            $existing = $this->findPppoeBindingByField($client, 'name', $bindingName);
+            if (!$existing) {
+                $existing = $this->findPppoeBindingByField($client, 'user', $secretUsername);
+            }
+
+            if ($existing) {
+                $setRequest = new RouterOS\Request('/interface/pppoe-server/set');
+                $setRequest->setArgument('numbers', $existing['id']);
+                $setRequest->setArgument('name', $bindingName);
+                $setRequest->setArgument('user', $secretUsername);
+                $setRequest->setArgument('service', $serviceName);
+                $setRequest->setArgument('comment', $comment);
+                $client->sendSync($setRequest);
+            } else {
+                $addRequest = new RouterOS\Request('/interface/pppoe-server/add');
+                $addRequest->setArgument('name', $bindingName);
+                $addRequest->setArgument('user', $secretUsername);
+                $addRequest->setArgument('service', $serviceName);
+                $addRequest->setArgument('comment', $comment);
+                $client->sendSync($addRequest);
+            }
+
+            return true;
+        } catch (Throwable $e) {
+            $warning = $e->getMessage();
+            return false;
+        }
+    }
+
+    public function removePppoeServerBinding($customer, $plan, &$warning = '')
+    {
+        $warning = '';
+        $routerName = trim((string) ($plan['routers'] ?? ''));
+        if ($routerName === '') {
+            return false;
+        }
+
+        try {
+            $mikrotik = $this->info($routerName);
+            if (!$mikrotik) {
+                $warning = 'Router not found.';
+                return false;
+            }
+            $client = $this->getClient($mikrotik['ip_address'], $mikrotik['username'], $mikrotik['password']);
+            if (!$client) {
+                $warning = 'Router client is unavailable.';
+                return false;
+            }
+
+            $usernames = [];
+            $username = trim((string) ($customer['username'] ?? ''));
+            if ($username !== '') {
+                $usernames[] = $username;
+            }
+            $pppoeUsername = trim((string) ($customer['pppoe_username'] ?? ''));
+            if ($pppoeUsername !== '') {
+                $usernames[] = $pppoeUsername;
+            }
+            $usernames = array_values(array_unique($usernames));
+
+            $bindingIds = [];
+            foreach ($usernames as $user) {
+                $candidate = $this->findPppoeBindingByField($client, 'name', 'pppoe-' . preg_replace('/[^a-zA-Z0-9._-]/', '_', $user));
+                if ($candidate && !empty($candidate['id'])) {
+                    $bindingIds[$candidate['id']] = $candidate['id'];
+                }
+                $candidate = $this->findPppoeBindingByField($client, 'user', $user);
+                if ($candidate && !empty($candidate['id'])) {
+                    $bindingIds[$candidate['id']] = $candidate['id'];
+                }
+            }
+
+            foreach ($bindingIds as $bindingId) {
+                $removeRequest = new RouterOS\Request('/interface/pppoe-server/remove');
+                $removeRequest->setArgument('numbers', $bindingId);
+                $client->sendSync($removeRequest);
+            }
+
+            return true;
+        } catch (Throwable $e) {
+            $warning = $e->getMessage();
+            return false;
+        }
+    }
+
+    protected function renamePppoeServerBinding($client, $fromUsername, $toUsername, $comment = '')
+    {
+        $fromUsername = trim((string) $fromUsername);
+        $toUsername = trim((string) $toUsername);
+        if ($fromUsername === '' || $toUsername === '' || !$client) {
+            return false;
+        }
+
+        $fromBindingName = 'pppoe-' . preg_replace('/[^a-zA-Z0-9._-]/', '_', $fromUsername);
+        $toBindingName = 'pppoe-' . preg_replace('/[^a-zA-Z0-9._-]/', '_', $toUsername);
+
+        $existing = $this->findPppoeBindingByField($client, 'name', $fromBindingName);
+        if (!$existing) {
+            $existing = $this->findPppoeBindingByField($client, 'user', $fromUsername);
+        }
+        if (!$existing) {
+            return false;
+        }
+
+        $setRequest = new RouterOS\Request('/interface/pppoe-server/set');
+        $setRequest->setArgument('numbers', $existing['id']);
+        $setRequest->setArgument('name', $toBindingName);
+        $setRequest->setArgument('user', $toUsername);
+        if (trim((string) $comment) !== '') {
+            $setRequest->setArgument('comment', trim((string) $comment));
+        }
+        $client->sendSync($setRequest);
+
+        return true;
+    }
+
+    public function getPppoeBindingCounters($customer, $plan, &$warning = '', $bindingName = '')
+    {
+        $warning = '';
+        $routerName = trim((string) ($plan['routers'] ?? ''));
+        if ($routerName === '') {
+            $warning = 'Router name is empty.';
+            return null;
+        }
+
+        try {
+            $mikrotik = $this->info($routerName);
+            if (!$mikrotik) {
+                $warning = 'Router not found.';
+                return null;
+            }
+            $client = $this->getClient($mikrotik['ip_address'], $mikrotik['username'], $mikrotik['password']);
+            if (!$client) {
+                $warning = 'Router client is unavailable.';
+                return null;
+            }
+
+            $secretUsername = $this->resolveSecretUsername($customer);
+            if ($bindingName === '') {
+                $bindingName = $this->resolvePppoeBindingName($customer);
+            }
+
+            $binding = $this->findPppoeBindingByField($client, 'name', $bindingName);
+            if (!$binding && $secretUsername !== '') {
+                $binding = $this->findPppoeBindingByField($client, 'user', $secretUsername);
+            }
+            if ($binding && !empty($binding['name'])) {
+                $bindingName = $binding['name'];
+            }
+
+            $request = new RouterOS\Request('/interface/print');
+            $request->setArgument('stats', '');
+            $request->setQuery(RouterOS\Query::where('name', $bindingName));
+            $responses = $client->sendSync($request);
+            foreach ($responses as $response) {
+                return [
+                    'binding_name' => $bindingName,
+                    'rx_byte' => max(0, (int) $response->getProperty('rx-byte')),
+                    'tx_byte' => max(0, (int) $response->getProperty('tx-byte')),
+                ];
+            }
+
+            $warning = 'PPPoE binding interface counters not found.';
+            return null;
+        } catch (Throwable $e) {
+            $warning = $e->getMessage();
+            return null;
+        }
+    }
+
+    public function resetPppoeBindingCounters($customer, $plan, &$warning = '', $bindingName = '')
+    {
+        $warning = '';
+        $routerName = trim((string) ($plan['routers'] ?? ''));
+        if ($routerName === '') {
+            $warning = 'Router name is empty.';
+            return false;
+        }
+
+        try {
+            $mikrotik = $this->info($routerName);
+            if (!$mikrotik) {
+                $warning = 'Router not found.';
+                return false;
+            }
+            $client = $this->getClient($mikrotik['ip_address'], $mikrotik['username'], $mikrotik['password']);
+            if (!$client) {
+                $warning = 'Router client is unavailable.';
+                return false;
+            }
+
+            $secretUsername = $this->resolveSecretUsername($customer);
+            if ($bindingName === '') {
+                $bindingName = $this->resolvePppoeBindingName($customer);
+            }
+
+            $binding = $this->findPppoeBindingByField($client, 'name', $bindingName);
+            if (!$binding && $secretUsername !== '') {
+                $binding = $this->findPppoeBindingByField($client, 'user', $secretUsername);
+            }
+            if ($binding && !empty($binding['name'])) {
+                $bindingName = $binding['name'];
+            }
+
+            $iface = $this->findInterfaceByName($client, $bindingName);
+            if (!$iface) {
+                $warning = 'PPPoE binding interface not found for counter reset.';
+                return false;
+            }
+
+            $resetRequest = new RouterOS\Request('/interface/reset-counters');
+            $resetRequest->setArgument('numbers', $iface['id']);
+            $client->sendSync($resetRequest);
+            return true;
+        } catch (Throwable $e) {
+            $warning = $e->getMessage();
+            return false;
+        }
     }
 
     function update_plan($old_name, $new_plan)
@@ -356,17 +795,13 @@ class MikrotikPppoe
         $setRequest = new RouterOS\Request('/ppp/secret/add');
         $setRequest->setArgument('service', 'pppoe');
         $setRequest->setArgument('profile', $plan['name_plan']);
-        $setRequest->setArgument('comment', $customer['fullname'] . ' | ' . $customer['email'] . ' | ' . implode(', ', User::getBillNames($customer['id'])));
+        $setRequest->setArgument('comment', $this->resolvePppoeComment($customer));
         if (!empty($customer['pppoe_password'])) {
             $setRequest->setArgument('password', $customer['pppoe_password']);
         } else {
             $setRequest->setArgument('password', $customer['password']);
         }
-        if (!empty($customer['pppoe_username'])) {
-            $setRequest->setArgument('name', $customer['pppoe_username']);
-        } else {
-            $setRequest->setArgument('name', $customer['username']);
-        }
+        $setRequest->setArgument('name', $this->resolveSecretUsername($customer));
         if (!empty($customer['pppoe_ip']) && !$isExp) {
             $setRequest->setArgument('remote-address', $customer['pppoe_ip']);
         }

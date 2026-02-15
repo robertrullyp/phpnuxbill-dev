@@ -484,6 +484,8 @@ switch ($action) {
 
         $customer = User::_info($d['customer_id']);
         $oldPlanID = $d['plan_id'];
+        $previousExpiration = trim((string) ($d['expiration'] ?? ''));
+        $previousTime = trim((string) ($d['time'] ?? ''));
         $newPlan = ORM::for_table('tbl_plans')->where('id', $id_plan)->find_one();
 
         if (!$newPlan) {
@@ -532,6 +534,18 @@ switch ($action) {
 
             $planName = $d['namebp'];
             $d->save();
+            if (class_exists('PppoeUsage') && PppoeUsage::isStorageReady()) {
+                $newPlanData = $newPlan ? $newPlan->as_array() : [];
+                if (PppoeUsage::isSupportedPlan($newPlanData)) {
+                    $rechargeId = (int) ($d['id'] ?? 0);
+                    if ($rechargeId > 0) {
+                        $oldExpiryAt = PppoeUsage::toDateTime($previousExpiration, $previousTime);
+                        $newExpiryAt = PppoeUsage::toDateTime($expiration, $time);
+                        PppoeUsage::scheduleCounterReset($rechargeId, $oldExpiryAt, 'Admin plan edit: keep previous expiry reset');
+                        PppoeUsage::scheduleCounterReset($rechargeId, $newExpiryAt, 'Admin plan edit: schedule new expiry reset');
+                    }
+                }
+            }
 
             // Send  Notifications
             if (isset($_POST['notify']) && $_POST['notify'] == true) {
@@ -1350,6 +1364,13 @@ switch ($action) {
                     $tur->expiration = $expiration;
                     $tur->status = "on";
                     $tur->save();
+                    if (class_exists('PppoeUsage') && PppoeUsage::isStorageReady()) {
+                        $planData = $p ? $p->as_array() : [];
+                        if (PppoeUsage::isSupportedPlan($planData)) {
+                            $expiryAt = PppoeUsage::toDateTime($expiration, (string) ($tur['time'] ?? '00:00:00'));
+                            PppoeUsage::scheduleCounterReset((int) ($tur['id'] ?? 0), $expiryAt, 'Admin extend: schedule new expiry reset');
+                        }
+                    }
                 } else {
                     r2(getUrl('plan'), 's', "Plan not found");
                 }

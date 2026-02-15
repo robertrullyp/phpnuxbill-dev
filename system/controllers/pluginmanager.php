@@ -9,9 +9,9 @@ _admin();
 $ui->assign('_title', 'Plugin Manager');
 $ui->assign('_system_menu', 'settings');
 
-// Use custom plugin repository hosted in this fork
-// Note: use raw URL to fetch JSON content
-$plugin_repository = 'https://raw.githubusercontent.com/robertrullyp/phpnuxbill-dev/main/plugin-repository.json';
+$pluginRepositoryUpstream = 'https://hotspotbilling.github.io/Plugin-Repository/repository.json';
+$pluginRepositoryFile = File::pathFixer(__DIR__ . '/../../plugin-repository.json');
+$pluginRepositoryCustomFile = File::pathFixer(__DIR__ . '/../../plugin-repository.custom.json');
 
 $action = $routes['1'];
 $ui->assign('_admin', $admin);
@@ -31,26 +31,39 @@ $json = [
 ];
 $loadedFromCache = false;
 
-if (file_exists($cache) && time() - filemtime($cache) < (24 * 60 * 60)) {
-    $cachedData = file_get_contents($cache);
-    if ($cachedData !== false) {
-        $sanitizedData = ltrim($cachedData, "\xEF\xBB\xBF");
-        if ($sanitizedData !== $cachedData) {
-            file_put_contents($cache, $sanitizedData);
+$syncError = '';
+$mergedPayload = pluginRepositorySyncMergedFile(
+    $pluginRepositoryUpstream,
+    $pluginRepositoryFile,
+    $pluginRepositoryCustomFile,
+    $syncError
+);
+if ($mergedPayload !== null) {
+    file_put_contents($cache, $mergedPayload);
+    $jsonData = $mergedPayload;
+} else {
+    $localPayload = pluginRepositoryReadPayload($pluginRepositoryFile);
+    if ($localPayload !== null) {
+        $jsonData = $localPayload;
+    } else if (file_exists($cache)) {
+        $cachedFallback = file_get_contents($cache);
+        if ($cachedFallback !== false) {
+            $jsonData = ltrim($cachedFallback, "\xEF\xBB\xBF");
+            $loadedFromCache = true;
+        } else {
+            $repoError = Lang::T('Unable to load plugin repository data. Please try again later.');
         }
-        $jsonData = $sanitizedData;
-        $loadedFromCache = true;
     } else {
         $repoError = Lang::T('Unable to load plugin repository data. Please try again later.');
     }
-} else {
-    $data = Http::getData($plugin_repository);
-    if ($data !== false && $data !== null) {
-        $sanitizedData = ltrim($data, "\xEF\xBB\xBF");
-        file_put_contents($cache, $sanitizedData);
-        $jsonData = $sanitizedData;
-    } else {
-        $repoError = Lang::T('Unable to load plugin repository data. Please try again later.');
+
+    if ($syncError !== '') {
+        $warning = Lang::T('Unable to sync upstream plugin repository. Showing local repository data.');
+        if ($repoError !== null) {
+            $repoError .= ' (' . $syncError . ')';
+        } else {
+            $repoError = $warning . ' (' . $syncError . ')';
+        }
     }
 }
 
@@ -60,6 +73,10 @@ if ($jsonData !== null) {
         $json['plugins'] = isset($decoded['plugins']) && is_array($decoded['plugins']) ? $decoded['plugins'] : [];
         $json['payment_gateway'] = isset($decoded['payment_gateway']) && is_array($decoded['payment_gateway']) ? $decoded['payment_gateway'] : [];
         $json['devices'] = isset($decoded['devices']) && is_array($decoded['devices']) ? $decoded['devices'] : [];
+
+        $json['plugins'] = pluginRepositorySortItemsByLatest($json['plugins']);
+        $json['payment_gateway'] = pluginRepositorySortItemsByLatest($json['payment_gateway']);
+        $json['devices'] = pluginRepositorySortItemsByLatest($json['devices']);
 
         if ($loadedFromCache && empty($json['plugins']) && empty($json['payment_gateway'])) {
             if (file_exists($cache)) {
@@ -509,4 +526,265 @@ function scanAndRemovePath($source, $target)
     if (file_exists($target)) {
         rmdir($target);
     }
+}
+
+function pluginRepositoryReadPayload($filePath)
+{
+    if (!is_file($filePath)) {
+        return null;
+    }
+
+    $raw = @file_get_contents($filePath);
+    if (!is_string($raw) || $raw === '') {
+        return null;
+    }
+
+    return ltrim($raw, "\xEF\xBB\xBF");
+}
+
+function pluginRepositoryDecodeData($payload)
+{
+    if (!is_string($payload) || $payload === '') {
+        return null;
+    }
+
+    $decoded = json_decode($payload, true);
+    if (json_last_error() !== JSON_ERROR_NONE || !is_array($decoded)) {
+        return null;
+    }
+
+    return [
+        'plugins' => isset($decoded['plugins']) && is_array($decoded['plugins']) ? array_values($decoded['plugins']) : [],
+        'payment_gateway' => isset($decoded['payment_gateway']) && is_array($decoded['payment_gateway']) ? array_values($decoded['payment_gateway']) : [],
+        'devices' => isset($decoded['devices']) && is_array($decoded['devices']) ? array_values($decoded['devices']) : [],
+    ];
+}
+
+function pluginRepositorySyncMergedFile($upstreamUrl, $repositoryFile, $customFile, &$error = '')
+{
+    $error = '';
+    $upstreamRaw = Http::getData($upstreamUrl);
+    if ($upstreamRaw === false || $upstreamRaw === null) {
+        $error = 'Unable to reach upstream plugin repository.';
+        return null;
+    }
+
+    $upstreamPayload = ltrim((string) $upstreamRaw, "\xEF\xBB\xBF");
+    $upstreamData = pluginRepositoryDecodeData($upstreamPayload);
+    if ($upstreamData === null) {
+        $error = 'Invalid upstream plugin repository response.';
+        return null;
+    }
+
+    $customData = pluginRepositoryLoadCustomOverrides($upstreamData, $repositoryFile, $customFile);
+    $mergedData = pluginRepositoryMergeData($upstreamData, $customData);
+    $mergedPayload = json_encode(
+        $mergedData,
+        JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE
+    );
+    if ($mergedPayload === false) {
+        $error = 'Unable to encode merged plugin repository.';
+        return null;
+    }
+
+    $mergedPayload .= "\n";
+    @file_put_contents($repositoryFile, $mergedPayload, LOCK_EX);
+    return $mergedPayload;
+}
+
+function pluginRepositoryLoadCustomOverrides($upstreamData, $repositoryFile, $customFile)
+{
+    $empty = [
+        'plugins' => [],
+        'payment_gateway' => [],
+        'devices' => [],
+    ];
+
+    $customPayload = pluginRepositoryReadPayload($customFile);
+    if ($customPayload !== null) {
+        $decodedCustom = pluginRepositoryDecodeData($customPayload);
+        if ($decodedCustom !== null) {
+            return $decodedCustom;
+        }
+    }
+
+    // Compatibility for old setup where manual edits were directly saved in plugin-repository.json.
+    $legacyPayload = pluginRepositoryReadPayload($repositoryFile);
+    if ($legacyPayload === null) {
+        return $empty;
+    }
+
+    $legacyData = pluginRepositoryDecodeData($legacyPayload);
+    if ($legacyData === null) {
+        return $empty;
+    }
+
+    $overrides = pluginRepositoryExtractOverrides($upstreamData, $legacyData);
+    if (empty($overrides['plugins']) && empty($overrides['payment_gateway']) && empty($overrides['devices'])) {
+        return $empty;
+    }
+
+    $payload = json_encode(
+        $overrides,
+        JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE
+    );
+    if ($payload !== false) {
+        @file_put_contents($customFile, $payload . "\n", LOCK_EX);
+    }
+
+    return $overrides;
+}
+
+function pluginRepositoryExtractOverrides($upstreamData, $legacyData)
+{
+    $sections = ['plugins', 'payment_gateway', 'devices'];
+    $overrides = [
+        'plugins' => [],
+        'payment_gateway' => [],
+        'devices' => [],
+    ];
+
+    foreach ($sections as $section) {
+        $upstreamMap = [];
+        foreach ($upstreamData[$section] as $row) {
+            if (!is_array($row)) {
+                continue;
+            }
+            $id = trim((string) ($row['id'] ?? ''));
+            if ($id === '') {
+                continue;
+            }
+            $upstreamMap[$id] = $row;
+        }
+
+        foreach ($legacyData[$section] as $row) {
+            if (!is_array($row)) {
+                continue;
+            }
+            $id = trim((string) ($row['id'] ?? ''));
+            if ($id === '') {
+                continue;
+            }
+
+            if (!isset($upstreamMap[$id]) || !pluginRepositoryRowsAreEqual($row, $upstreamMap[$id])) {
+                $overrides[$section][] = $row;
+            }
+        }
+    }
+
+    return $overrides;
+}
+
+function pluginRepositoryMergeData($upstreamData, $customData)
+{
+    return [
+        'plugins' => pluginRepositorySortItemsByLatest(
+            pluginRepositoryMergeSection($upstreamData['plugins'], $customData['plugins'])
+        ),
+        'payment_gateway' => pluginRepositorySortItemsByLatest(
+            pluginRepositoryMergeSection($upstreamData['payment_gateway'], $customData['payment_gateway'])
+        ),
+        'devices' => pluginRepositorySortItemsByLatest(
+            pluginRepositoryMergeSection($upstreamData['devices'], $customData['devices'])
+        ),
+    ];
+}
+
+function pluginRepositoryMergeSection($upstreamRows, $customRows)
+{
+    $customById = [];
+    foreach ((array) $customRows as $row) {
+        if (!is_array($row)) {
+            continue;
+        }
+        $id = trim((string) ($row['id'] ?? ''));
+        if ($id === '') {
+            continue;
+        }
+        $customById[$id] = $row;
+    }
+
+    $merged = [];
+    foreach ((array) $upstreamRows as $row) {
+        if (!is_array($row)) {
+            continue;
+        }
+        $id = trim((string) ($row['id'] ?? ''));
+        if ($id !== '' && isset($customById[$id])) {
+            $merged[] = $customById[$id];
+            unset($customById[$id]);
+        } else {
+            $merged[] = $row;
+        }
+    }
+
+    foreach ($customById as $row) {
+        $merged[] = $row;
+    }
+
+    return array_values($merged);
+}
+
+function pluginRepositoryRowsAreEqual($left, $right)
+{
+    if (!is_array($left) || !is_array($right)) {
+        return false;
+    }
+
+    $normalizedLeft = pluginRepositoryNormalizeRowForCompare($left);
+    $normalizedRight = pluginRepositoryNormalizeRowForCompare($right);
+    return json_encode($normalizedLeft) === json_encode($normalizedRight);
+}
+
+function pluginRepositoryNormalizeRowForCompare($row)
+{
+    if (!is_array($row)) {
+        return [];
+    }
+    ksort($row);
+    return $row;
+}
+
+function pluginRepositorySortItemsByLatest($items)
+{
+    $rows = array_values(array_filter((array) $items, function ($item) {
+        return is_array($item);
+    }));
+
+    usort($rows, function ($left, $right) {
+        $leftTs = pluginRepositoryParseDateValue($left['last_update'] ?? '');
+        $rightTs = pluginRepositoryParseDateValue($right['last_update'] ?? '');
+        if ($leftTs === $rightTs) {
+            $leftName = strtolower(trim((string) ($left['name'] ?? '')));
+            $rightName = strtolower(trim((string) ($right['name'] ?? '')));
+            return strcmp($leftName, $rightName);
+        }
+        return ($leftTs < $rightTs) ? 1 : -1;
+    });
+
+    return $rows;
+}
+
+function pluginRepositoryParseDateValue($value)
+{
+    $value = trim((string) $value);
+    if ($value === '') {
+        return 0;
+    }
+
+    $time = strtotime($value);
+    if ($time !== false) {
+        return (int) $time;
+    }
+
+    if (preg_match('/(\d{4})\D+(\d{1,2})\D+(\d{1,2})/', $value, $m)) {
+        $year = (int) $m[1];
+        $month = (int) $m[2];
+        $day = (int) $m[3];
+        if ($year > 0 && $month >= 1 && $month <= 12 && $day >= 1 && $day <= 31) {
+            return (int) mktime(0, 0, 0, $month, $day, $year);
+        }
+    }
+
+    return 0;
 }

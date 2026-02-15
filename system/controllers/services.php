@@ -42,6 +42,50 @@ if (!function_exists('ensureVisibilityEnumSupportsExclude')) {
 }
 ensureVisibilityEnumSupportsExclude();
 
+if (!function_exists('normalizePppoeServiceName')) {
+    function normalizePppoeServiceName($value)
+    {
+        $value = trim((string) $value);
+        if ($value === '') {
+            return '';
+        }
+        if (strlen($value) > 64) {
+            return '';
+        }
+        if (preg_match('/^[A-Za-z0-9 _.-]+$/', $value) !== 1) {
+            return '';
+        }
+        return $value;
+    }
+}
+
+if (!function_exists('loadPppoeServicesForRouter')) {
+    function loadPppoeServicesForRouter($routerName, &$error = '')
+    {
+        global $DEVICE_PATH;
+        $error = '';
+        $routerName = trim((string) $routerName);
+        if ($routerName === '') {
+            return [];
+        }
+
+        $driverPath = $DEVICE_PATH . DIRECTORY_SEPARATOR . 'MikrotikPppoe.php';
+        if (!file_exists($driverPath)) {
+            $error = Lang::T('PPPoE device driver not found');
+            return [];
+        }
+
+        require_once $driverPath;
+        try {
+            $driver = new MikrotikPppoe();
+            return $driver->listPppoeServerServices($routerName, $error);
+        } catch (Throwable $e) {
+            $error = $e->getMessage();
+            return [];
+        }
+    }
+}
+
 if (!in_array($admin['user_type'], ['SuperAdmin', 'Admin'])) {
     _alert(Lang::T('You do not have permission to access this page'), 'danger', "dashboard");
 }
@@ -81,6 +125,22 @@ switch ($action) {
         $log = '';
 
         foreach ($plans as $plan) {
+            if ($planType === 'PPPOE' && (int) $plan['is_radius'] === 0 && strtolower((string) $plan['device']) === 'mikrotikpppoe') {
+                $pppoeService = trim((string) ($plan['pppoe_service'] ?? ''));
+                if ($pppoeService === '') {
+                    $serviceError = '';
+                    $serviceNames = loadPppoeServicesForRouter((string) $plan['routers'], $serviceError);
+                    if (!empty($serviceNames)) {
+                        $plan->pppoe_service = (string) $serviceNames[0];
+                        $plan->save();
+                        $log .= "INFO : $plan[name_plan], auto-filled PPPoE service => {$serviceNames[0]}<br>";
+                    } else {
+                        $warningText = $serviceError !== '' ? $serviceError : 'No PPPoE service found on router';
+                        $log .= "WARN : $plan[name_plan], PPPoE service is empty ({$warningText})<br>";
+                    }
+                }
+            }
+
             $dvc = Package::getDevice($plan);
             if ($_app_stage != 'demo') {
                 if (!empty($dvc) && file_exists($dvc)) {
@@ -803,6 +863,9 @@ switch ($action) {
         $routers = _post('routers');
         $device = _post('device');
         $pool = _post('pool_name');
+        $rawPppoeService = trim((string) _post('pppoe_service'));
+        $pppoe_service = normalizePppoeServiceName($rawPppoeService);
+        $plan_expired = _post('plan_expired', '0');
         $enabled = _post('enabled');
         $prepaid = _post('prepaid');
         $expired_date = _post('expired_date');
@@ -823,6 +886,9 @@ switch ($action) {
         }
         if (trim((string) $name) === '' || trim((string) $id_bw) === '' || trim((string) $price) === '' || trim((string) $validity) === '' || trim((string) $pool) === '') {
             $msg .= Lang::T('All field is required') . '<br>';
+        }
+        if ($rawPppoeService !== '' && $pppoe_service === '') {
+            $msg .= Lang::T('Invalid PPPoE service name format') . '<br>';
         }
         if (empty($radius)) {
             if ($routers == '') {
@@ -874,6 +940,7 @@ switch ($action) {
                 $d->routers = $routers;
             }
             $d->plan_expired = (int)$plan_expired;
+            $d->pppoe_service = $pppoe_service;
             if ($prepaid == 'no') {
                 if ($expired_date > 28 && $expired_date < 1) {
                     $expired_date = 20;
@@ -932,6 +999,8 @@ switch ($action) {
         $routers = _post('routers');
         $device = _post('device');
         $pool = _post('pool_name');
+        $rawPppoeService = trim((string) _post('pppoe_service'));
+        $pppoe_service = normalizePppoeServiceName($rawPppoeService);
         $plan_expired = _post('plan_expired');
         $enabled = _post('enabled');
         $prepaid = _post('prepaid');
@@ -954,6 +1023,9 @@ switch ($action) {
         }
         if (trim((string) $name) === '' || trim((string) $id_bw) === '' || trim((string) $price) === '' || trim((string) $validity) === '' || trim((string) $pool) === '') {
             $msg .= Lang::T('All field is required') . '<br>';
+        }
+        if ($rawPppoeService !== '' && $pppoe_service === '') {
+            $msg .= Lang::T('Invalid PPPoE service name format') . '<br>';
         }
 
         if ($price_old <= $price) {
@@ -1002,6 +1074,7 @@ switch ($action) {
             $d->validity_unit = $validity_unit;
             $d->routers = $routers;
             $d->pool = $pool;
+            $d->pppoe_service = $pppoe_service;
             $d->plan_expired = $plan_expired;
             $d->enabled = $enabled;
             $d->prepaid = $prepaid;

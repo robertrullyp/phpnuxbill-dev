@@ -228,6 +228,21 @@
                             </select>
                         </div>
                     </div>
+                    {if !$d['is_radius']}
+                        <div class="form-group">
+                            <label class="col-md-3 control-label">{Lang::T('PPPoE Service')}</label>
+                            <div class="col-md-9">
+                                <select id="pppoe_service" name="pppoe_service" class="form-control select2"
+                                    data-selected="{$d['pppoe_service']|escape}">
+                                    <option value="">{Lang::T('Select PPPoE Service')}</option>
+                                    {if $d['pppoe_service'] neq ''}
+                                        <option value="{$d['pppoe_service']|escape}" selected>{$d['pppoe_service']|escape}</option>
+                                    {/if}
+                                </select>
+                                <p class="help-block">{Lang::T('Loaded from router PPPoE server list. If empty, sync/recharge will try the first available service.')}</p>
+                            </div>
+                        </div>
+                    {/if}
                     <div class="form-group">
                         <label class="col-md-3 control-label">{Lang::T('Router Name')}</label>
                         <div class="col-md-9">

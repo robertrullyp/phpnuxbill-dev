@@ -491,7 +491,10 @@ if (empty($step)) {
                     try {
                         $db->exec($q);
                     } catch (PDOException $e) {
-                        if (!updateIsIgnorableMigrationError($e) && !updateCanSkipKnownLengthMigration($q, $e)) {
+                        if (!updateIsIgnorableMigrationError($e)
+                            && !updateCanSkipKnownLengthMigration($q, $e)
+                            && !updateCanSkipKnownTypeEnumMigration($q, $e)
+                        ) {
                             throw new Exception(
                                 'Database migration failed at version ' . $version . ': ' . $e->getMessage(),
                                 0,
@@ -1817,6 +1820,45 @@ function updateCanSkipKnownLengthMigration($query, $e)
     return true;
 }
 
+function updateCanSkipKnownTypeEnumMigration($query, $e)
+{
+    if (!($e instanceof PDOException)) {
+        return false;
+    }
+
+    $driverCode = 0;
+    if (!empty($e->errorInfo) && isset($e->errorInfo[1])) {
+        $driverCode = (int) $e->errorInfo[1];
+    }
+
+    $message = strtolower((string) $e->getMessage());
+    $query = strtolower(trim((string) $query));
+    if ($query === '') {
+        return false;
+    }
+
+    $isTypeTruncation = ($driverCode === 1265) || (strpos($message, "data truncated for column 'type'") !== false);
+    if (!$isTypeTruncation) {
+        return false;
+    }
+
+    $isTypeEnumAlter = (strpos($query, 'alter table `tbl_plans` change `type` `type` enum(') === 0)
+        || (strpos($query, 'alter table `tbl_transactions` change `type` `type` enum(') === 0);
+    if (!$isTypeEnumAlter) {
+        return false;
+    }
+
+    $isKnownLegacyTarget = (strpos($query, "enum('hotspot','pppoe','balance')") !== false)
+        || (strpos($query, "enum('hotspot','pppoe','balance','radius')") !== false);
+    if (!$isKnownLegacyTarget) {
+        return false;
+    }
+
+    // Legacy enum migrations can fail on databases that already contain newer values (e.g. VPN).
+    // Skipping keeps the wider schema intact instead of forcing a downgrade.
+    return true;
+}
+
 function updateTableExists($db, $table)
 {
     try {
@@ -1901,10 +1943,22 @@ function runCoreSchemaHardening($db)
                 $db->exec("ALTER TABLE `tbl_plans` ADD `prepaid` ENUM('yes','no') CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL DEFAULT 'yes' COMMENT 'is prepaid' AFTER `enabled`;");
             }
         }
+        if (!updateColumnExists($db, 'tbl_plans', 'pppoe_service')) {
+            $db->exec("ALTER TABLE `tbl_plans` ADD `pppoe_service` VARCHAR(64) NOT NULL DEFAULT '' COMMENT 'PPPoE server service-name' AFTER `pool`;");
+        }
     }
 
     if (updateTableExists($db, 'tbl_transactions') && updateColumnExists($db, 'tbl_transactions', 'type')) {
         $db->exec("ALTER TABLE `tbl_transactions` CHANGE `type` `type` ENUM('Hotspot','PPPOE','VPN','Balance') CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL;");
+    }
+
+    if (updateTableExists($db, 'tbl_user_recharges')) {
+        if (!updateColumnExists($db, 'tbl_user_recharges', 'usage_tx_bytes')) {
+            $db->exec("ALTER TABLE `tbl_user_recharges` ADD `usage_tx_bytes` BIGINT UNSIGNED NOT NULL DEFAULT 0 AFTER `admin_id`;");
+        }
+        if (!updateColumnExists($db, 'tbl_user_recharges', 'usage_rx_bytes')) {
+            $db->exec("ALTER TABLE `tbl_user_recharges` ADD `usage_rx_bytes` BIGINT UNSIGNED NOT NULL DEFAULT 0 AFTER `usage_tx_bytes`;");
+        }
     }
 
     if (updateTableExists($db, 'tbl_voucher') && !updateColumnExists($db, 'tbl_voucher', 'batch_name')) {
@@ -1930,6 +1984,43 @@ function runCoreSchemaHardening($db)
         }
         if (updateColumnExists($db, 'tbl_plan_customers', 'id') && !updateHasAutoIncrement($db, 'tbl_plan_customers', 'id')) {
             $db->exec("ALTER TABLE `tbl_plan_customers` MODIFY `id` int NOT NULL AUTO_INCREMENT;");
+        }
+    }
+
+    if (!updateTableExists($db, 'tbl_recharge_usage_cycles')) {
+        $db->exec("CREATE TABLE IF NOT EXISTS `tbl_recharge_usage_cycles` (`id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, `recharge_id` INT UNSIGNED NOT NULL DEFAULT 0, `transaction_id` INT UNSIGNED NOT NULL DEFAULT 0, `customer_id` INT UNSIGNED NOT NULL DEFAULT 0, `plan_id` INT UNSIGNED NOT NULL DEFAULT 0, `router_name` VARCHAR(64) NOT NULL DEFAULT '', `type` VARCHAR(16) NOT NULL DEFAULT '', `binding_name` VARCHAR(128) NOT NULL DEFAULT '', `binding_user` VARCHAR(64) NOT NULL DEFAULT '', `started_at` DATETIME NOT NULL, `expires_at` DATETIME NOT NULL, `ended_at` DATETIME DEFAULT NULL, `status` ENUM('open','closed') NOT NULL DEFAULT 'open', `usage_tx_bytes` BIGINT UNSIGNED NOT NULL DEFAULT 0, `usage_rx_bytes` BIGINT UNSIGNED NOT NULL DEFAULT 0, `last_counter_tx` BIGINT UNSIGNED NOT NULL DEFAULT 0, `last_counter_rx` BIGINT UNSIGNED NOT NULL DEFAULT 0, `last_sample_at` DATETIME DEFAULT NULL, `note` VARCHAR(255) NOT NULL DEFAULT '', `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP, PRIMARY KEY (`id`), KEY `idx_usage_cycle_recharge_status` (`recharge_id`,`status`), KEY `idx_usage_cycle_scope` (`customer_id`,`router_name`,`type`,`status`), KEY `idx_usage_cycle_transaction` (`transaction_id`), KEY `idx_usage_cycle_plan` (`plan_id`), KEY `idx_usage_cycle_started` (`started_at`)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;");
+    } else {
+        if (!updateIndexExists($db, 'tbl_recharge_usage_cycles', 'idx_usage_cycle_recharge_status')) {
+            $db->exec("ALTER TABLE `tbl_recharge_usage_cycles` ADD KEY `idx_usage_cycle_recharge_status` (`recharge_id`,`status`);");
+        }
+        if (!updateIndexExists($db, 'tbl_recharge_usage_cycles', 'idx_usage_cycle_scope')) {
+            $db->exec("ALTER TABLE `tbl_recharge_usage_cycles` ADD KEY `idx_usage_cycle_scope` (`customer_id`,`router_name`,`type`,`status`);");
+        }
+        if (!updateIndexExists($db, 'tbl_recharge_usage_cycles', 'idx_usage_cycle_transaction')) {
+            $db->exec("ALTER TABLE `tbl_recharge_usage_cycles` ADD KEY `idx_usage_cycle_transaction` (`transaction_id`);");
+        }
+        if (!updateIndexExists($db, 'tbl_recharge_usage_cycles', 'idx_usage_cycle_plan')) {
+            $db->exec("ALTER TABLE `tbl_recharge_usage_cycles` ADD KEY `idx_usage_cycle_plan` (`plan_id`);");
+        }
+        if (!updateIndexExists($db, 'tbl_recharge_usage_cycles', 'idx_usage_cycle_started')) {
+            $db->exec("ALTER TABLE `tbl_recharge_usage_cycles` ADD KEY `idx_usage_cycle_started` (`started_at`);");
+        }
+    }
+
+    if (!updateTableExists($db, 'tbl_recharge_usage_samples')) {
+        $db->exec("CREATE TABLE IF NOT EXISTS `tbl_recharge_usage_samples` (`id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, `cycle_id` BIGINT UNSIGNED NOT NULL DEFAULT 0, `recharge_id` INT UNSIGNED NOT NULL DEFAULT 0, `sample_at` DATETIME NOT NULL, `counter_tx` BIGINT UNSIGNED NOT NULL DEFAULT 0, `counter_rx` BIGINT UNSIGNED NOT NULL DEFAULT 0, `delta_tx` BIGINT UNSIGNED NOT NULL DEFAULT 0, `delta_rx` BIGINT UNSIGNED NOT NULL DEFAULT 0, `usage_tx_total` BIGINT UNSIGNED NOT NULL DEFAULT 0, `usage_rx_total` BIGINT UNSIGNED NOT NULL DEFAULT 0, `source` VARCHAR(24) NOT NULL DEFAULT 'cron', `note` VARCHAR(255) NOT NULL DEFAULT '', `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY (`id`), KEY `idx_usage_sample_cycle` (`cycle_id`), KEY `idx_usage_sample_recharge` (`recharge_id`), KEY `idx_usage_sample_time` (`sample_at`), KEY `idx_usage_sample_source` (`source`)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;");
+    } else {
+        if (!updateIndexExists($db, 'tbl_recharge_usage_samples', 'idx_usage_sample_cycle')) {
+            $db->exec("ALTER TABLE `tbl_recharge_usage_samples` ADD KEY `idx_usage_sample_cycle` (`cycle_id`);");
+        }
+        if (!updateIndexExists($db, 'tbl_recharge_usage_samples', 'idx_usage_sample_recharge')) {
+            $db->exec("ALTER TABLE `tbl_recharge_usage_samples` ADD KEY `idx_usage_sample_recharge` (`recharge_id`);");
+        }
+        if (!updateIndexExists($db, 'tbl_recharge_usage_samples', 'idx_usage_sample_time')) {
+            $db->exec("ALTER TABLE `tbl_recharge_usage_samples` ADD KEY `idx_usage_sample_time` (`sample_at`);");
+        }
+        if (!updateIndexExists($db, 'tbl_recharge_usage_samples', 'idx_usage_sample_source')) {
+            $db->exec("ALTER TABLE `tbl_recharge_usage_samples` ADD KEY `idx_usage_sample_source` (`source`);");
         }
     }
 

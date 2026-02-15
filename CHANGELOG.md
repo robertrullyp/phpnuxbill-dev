@@ -2,6 +2,30 @@
 
 # CHANGELOG
 
+## 2026.2.14.2
+
+- **PPPoE Service Mapping:** Added `pppoe_service` support on PPPoE plan add/edit with router-driven autoload (`/interface/pppoe-server/server/print`) and sync-time fallback to first available service.
+- **PPPoE Binding Automation (Non-RADIUS):** Extended `MikrotikPppoe` flow to reconcile `/interface/pppoe-server` bindings (`name`, `user`, `service`, `comment`) alongside `/ppp/secret` during add/edit/recharge/remove.
+- **PPPoE Usage History Per Activation:** Added activation-cycle usage engine (`PppoeUsage`) with cycle/sample persistence and aggregate counters (`usage_tx_bytes`, `usage_rx_bytes`) stored per recharge transaction.
+- **Cron Traffic Collector:** Added periodic PPPoE sampling in `system/cron.php`, including counter-reset handling, final expiry sampling, safe close behavior, and non-fatal warning strategy when router/binding is unavailable.
+- **Usage Visibility in UI:** Surfaced TX/RX usage in customer active-plan widget, admin active-plan list (`/plan/list`), and activation report (`/reports/activation`).
+- **Updater Migration Compatibility:** Hardened `update.php` migration executor to safely skip known legacy enum-downgrade failures (`Data truncated for column 'type'`) so newer schemas are not blocked by obsolete migration steps.
+- **Release Metadata:** Updated release references in `version.json`, `README.md`, `docs/openapi.yaml`, `docs/openapi.json`, and updater registry (`system/updates.json`).
+- Version bumped to `2026.2.14.2`.
+
+## 2026.2.14
+
+- **WhatsApp Notification Overrides:** Added scoped override management for notification templates (`Per Category`, `Per Plan`, `Per Purpose`) with clear runtime priority resolution in settings UI.
+- **WhatsApp Interactive Builder:** Added builder-side `Test Send` from preview content and `Edit in Builder` action in the override panel to load selected override context directly for editing.
+- **WhatsApp Delivery Fallback:** Improved message delivery handling so interactive payloads are downgraded to plain text when gateway/device methods do not support interactive sends, while preserving logs.
+- **OTP/Welcome Template Contexts:** Added purpose-aware template resolution (`Register`/`Verify`/`Forgot` and `Admin Register`/`Self Register`) plus OTP timing placeholders (`[[otp_expires_at]]`, `[[otp_request_allowed_at]]`, `[[otp_expiry_seconds]]`, `[[otp_wait_seconds]]`).
+- **Unlimited Plan Logic:** Generalized unlimited handling for `validity <= 0` across validity units (including `Period`) in package processing, recharge normalization, cron expiry flow, and reminder flow.
+- **Recharge Record Consistency:** Updated recharge lookups to consistently use the latest active record for matching customer/service dimensions, reducing stale-row side effects.
+- **Updater Reliability & UX:** Enhanced updater flow with API-driven step execution, resumable flow state/progress polling, process locking, safer archive validation, robust GitHub download fallback, and automatic pre-update SQL backup.
+- **Plugin Repository Sync:** Plugin manager now syncs from official upstream repository and merges local overrides (`plugin-repository.custom.json`) into `plugin-repository.json`, with CLI sync helper `system/sync_plugin_repository.php`.
+- **Documentation:** Added/updated FreeRADIUS setup guides and synchronized release metadata references.
+- Version bumped to `2026.2.14`.
+
 ## 2026.2.9
 
 - **GenieACS Integration:** Added ACS settings panel (`ACS Integration`) and device assignment on customer add/edit for PPPoE/Other service types.

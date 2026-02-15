@@ -40,6 +40,8 @@
                                 <th>{Lang::T('Created On')}</th>
                                 <th>{Lang::T('Expires On')}</th>
                                 <th>{Lang::T('Method')}</th>
+                                <th>{Lang::T('Download Usage')}</th>
+                                <th>{Lang::T('Upload Usage')}</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -58,6 +60,8 @@
                                     </td>
                                     <td class="text-danger">{Lang::dateAndTimeFormat($ds['expiration'],$ds['time'])}</td>
                                     <td>{$ds['method']}</td>
+                                    <td>{$ds['usage_tx_bytes']|default:0|number_format:0:'.':','} B</td>
+                                    <td>{$ds['usage_rx_bytes']|default:0|number_format:0:'.':','} B</td>
                                 </tr>
                             {/foreach}
                         </tbody>

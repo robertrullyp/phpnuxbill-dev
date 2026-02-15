@@ -1,0 +1,37 @@
+{
+    "plugins": [
+        {
+            "id": "ai-chatbot-phpnuxbill-plugin",
+            "name": "AI Chatbot",
+            "description": "Adds a configurable AI chatbot widget with proxy, history, and authentication options for PHPNuxBill.",
+            "ispaid": false,
+            "author": "robertrullyp",
+            "url": "https://github.com/robertrullyp/Ai-Chatbot-phpnuxbill-plugin",
+            "github": "https://github.com/robertrullyp/Ai-Chatbot-phpnuxbill-plugin",
+            "last_update": "2025-10-05"
+        },
+        {
+            "id": "phpnuxbill-pm-wani-pdoa-registry",
+            "name": "PM-WANI PDOA Registry | Paid Plugin",
+            "description": "PM-WANI PDOA Registry integration plugin. Repository access may be private/by request from the vendor.",
+            "ispaid": true,
+            "author": "Focuslinkstech",
+            "url": "https://t.me/focuslinkstech",
+            "github": "https://github.com/Focuslinkstech/phpnuxbill-pm-wani-pdoa-registry",
+            "last_update": "2024-10-28"
+        }
+    ],
+    "payment_gateway": [
+        {
+            "id": "phpnuxbill-duitku",
+            "name": "Duitku Gateway (Fork)",
+            "description": "Fork implementation of the Duitku payment gateway for this distribution. Original upstream implementation by ibnux.",
+            "ispaid": false,
+            "author": "robertrullyp (fork of ibnux original)",
+            "url": "https://github.com/robertrullyp/phpnuxbill-pgplugin-duitku",
+            "github": "https://github.com/robertrullyp/phpnuxbill-pgplugin-duitku",
+            "last_update": "2025-08-23"
+        }
+    ],
+    "devices": []
+}

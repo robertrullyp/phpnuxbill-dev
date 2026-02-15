@@ -43,6 +43,46 @@ switch ($action) {
         $ui->assign('d', $d);
         $ui->display('admin/autoload/pool.tpl');
         break;
+    case 'pppoe_service':
+        $routers = trim((string) _get('routers'));
+        $selected = trim((string) _get('selected'));
+        $services = [];
+        $error = '';
+
+        if ($routers === '') {
+            $error = Lang::T('Router is required');
+        } elseif (!_router_can_access_router($routers, $admin, ['radius'])) {
+            $error = Lang::T('Selected router is outside your allowed scope');
+        } else {
+            $routerRow = ORM::for_table('tbl_routers')->where('name', $routers)->find_one();
+            if (!$routerRow) {
+                $error = Lang::T('Router not found');
+            } else {
+                $deviceFile = File::pathFixer($DEVICE_PATH . DIRECTORY_SEPARATOR . 'MikrotikPppoe.php');
+                if (!file_exists($deviceFile)) {
+                    $error = Lang::T('PPPoE device driver not found');
+                } else {
+                    require_once $deviceFile;
+                    try {
+                        $driver = new MikrotikPppoe();
+                        $driverError = '';
+                        $services = $driver->listPppoeServerServices($routers, $driverError);
+                        if ($driverError !== '') {
+                            $error = $driverError;
+                        }
+                    } catch (Throwable $e) {
+                        $error = $e->getMessage();
+                    }
+                }
+            }
+        }
+
+        $ui->assign('routers', $routers);
+        $ui->assign('selected', $selected);
+        $ui->assign('d', $services);
+        $ui->assign('error', $error);
+        $ui->display('admin/autoload/pppoe_service.tpl');
+        break;
     case 'bw_name':
         $bw = ORM::for_table('tbl_bandwidth')->select("name_bw")->find_one($routes['2']);
         echo $bw['name_bw'];

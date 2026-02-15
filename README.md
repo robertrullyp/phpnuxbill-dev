@@ -17,8 +17,9 @@ Important notes:
 
 ## Current Release
 
-- **Version:** `2026.2.9`
-- **Focus:** GenieACS integration (ACS settings, device assignment, customer WiFi edit on dashboard), PPP sync targeting WAN `Internet` connection profiles, and release hardening for customer edit/navigation + ACS compatibility.
+- **Version:** `2026.2.14.2`
+- **Focus:** PPPoE non-radius service binding + per-activation usage tracking, WhatsApp template override workflow, upstream plugin-repository merge sync, and updater migration resilience on legacy enum datasets.
+- **Release audit:** `docs/RELEASE_AUDIT_2026.2.14.2.md`
 
 ## What's New in This Fork
 
@@ -27,9 +28,12 @@ Enhancements and changes added on top of upstream:
 - WhatsApp gateway & messaging
   - POST/GET method selection with auth support (Basic, Header, JWT) for external WA servers.
   - Human-friendly `[[wa]]` template blocks and UI builder for interactive messages (buttons/list/template).
+  - Template override scopes in notification settings: `Per Category`, `Per Plan`, and `Per Purpose` (OTP/Welcome), with explicit fallback priority.
+  - Builder productivity actions: `Test Send` directly from preview and `Edit in Builder` from override list to load target+scope for fast editing.
   - Header media upload with temporary URL, progress/preview, and auto-cleanup (max 7 days).
   - WA queue & retry system with configurable max retries/interval and per-flow toggles (notifications, send, bulk).
   - Idempotency keys to reduce duplicate sends when retries occur.
+  - Interactive delivery fallback to plain text when gateway/device methods do not support interactive payloads.
 
 - Plan visibility per customer
   - New column `tbl_plans.visibility` (enum: `all`, `custom`, `exclude`) and mapping table `tbl_plan_customers`.
@@ -57,6 +61,7 @@ Enhancements and changes added on top of upstream:
 - Billing and packages
   - Optional “welcome package” support (including inactive plans for welcome selection).
   - Voucher fixes: filtering, batch selection tracking, and stability improvements.
+  - Unlimited logic generalized for `validity <= 0` across validity units (including `Period`) in recharge/package lifecycle and cron execution.
   - Reminder toggles per plan allow disabling due-date notifications for specific offerings (respected by cron reminders and all plan forms).
   - Linked plan relationships let admins preconfigure upgrade/downgrade suggestions; links are stored in the new `tbl_plan_links` table and enforced idempotently during updates.
   - Optional transaction notes stored on recharge and shown on invoice/reports when enabled.
@@ -64,10 +69,13 @@ Enhancements and changes added on top of upstream:
 - Plugin Manager improvements
   - Three tabs (Plugins, Payment Gateway, Devices), cache refresh, and clearer source/install actions.
   - ZIP extension checks and safer prompts to avoid partial installs.
+  - Plugin catalog source now tracks official upstream (`hotspotbilling.github.io`) and merges local overrides from `plugin-repository.custom.json` into `plugin-repository.json`.
+  - Manual sync command available: `php system/sync_plugin_repository.php` (suitable for cron).
 
 - Update process clarifications
   - Updater default ZIP source points to this fork (`robertrullyp/phpnuxbill-dev`), while DB updates run from `system/updates.json` (idempotent).
   - Updater creates a full pre-update backup (`system/backup/`) plus a SQL database dump, and preserves `config.php`, uploads, caches, and `ui/ui_custom`.
+  - Updater now supports API-driven step flow, lock-safe resumable progress, heartbeat handling for proxy environments, and robust fallback download validation.
 
 - Role hierarchy and router-access hardening
   - Added strict role matrix validation so manual request tampering cannot escalate privileges when creating/updating admin users.

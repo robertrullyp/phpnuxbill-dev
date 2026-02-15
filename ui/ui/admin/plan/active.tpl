@@ -82,6 +82,8 @@
                                 <th>{Lang::T("Created On")}</th>
                                 <th>{Lang::T("Expires On")}</th>
                                 <th>{Lang::T("Method")}</th>
+                                <th>{Lang::T("Download Usage")}</th>
+                                <th>{Lang::T("Upload Usage")}</th>
                                 <th><a href="{Text::url('')}routers/list">{Lang::T("Location")}</a></th>
                                 <th>{Lang::T("Manage")}</th>
                             </tr>
@@ -116,6 +118,8 @@
                                     <td>{Lang::dateAndTimeFormat($ds['recharged_on'],$ds['recharged_time'])}</td>
                                     <td>{Lang::dateAndTimeFormat($ds['expiration'],$ds['time'])}</td>
                                     <td>{$ds['method']}</td>
+                                    <td>{$ds['usage_tx_bytes']|default:0|number_format:0:'.':','} B</td>
+                                    <td>{$ds['usage_rx_bytes']|default:0|number_format:0:'.':','} B</td>
                                     <td>{$ds['routers']}</td>
                                     <td>
                                         <a href="{Text::url('')}plan/edit/{$ds['id']}" class="btn btn-warning btn-xs"

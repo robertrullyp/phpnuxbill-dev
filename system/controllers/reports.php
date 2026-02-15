@@ -291,6 +291,54 @@ switch ($action) {
             $d = [];
         }
 
+        if (!empty($d)) {
+            $transactionIds = [];
+            foreach ($d as $row) {
+                $transactionId = (int) ($row['id'] ?? 0);
+                if ($transactionId > 0) {
+                    $transactionIds[] = $transactionId;
+                }
+            }
+            $transactionIds = array_values(array_unique($transactionIds));
+
+            $usageMap = [];
+            if (!empty($transactionIds)) {
+                try {
+                    $usageRows = ORM::for_table('tbl_recharge_usage_cycles')
+                        ->select('transaction_id')
+                        ->select_expr('MAX(`usage_tx_bytes`)', 'usage_tx_bytes')
+                        ->select_expr('MAX(`usage_rx_bytes`)', 'usage_rx_bytes')
+                        ->where_in('transaction_id', $transactionIds)
+                        ->group_by('transaction_id')
+                        ->find_array();
+                    foreach ($usageRows as $usageRow) {
+                        $key = (int) ($usageRow['transaction_id'] ?? 0);
+                        if ($key < 1) {
+                            continue;
+                        }
+                        $usageMap[$key] = [
+                            'tx' => max(0, (int) ($usageRow['usage_tx_bytes'] ?? 0)),
+                            'rx' => max(0, (int) ($usageRow['usage_rx_bytes'] ?? 0)),
+                        ];
+                    }
+                } catch (Throwable $e) {
+                    $usageMap = [];
+                }
+            }
+
+            foreach ($d as $row) {
+                $transactionId = (int) ($row['id'] ?? 0);
+                $txUsage = 0;
+                $rxUsage = 0;
+                if (isset($usageMap[$transactionId])) {
+                    $txUsage = $usageMap[$transactionId]['tx'];
+                    $rxUsage = $usageMap[$transactionId]['rx'];
+                }
+                $row->set('usage_tx_bytes', $txUsage);
+                $row->set('usage_rx_bytes', $rxUsage);
+            }
+        }
+
         $ui->assign('activation', $d);
         $ui->assign('q', $q);
         $ui->display('admin/reports/activation.tpl');

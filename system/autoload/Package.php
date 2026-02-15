@@ -401,6 +401,75 @@ class Package
     {
         return '23:59:59';
     }
+
+    protected static function handlePppoeUsageActivation($customer, $plan, $rechargeRow, $transactionRow)
+    {
+        if (!class_exists('PppoeUsage')) {
+            return;
+        }
+
+        if (!$rechargeRow || !$plan || !$customer) {
+            return;
+        }
+
+        $planData = is_array($plan) ? $plan : $plan->as_array();
+        if (!PppoeUsage::isSupportedPlan($planData) || !PppoeUsage::isStorageReady()) {
+            return;
+        }
+
+        $customerData = is_array($customer) ? $customer : $customer->as_array();
+        $rechargeData = is_array($rechargeRow) ? $rechargeRow : $rechargeRow->as_array();
+        $transactionData = null;
+        if ($transactionRow) {
+            $transactionData = is_array($transactionRow) ? $transactionRow : $transactionRow->as_array();
+        } else {
+            $transactionData = ['id' => 0];
+        }
+
+        try {
+            $baseline = [
+                'tx' => 0,
+                'rx' => 0,
+                'binding_user' => PppoeUsage::resolveSecretUsername($customerData),
+                'binding_name' => PppoeUsage::resolveBindingName(PppoeUsage::resolveSecretUsername($customerData)),
+            ];
+            $note = 'Recharge start';
+
+            $dvc = self::getDevice($planData);
+            if ($dvc && file_exists($dvc)) {
+                require_once $dvc;
+                $deviceClass = $planData['device'] ?? '';
+                if ($deviceClass !== '' && class_exists($deviceClass)) {
+                    $device = new $deviceClass();
+                    if (method_exists($device, 'getPppoeBindingCounters')) {
+                        $counterWarning = '';
+                        $counters = $device->getPppoeBindingCounters($customerData, $planData, $counterWarning, $baseline['binding_name']);
+                        if (is_array($counters)) {
+                            $baseline['tx'] = max(0, (int) ($counters['tx_byte'] ?? 0));
+                            $baseline['rx'] = max(0, (int) ($counters['rx_byte'] ?? 0));
+                            if (!empty($counters['binding_name'])) {
+                                $baseline['binding_name'] = (string) $counters['binding_name'];
+                            }
+                        } elseif ($counterWarning !== '') {
+                            $note .= ' | counter warning: ' . $counterWarning;
+                        }
+                    }
+                }
+            }
+
+            PppoeUsage::openActivationCycle($customerData, $planData, $rechargeData, $transactionData, $baseline, $note);
+        } catch (Throwable $e) {
+            if (class_exists('Message')) {
+                Message::sendTelegram(
+                    "PPPoE usage init failed\n" .
+                    'Customer: ' . ($customerData['username'] ?? '') . "\n" .
+                    'Plan: ' . ($planData['name_plan'] ?? '') . "\n" .
+                    'Router: ' . ($planData['routers'] ?? '') . "\n" .
+                    $e->getMessage()
+                );
+            }
+        }
+    }
     /**
      * @param int         $id_customer             String user identifier
      * @param string      $router_name             router name for this package
@@ -416,6 +485,7 @@ class Package
     {
         global $config, $admin, $c, $p, $b, $t, $d, $zero, $trx, $_app_stage, $isChangePlan;
         $transactionForNotification = null;
+        $rechargeForUsage = null;
         $date_only = date("Y-m-d");
         $time_only = date("H:i:s");
         $time = date("H:i:s");
@@ -608,6 +678,17 @@ class Package
         }
 
         if ($b) {
+            $previousExpiryDate = trim((string) ($b['expiration'] ?? ''));
+            $previousExpiryTime = trim((string) ($b['time'] ?? ''));
+            if ($previousExpiryTime === '') {
+                $previousExpiryTime = '00:00:00';
+            }
+            $previousExpiryAt = ($previousExpiryDate === '')
+                ? date('Y-m-d H:i:s')
+                : ($previousExpiryDate . ' ' . $previousExpiryTime);
+            $shouldSchedulePreviousExpiryReset = class_exists('PppoeUsage')
+                && PppoeUsage::isStorageReady()
+                && PppoeUsage::isSupportedPlan(is_object($p) ? $p->as_array() : (array) $p);
             $lastExpired = Lang::dateAndTimeFormat($b['expiration'], $b['time']);
             $isChangePlan = false;
             if ($b['namebp'] == $p['name_plan'] && $b['status'] == 'on' && $config['extend_expiry'] == 'yes') {
@@ -697,6 +778,10 @@ class Package
                     $b->admin_id = '0';
                 }
                 $b->save();
+                if ($shouldSchedulePreviousExpiryReset) {
+                    PppoeUsage::scheduleCounterReset((int) $b['id'], $previousExpiryAt, 'Recharge extension: keep previous expiry reset');
+                }
+                $rechargeForUsage = $b;
             }
 
             // insert table transactions
@@ -814,6 +899,7 @@ class Package
                     $d->admin_id = '0';
                 }
                 $d->save();
+                $rechargeForUsage = $d;
             }
 
             // insert table transactions
@@ -888,6 +974,7 @@ class Package
         if (is_array($bills) && count($bills) > 0) {
             User::billsPaid($bills, $id_customer);
         }
+        self::handlePppoeUsageActivation($c, $p, $rechargeForUsage, $transactionForNotification);
         self::activateLinkedPlans($id_customer, $gateway, $channel, $note, $processedPlanIds, $p, $isVoucher, $router_name);
         run_hook("recharge_user_finish");
         if (!$skipInvoiceNotification && $transactionForNotification) {

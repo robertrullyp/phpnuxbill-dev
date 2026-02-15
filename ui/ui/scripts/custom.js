@@ -55,6 +55,28 @@ function checkUsername(f, id) {
 
 //auto load pool - pppoe plan
 var htmlobjek;
+function loadPppoeServiceOptions(routers, selectedValue) {
+	if (!$('#pppoe_service').length) {
+		return;
+	}
+	if (!routers) {
+		$('#pppoe_service').html('<option value=\"\">Select PPPoE Service</option>');
+		return;
+	}
+	var query = "routers=" + encodeURIComponent(routers);
+	if (selectedValue) {
+		query += "&selected=" + encodeURIComponent(selectedValue);
+	}
+	$.ajax({
+		url: appUrl + "/?_route=autoload/pppoe_service",
+		data: query,
+		cache: false,
+		success: function (msg) {
+			$("#pppoe_service").html(msg);
+		}
+	});
+}
+
 $(document).ready(function () {
 	$("#routers").change(function () {
 		var routers = $("#routers").val();
@@ -66,7 +88,14 @@ $(document).ready(function () {
 				$("#pool_name").html(msg);
 			}
 		});
+		loadPppoeServiceOptions(routers, '');
 	});
+
+	if ($('#pppoe_service').length) {
+		var initialRouter = $('#routers').val();
+		var selectedService = $('#pppoe_service').data('selected') || $('#pppoe_service').val() || '';
+		loadPppoeServiceOptions(initialRouter, selectedService);
+	}
 });
 
 //auto load plans data - recharge user

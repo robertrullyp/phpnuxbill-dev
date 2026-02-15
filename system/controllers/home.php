@@ -358,6 +358,13 @@ if (isset($_GET['recharge']) && !empty($_GET['recharge'])) {
             $tur->expiration = $expiration;
             $tur->status = "on";
             $tur->save();
+            if (class_exists('PppoeUsage') && PppoeUsage::isStorageReady()) {
+                $planData = $p ? $p->as_array() : [];
+                if (PppoeUsage::isSupportedPlan($planData)) {
+                    $expiryAt = PppoeUsage::toDateTime($expiration, (string) ($tur['time'] ?? '00:00:00'));
+                    PppoeUsage::scheduleCounterReset((int) ($tur['id'] ?? 0), $expiryAt, 'Customer extend: schedule new expiry reset');
+                }
+            }
             App::setToken(_get('stoken'), $id);
             file_put_contents($path, $m);
             _log("Customer $tur[customer_id] $user[fullname] ($tur[username]) extend for $days days", "Customer", $user['id']);

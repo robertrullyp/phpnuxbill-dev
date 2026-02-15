@@ -267,7 +267,9 @@ class User
                 ['tur.routers', 'routers'],
                 ['tur.type', 'type'],
                 'admin_id',
-                'prepaid'
+                'prepaid',
+                'usage_tx_bytes',
+                'usage_rx_bytes'
             ])
             ->left_outer_join('tbl_plans', ['tbl_plans.id', '=', 'tur.plan_id'])
             ->left_outer_join('tbl_bandwidth', ['tbl_bandwidth.id', '=', 'tbl_plans.id_bw'])

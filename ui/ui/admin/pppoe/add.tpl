@@ -195,6 +195,15 @@
                         </div>
                     </div>
                     <div class="form-group">
+                        <label class="col-md-2 control-label">{Lang::T('PPPoE Service')}</label>
+                        <div class="col-md-6">
+                            <select id="pppoe_service" name="pppoe_service" class="form-control select2" data-selected="">
+                                <option value="">{Lang::T('Select PPPoE Service')}</option>
+                            </select>
+                            <p class="help-block">{Lang::T('Loaded from router PPPoE server list. If empty, sync/recharge will try the first available service.')}</p>
+                        </div>
+                    </div>
+                    <div class="form-group">
                         <div class="col-md-offset-2 col-md-10">
                             <button class="btn btn-primary" onclick="return ask(this, '{Lang::T("Continue the process of adding the PPPoE Package?")}')" type="submit">{Lang::T('Save Changes')}</button>
                             Or <a href="{Text::url('')}services/pppoe">{Lang::T('Cancel')}</a>
@@ -255,6 +264,10 @@
                 if (cek.checked) {
                     document.getElementById("routers").required = false;
                     document.getElementById("routers").disabled = true;
+                    if (document.getElementById("pppoe_service")) {
+                        document.getElementById("pppoe_service").disabled = true;
+                        $("#pppoe_service").html('<option value="">{/literal}{Lang::T("Select PPPoE Service")}{literal}</option>');
+                    }
                     $.ajax({
                         url: "{/literal}{Text::url('autoload/pool')}{literal}",
                         data: "routers=radius",
@@ -266,6 +279,10 @@
                 } else {
                     document.getElementById("routers").required = true;
                     document.getElementById("routers").disabled = false;
+                    if (document.getElementById("pppoe_service")) {
+                        document.getElementById("pppoe_service").disabled = false;
+                    }
+                    $("#routers").trigger('change');
                 }
             }
         </script>
