@@ -2,6 +2,17 @@
 
 # CHANGELOG
 
+## 2026.2.15
+
+- **Refund Flow (Reverse Recharge):** Added admin refund workflow (`/plan/refund`) with confirm/post handling, reverse validity calculation, linked-plan reversal, negative transaction recording, optional balance credit, and device sync (`add_customer`/`remove_customer`) based on new expiry result.
+- **PPPoE Usage Schedule on Refund:** Integrated PPPoE usage cycle handling into refund actions to cancel pending reset schedules, close usage cycle on deactivation, and reschedule counter reset when package stays active.
+- **Extend Lifecycle Improvements:** Strengthened extend behavior with anchor-based expiry arithmetic and customer-UI gating for prepaid via setting (`extend_allow_prepaid`) while preserving extend request consistency for next recharge calculation.
+- **Expiry Edit Notification Control:** Added app-level toggle for `Expiry Edit Notification` and wired extend-success flow to send `edit_expiry_message` template through selected channels with queue-aware WhatsApp options.
+- **`[[extend_link]]` Placeholder Scope:** Added `[[extend_link]]` placeholder support in notification templating and constrained replacement to expired notification context to avoid leakage into unrelated templates.
+- **Customer Widget Labeling:** Updated GenieACS customer-facing wording to `WiFi Setting` and aligned usage wording to more readable Download/Upload terms in related views.
+- **Release Metadata:** Updated version references in `version.json`, `README.md`, `docs/openapi.yaml`, `docs/openapi.json`, updater registry (`system/updates.json`), and added release audit document.
+- Version bumped to `2026.2.15`.
+
 ## 2026.2.14.2
 
 - **PPPoE Service Mapping:** Added `pppoe_service` support on PPPoE plan add/edit with router-driven autoload (`/interface/pppoe-server/server/print`) and sync-time fallback to first available service.

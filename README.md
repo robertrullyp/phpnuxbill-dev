@@ -17,9 +17,8 @@ Important notes:
 
 ## Current Release
 
-- **Version:** `2026.2.14.2`
-- **Focus:** PPPoE non-radius service binding + per-activation usage tracking, WhatsApp template override workflow, upstream plugin-repository merge sync, and updater migration resilience on legacy enum datasets.
-- **Release audit:** `docs/RELEASE_AUDIT_2026.2.14.2.md`
+- **Version:** `2026.2.15`
+- **Focus:** Refund workflow (reverse recharge) + extend anchor consistency, expiry-edit notification controls, scoped `[[extend_link]]` support for expired notice templates, and operational/UI refinements.
 
 ## What's New in This Fork
 

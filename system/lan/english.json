@@ -842,5 +842,6 @@
     "Expiry_Extension_Notification": "Expiry Extension Notification",
     "will_be_replaced_with_Customer_self_extend_link": "will be replaced with Customer self-extend link",
     "WiFi_Setting": "WiFi Setting",
-    "Share": "Share"
+    "Share": "Share",
+    "Error_adding_message_to_inbox__SQLSTATE_22001___String_data__right_truncated__1406_Data_too_long_for_column__subject__at_row_1": "Error adding message to inbox: SQLSTATE[22001]: String data, right truncated: 1406 Data too long for column 'subject' at row 1"
 }
