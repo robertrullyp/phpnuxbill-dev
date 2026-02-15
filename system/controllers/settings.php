@@ -889,6 +889,7 @@ switch ($action) {
             $_POST['notification_reminder_1day'] = isset($_POST['notification_reminder_1day']) ? 'yes' : 'no';
             $_POST['notification_reminder_3days'] = isset($_POST['notification_reminder_3days']) ? 'yes' : 'no';
             $_POST['notification_reminder_7days'] = isset($_POST['notification_reminder_7days']) ? 'yes' : 'no';
+            $_POST['notification_expiry_edit'] = _post('notification_expiry_edit', 'yes') === 'no' ? 'no' : 'yes';
             $_POST['api_rate_limit_enabled'] = isset($_POST['api_rate_limit_enabled']) ? 'yes' : 'no';
             $_POST['admin_api_key_backoff_enabled'] = isset($_POST['admin_api_key_backoff_enabled']) ? 'yes' : 'no';
 
@@ -2268,8 +2269,12 @@ switch ($action) {
 	            '[[old_plan]]' => 'Paket Lama',
 	            '[[new_plan]]' => 'Paket Baru',
 	            '[[payment_link]]' => '?_route=home&recharge=0&uid=test',
+	            '[[extend_link]]' => '',
             '[[url]]' => APP_URL . '/?_route=login',
         ];
+        if (strtolower($templateKey) === 'expired') {
+            $replacements['[[extend_link]]'] = '?_route=home&extend=0&uid=test&stoken=test';
+        }
 
         $phoneFormatted = Lang::phoneFormat($phone);
         $customer = ORM::for_table('tbl_customers')->where('phonenumber', $phoneFormatted)->find_one();

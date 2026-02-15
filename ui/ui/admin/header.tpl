@@ -162,6 +162,8 @@
                             {/if}
                             <li {if $_routes[1] eq 'recharge' }class="active" {/if}><a
                                     href="{Text::url('plan/recharge')}">{Lang::T('Recharge Customer')}</a></li>
+                            <li {if $_routes[1] eq 'refund' }class="active" {/if}><a
+                                    href="{Text::url('plan/refund')}">{Lang::T('Refund Customer')}</a></li>
                             {if $_c['enable_balance'] == 'yes'}
                             <li {if $_routes[1] eq 'deposit' }class="active" {/if}><a
                                     href="{Text::url('plan/deposit')}">{Lang::T('Refill Balance')}</a></li>

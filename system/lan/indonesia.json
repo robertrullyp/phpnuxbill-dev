@@ -980,5 +980,6 @@
     "Send_reminder_notifications_for_this_plan": "Kirim pemberitahuan pengingat untuk rencana ini",
     "Linked_Plans": "Paket Tertaut",
     "Linked_Plans_Help": "Bantuan Paket Tertaut",
-    "Set_Period_to_0_for_no_expiry": "Tetapkan Periode ke 0 tanpa kedaluwarsa"
+    "Set_Period_to_0_for_no_expiry": "Tetapkan Periode ke 0 tanpa kedaluwarsa",
+    "Extend_for_prepaid_plan_is_disabled": "Perpanjangan untuk paket prabayar dinonaktifkan"
 }

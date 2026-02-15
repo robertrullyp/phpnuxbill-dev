@@ -784,7 +784,7 @@
                 <a class="collapsed" role="button" data-toggle="collapse" data-parent="#accordion"
                     href="#collapseExtendPostpaidExpiration" aria-expanded="false"
                     aria-controls="collapseExtendPostpaidExpiration">
-                    {Lang::T('Extend Postpaid Expiration')}
+                    {Lang::T('Extend Expiration')}
                 </a>
             </h4>
         </div>
@@ -800,6 +800,18 @@
                         </select>
                     </div>
                     <p class="help-block col-md-4">{Lang::T('Customer can request to extend expirations')}</p>
+                </div>
+                <div class="form-group">
+                    <label class="col-md-3 control-label">{Lang::T('Allow Prepaid Extend')}</label>
+                    <div class="col-md-5">
+                        <select name="extend_allow_prepaid" id="extend_allow_prepaid" class="form-control text-muted">
+                            <option value="0">{Lang::T('No')}</option>
+                            <option value="1" {if $_c['extend_allow_prepaid']==1 || $_c['extend_allow_prepaid']=='1' || $_c['extend_allow_prepaid']=='yes'}selected="selected" {/if}>
+                                {Lang::T('Yes')}
+                            </option>
+                        </select>
+                    </div>
+                    <p class="help-block col-md-4">{Lang::T('If enabled, prepaid plans can use Extend from customer portal')}</p>
                 </div>
                 <div class="form-group">
                     <label class="col-md-3 control-label">{Lang::T('Extend Days')}</label>
@@ -1275,6 +1287,16 @@
                             {if !isset($_c['notification_reminder_7days']) || $_c['notification_reminder_7days'] neq 'no'}checked{/if}>
                         {Lang::T('7 Days')}
                     </label>
+                </div>
+                <div class="form-group">
+                    <label class="col-md-3 control-label">{Lang::T('Expiry Edit Notification')}</label>
+                    <div class="col-md-5">
+                        <select name="notification_expiry_edit" id="notification_expiry_edit" class="form-control">
+                            <option value="no" {if isset($_c['notification_expiry_edit']) && $_c['notification_expiry_edit']=='no'}selected="selected"{/if}>{Lang::T('No')}</option>
+                            <option value="yes" {if !isset($_c['notification_expiry_edit']) || $_c['notification_expiry_edit']!='no'}selected="selected"{/if}>{Lang::T('Yes')}</option>
+                        </select>
+                    </div>
+                    <p class="help-block col-md-4">{Lang::T('Send Expiry Edit Notification template when extend action succeeds')}</p>
                 </div>
                 <button class="btn btn-success btn-block js-settings-submit" type="button">
                     {Lang::T('Save Changes')}

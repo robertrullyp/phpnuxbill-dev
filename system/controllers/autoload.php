@@ -130,32 +130,85 @@ switch ($action) {
     case 'plan':
         $server = _post('server');
         $jenis = _post('jenis');
+        $customerId = (int) _post('customer_id');
+        $activeOnly = (int) _post('active_only') === 1;
         $d = [];
         if (!empty($server) && !_router_can_access_router($server, $admin, ['radius'])) {
             $ui->assign('d', $d);
             $ui->display('admin/autoload/plan.tpl');
             break;
         }
+        if ($activeOnly && $customerId > 0) {
+            $customerRow = ORM::for_table('tbl_customers')->find_one($customerId);
+            if (!$customerRow || !_customer_can_access($customerRow, $admin)) {
+                $ui->assign('d', []);
+                $ui->display('admin/autoload/plan.tpl');
+                break;
+            }
+        }
+
+        $activePlanIds = [];
+        if ($activeOnly) {
+            if ($customerId < 1 || trim((string) $server) === '' || trim((string) $jenis) === '') {
+                $ui->assign('d', []);
+                $ui->display('admin/autoload/plan.tpl');
+                break;
+            }
+
+            $activeRows = ORM::for_table('tbl_user_recharges')
+                ->distinct()
+                ->select('plan_id')
+                ->where('customer_id', $customerId)
+                ->where('status', 'on')
+                ->where('routers', $server)
+                ->where('type', $jenis)
+                ->find_array();
+            $activePlanIds = array_map('intval', array_column($activeRows, 'plan_id'));
+            $activePlanIds = array_values(array_filter(array_unique($activePlanIds)));
+
+            if (empty($activePlanIds)) {
+                $ui->assign('d', []);
+                $ui->display('admin/autoload/plan.tpl');
+                break;
+            }
+        }
+
         if (in_array($admin['user_type'], array('SuperAdmin', 'Admin'))) {
             switch ($server) {
                 case 'radius':
-                    $d = ORM::for_table('tbl_plans')->where('is_radius', 1)->where('type', $jenis)->find_many();
+                    $query = ORM::for_table('tbl_plans')->where('is_radius', 1)->where('type', $jenis);
+                    if ($activeOnly) {
+                        $query->where_id_in($activePlanIds);
+                    }
+                    $d = $query->find_many();
                     break;
                 case '':
                     break;
                 default:
-                    $d = ORM::for_table('tbl_plans')->where('routers', $server)->where('type', $jenis)->find_many();
+                    $query = ORM::for_table('tbl_plans')->where('routers', $server)->where('type', $jenis);
+                    if ($activeOnly) {
+                        $query->where_id_in($activePlanIds);
+                    }
+                    $d = $query->find_many();
                     break;
             }
         } else {
             switch ($server) {
                 case 'radius':
-                    $d = ORM::for_table('tbl_plans')->where('is_radius', 1)->where('type', $jenis)->find_many();
+                    $query = ORM::for_table('tbl_plans')->where('is_radius', 1)->where('type', $jenis);
+                    if ($activeOnly) {
+                        $query->where_id_in($activePlanIds);
+                    }
+                    $d = $query->find_many();
                     break;
                 case '':
                     break;
                 default:
-                    $d = ORM::for_table('tbl_plans')->where('routers', $server)->where('type', $jenis)->find_many();
+                    $query = ORM::for_table('tbl_plans')->where('routers', $server)->where('type', $jenis);
+                    if ($activeOnly) {
+                        $query->where_id_in($activePlanIds);
+                    }
+                    $d = $query->find_many();
                     break;
             }
         }

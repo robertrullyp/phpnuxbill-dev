@@ -124,6 +124,9 @@
                                     <td>
                                         <a href="{Text::url('')}plan/edit/{$ds['id']}" class="btn btn-warning btn-xs"
                                             style="color: black;">{Lang::T("Edit")}</a>
+                                        {if $ds['status']=='on' && $ds['customer_id'] > 0}
+                                            <a href="{Text::url('')}plan/refund/{$ds['customer_id']}" class="btn btn-danger btn-xs">{Lang::T("Refund")}</a>
+                                        {/if}
                                         {if in_array($_admin['user_type'],['SuperAdmin','Admin'])}
                                             <a href="{Text::url('')}plan/delete/{$ds['id']}" id="{$ds['id']}"
                                                 onclick="return ask(this, '{Lang::T("Delete")}?')"

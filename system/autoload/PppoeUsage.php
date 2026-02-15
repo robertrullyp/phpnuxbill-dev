@@ -509,6 +509,54 @@ class PppoeUsage
         return true;
     }
 
+    public static function cancelPendingCounterResetSchedules($rechargeId, $fromAt = null)
+    {
+        if (!self::isStorageReady()) {
+            return 0;
+        }
+
+        $rechargeId = (int) $rechargeId;
+        if ($rechargeId < 1) {
+            return 0;
+        }
+
+        $query = ORM::for_table('tbl_recharge_usage_samples')
+            ->where('recharge_id', $rechargeId)
+            ->where('source', self::SOURCE_RESET_SCHEDULE);
+
+        if ($fromAt !== null && trim((string) $fromAt) !== '') {
+            $query->where_gte('sample_at', self::normalizeDateTime($fromAt));
+        }
+
+        $rows = $query->find_many();
+        $count = 0;
+        foreach ($rows as $row) {
+            $row->source = self::SOURCE_RESET_SKIPPED;
+            $existingNote = trim((string) ($row['note'] ?? ''));
+            $suffix = 'Canceled by system change';
+            $row->note = substr($existingNote === '' ? $suffix : ($existingNote . ' | ' . $suffix), 0, 255);
+            $row->save();
+            $count++;
+        }
+
+        return $count;
+    }
+
+    public static function rescheduleCounterReset($rechargeId, $dueAt, $note = '', $cycleId = 0)
+    {
+        if (!self::isStorageReady()) {
+            return false;
+        }
+
+        $rechargeId = (int) $rechargeId;
+        if ($rechargeId < 1) {
+            return false;
+        }
+
+        self::cancelPendingCounterResetSchedules($rechargeId);
+        return self::scheduleCounterReset($rechargeId, $dueAt, $note, $cycleId);
+    }
+
     public static function getDueCounterResetSchedules($limit = 100)
     {
         if (!self::isStorageReady()) {

@@ -325,6 +325,16 @@ if (isset($_GET['recharge']) && !empty($_GET['recharge'])) {
     $id = _get('extend');
     $tur = ORM::for_table('tbl_user_recharges')->where('customer_id', $user['id'])->where('id', $id)->find_one();
     if ($tur) {
+        $p = ORM::for_table('tbl_plans')->findOne($tur['plan_id']);
+        if (!$p) {
+            r2(getUrl('home'), 'e', "Plan Not Found");
+        }
+        $allowPrepaidExtend = in_array(strtolower(trim((string) ($config['extend_allow_prepaid'] ?? '0'))), ['1', 'yes', 'true', 'on'], true);
+        $isPrepaidPlan = strtolower(trim((string) ($p['prepaid'] ?? 'no'))) === 'yes';
+        if ($isPrepaidPlan && !$allowPrepaidExtend) {
+            r2(getUrl('home'), 'e', Lang::T('Extend for prepaid plan is disabled'));
+        }
+
         $m = date("m");
         $path = $CACHE_PATH . DIRECTORY_SEPARATOR . "extends" . DIRECTORY_SEPARATOR;
         if (!file_exists($path)) {
@@ -339,7 +349,6 @@ if (isset($_GET['recharge']) && !empty($_GET['recharge'])) {
             }
         }
         if ($tur['status'] != 'on') {
-            $p = ORM::for_table('tbl_plans')->findOne($tur['plan_id']);
             $dvc = Package::getDevice($p);
             if ($_app_stage != 'demo') {
                 if (file_exists($dvc)) {
@@ -353,25 +362,40 @@ if (isset($_GET['recharge']) && !empty($_GET['recharge'])) {
             }
 
             // make customer cannot extend again
-            $days = $config['extend_days'];
-            $expiration = date('Y-m-d', strtotime(" +$days day"));
+            $days = (int) ($config['extend_days'] ?? 0);
+            if ($days < 1) {
+                $days = 1;
+            }
+            $extendStartedAt = date('Y-m-d H:i:s');
+            $extendStartedTs = strtotime($extendStartedAt);
+            $newExpiryTs = strtotime('+' . $days . ' day', $extendStartedTs);
+            $expiration = date('Y-m-d', $newExpiryTs);
+            $expirationTime = date('H:i:s', $newExpiryTs);
+            Package::setExtendAnchorStartIfMissing((int) ($tur['customer_id'] ?? 0), (int) ($tur['id'] ?? 0), $extendStartedAt);
             $tur->expiration = $expiration;
+            $tur->time = $expirationTime;
             $tur->status = "on";
             $tur->save();
             if (class_exists('PppoeUsage') && PppoeUsage::isStorageReady()) {
                 $planData = $p ? $p->as_array() : [];
                 if (PppoeUsage::isSupportedPlan($planData)) {
-                    $expiryAt = PppoeUsage::toDateTime($expiration, (string) ($tur['time'] ?? '00:00:00'));
+                    $expiryAt = PppoeUsage::toDateTime($expiration, $expirationTime);
                     PppoeUsage::scheduleCounterReset((int) ($tur['id'] ?? 0), $expiryAt, 'Customer extend: schedule new expiry reset');
                 }
             }
+            Message::sendExpiryEditNotification(
+                $user->as_array(),
+                $p->as_array(),
+                $expiration . ' ' . $expirationTime,
+                'Customer'
+            );
             App::setToken(_get('stoken'), $id);
             file_put_contents($path, $m);
             _log("Customer $tur[customer_id] $user[fullname] ($tur[username]) extend for $days days", "Customer", $user['id']);
             Message::sendTelegram("#u$user[username] ($user[fullname]) #id$tur[customer_id] #extend #" . $p['type'] . " \n" . $p['name_plan'] .
                 "\nLocation: " . $p['routers'] .
                 "\nCustomer: " . $user['fullname'] .
-                "\nNew Expired: " . Lang::dateAndTimeFormat($expiration, $tur['time']));
+                "\nNew Expired: " . Lang::dateAndTimeFormat($expiration, $expirationTime));
             r2(getUrl('home'), 's', "Extend until $expiration");
         } else {
             r2(getUrl('home'), 'e', "Plan is not expired");

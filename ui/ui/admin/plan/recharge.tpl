@@ -3,14 +3,14 @@
 <div class="row">
     <div class="col-sm-12 col-md-12">
         <div class="panel panel-primary panel-hovered panel-stacked mb30">
-            <div class="panel-heading">{Lang::T('Recharge Account')}</div>
+            <div class="panel-heading">{if $is_refund}{Lang::T('Refund Account')}{else}{Lang::T('Recharge Account')}{/if}</div>
             <div class="panel-body">
-                <form class="form-horizontal" method="post" role="form" action="{Text::url('')}plan/recharge-confirm">
+                <form id="{if $is_refund}refund-form{else}recharge-form{/if}" class="form-horizontal" method="post" role="form" action="{if $is_refund}{Text::url('')}plan/refund-confirm{else}{Text::url('')}plan/recharge-confirm{/if}">
                     <input type="hidden" name="csrf_token" value="{$csrf_token}">
                     <div class="form-group">
                         <label class="col-md-2 control-label">{Lang::T('Select Account')}</label>
                         <div class="col-md-6">
-                            <select {if $cust}{else}id="personSelect" {/if} class="form-control select2"
+                            <select id="{if $is_refund}refund_customer{else}personSelect{/if}" class="form-control select2"
                                 name="id_customer" style="width: 100%"
                                 data-placeholder="{Lang::T('Select a customer')}...">
                                 {if $cust}
@@ -23,28 +23,31 @@
                     <div class="form-group">
                         <label class="col-md-2 control-label">{Lang::T('Type')}</label>
                         <div class="col-md-6">
-                            <label><input type="radio" id="Hot" name="type" value="Hotspot">
+                            <label><input type="radio" {if !$is_refund}id="Hot"{/if} name="{if $is_refund}refund_type{else}type{/if}" value="Hotspot">
                                 {Lang::T('Hotspot Plans')}</label>
-                            <label><input type="radio" id="POE" name="type" value="PPPOE">
+                            <label><input type="radio" {if !$is_refund}id="POE"{/if} name="{if $is_refund}refund_type{else}type{/if}" value="PPPOE">
                                 {Lang::T('PPPOE Plans')}</label>
-                            <label><input type="radio" id="VPN" name="type" value="VPN"> {Lang::T('VPN Plans')}</label>
+                            <label><input type="radio" {if !$is_refund}id="VPN"{/if} name="{if $is_refund}refund_type{else}type{/if}" value="VPN"> {Lang::T('VPN Plans')}</label>
                         </div>
                     </div>
                     <div class="form-group">
                         <label class="col-md-2 control-label">{Lang::T('Routers')}</label>
                         <div class="col-md-6">
-                            <select id="server" data-type="server" name="server" class="form-control select2">
+                            <select id="{if $is_refund}refund_server{else}server{/if}" data-type="server" name="server" class="form-control select2">
                                 <option value=''>{Lang::T('Select Routers')}</option>
                             </select>
                         </div>
                     </div>
 
                     <div class="form-group">
-                        <label class="col-md-2 control-label">{Lang::T('Service Plan')}</label>
+                        <label class="col-md-2 control-label">{if $is_refund}{Lang::T('Active Plan')}{else}{Lang::T('Service Plan')}{/if}</label>
                         <div class="col-md-6">
-                            <select id="plan" name="plan" class="form-control select2">
+                            <select id="{if $is_refund}refund_plan{else}plan{/if}" name="plan" class="form-control select2">
                                 <option value=''>{Lang::T('Select Plans')}</option>
                             </select>
+                            {if $is_refund}
+                                <p class="help-block">{Lang::T('Only active package in selected scope will be listed.')}</p>
+                            {/if}
                         </div>
                     </div>
                     <div class="form-group">
@@ -62,8 +65,13 @@
                                 {/if}
                             </select>
                         </div>
-                        <p class="help-block col-md-4">{Lang::T('Postpaid Recharge for the first time use')}
-                            {$_c['currency_code']} 0</p>
+                        <p class="help-block col-md-4">
+                            {if $is_refund}
+                                {Lang::T('Refund via Customer Balance will credit customer balance.')}
+                            {else}
+                                {Lang::T('Postpaid Recharge for the first time use')} {$_c['currency_code']} 0
+                            {/if}
+                        </p>
                     </div>
                     <div class="form-group">
                         <label class="col-md-2 control-label">{Lang::T('Note')}</label>
@@ -74,9 +82,9 @@
                     </div>
                     <div class="form-group">
                         <div class="col-lg-offset-2 col-lg-10">
-                            <button class="btn btn-success"
-                                onclick="return ask(this, '{Lang::T('Continue the Recharge process')}?')"
-                                type="submit">{Lang::T('Recharge')}</button>
+                            <button class="btn {if $is_refund}btn-danger{else}btn-success{/if}"
+                                onclick="return ask(this, '{if $is_refund}{Lang::T('Continue the Refund process')}{else}{Lang::T('Continue the Recharge process')}{/if}?')"
+                                type="submit">{if $is_refund}{Lang::T('Refund')}{else}{Lang::T('Recharge')}{/if}</button>
                             {Lang::T('Or')} <a href="{Text::url('')}customers/list">{Lang::T('Cancel')}</a>
                         </div>
                     </div>

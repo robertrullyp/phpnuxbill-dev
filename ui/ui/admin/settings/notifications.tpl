@@ -331,6 +331,7 @@
                             <b>[[bills]]</b> - {Lang::T('additional bills for customers')}.<br>
                             <b>[[payment_link]]</b> - <a href="{$app_url}/docs/#Reminder%20with%20payment%20link"
                                 target="_blank">{Lang::T("read documentation")}</a>.
+                            <br><b>[[extend_link]]</b> - {Lang::T('will be replaced with Customer self-extend link')}.
                         </p>
                     </div>
                 </div>

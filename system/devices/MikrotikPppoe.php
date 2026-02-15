@@ -32,6 +32,14 @@ class MikrotikPppoe
         global $isChangePlan;
         $mikrotik = $this->info($plan['routers']);
         $client = $this->getClient($mikrotik['ip_address'], $mikrotik['username'], $mikrotik['password']);
+        $profileWarning = '';
+        if (!$this->ensurePppProfileExists($client, $plan, $profileWarning)) {
+            throw new Exception(
+                $profileWarning !== ''
+                    ? $profileWarning
+                    : ('PPPoE profile is missing and cannot be created for plan: ' . ($plan['name_plan'] ?? '-'))
+            );
+        }
         $cid = self::getIdByCustomer($customer, $client);
         $isExp = ORM::for_table('tbl_plans')->select("id")->where('plan_expired', $plan['id'])->find_one();
         if (empty($cid)) {
@@ -138,36 +146,226 @@ class MikrotikPppoe
     {
         $mikrotik = $this->info($plan['routers']);
         $client = $this->getClient($mikrotik['ip_address'], $mikrotik['username'], $mikrotik['password']);
+        $warning = '';
+        if (!$this->syncPppProfile($client, $plan, $warning)) {
+            throw new Exception(
+                $warning !== ''
+                    ? $warning
+                    : ('Failed to sync PPPoE profile for plan: ' . ($plan['name_plan'] ?? '-'))
+            );
+        }
+    }
 
-        //Add Pool
+    protected function buildPppProfileRate($plan)
+    {
+        $bw = ORM::for_table('tbl_bandwidth')->find_one((int) ($plan['id_bw'] ?? 0));
+        if (!$bw) {
+            return '';
+        }
 
-        $bw = ORM::for_table("tbl_bandwidth")->find_one($plan['id_bw']);
-        if ($bw['rate_down_unit'] == 'Kbps') {
-            $unitdown = 'K';
-        } else {
-            $unitdown = 'M';
+        $unitdown = ($bw['rate_down_unit'] == 'Kbps') ? 'K' : 'M';
+        $unitup = ($bw['rate_up_unit'] == 'Kbps') ? 'K' : 'M';
+        $rate = $bw['rate_up'] . $unitup . '/' . $bw['rate_down'] . $unitdown;
+        if (!empty(trim((string) $bw['burst']))) {
+            $rate .= ' ' . trim((string) $bw['burst']);
         }
-        if ($bw['rate_up_unit'] == 'Kbps') {
-            $unitup = 'K';
-        } else {
-            $unitup = 'M';
+        if ((string) $bw['rate_up'] === '0' || (string) $bw['rate_down'] === '0') {
+            $rate = '';
         }
-        $rate = $bw['rate_up'] . $unitup . "/" . $bw['rate_down'] . $unitdown;
-        if(!empty(trim($bw['burst']))){
-            $rate .= ' '.$bw['burst'];
+
+        return $rate;
+    }
+
+    protected function buildPppProfileAddresses($plan)
+    {
+        $poolName = trim((string) ($plan['pool'] ?? ''));
+        $localAddress = $poolName;
+        $remoteAddress = $poolName;
+
+        if ($poolName !== '') {
+            $pool = $this->resolvePlanPoolRecord($plan, $poolName);
+            if ($pool) {
+                $remoteAddress = trim((string) ($pool['pool_name'] ?? $poolName));
+                $localAddress = trim((string) ($pool['local_ip'] ?? ''));
+                if ($localAddress === '') {
+                    $localAddress = $remoteAddress;
+                }
+            }
         }
-		if ($bw['rate_up'] == '0' || $bw['rate_down'] == '0') {
-			$rate = '';
-		}
-        $pool = ORM::for_table("tbl_pool")->where("pool_name", $plan['pool'])->find_one();
-        $addRequest = new RouterOS\Request('/ppp/profile/add');
-        $client->sendSync(
-            $addRequest
-                ->setArgument('name', $plan['name_plan'])
-                ->setArgument('local-address', (!empty($pool['local_ip'])) ? $pool['local_ip']: $pool['pool_name'])
-                ->setArgument('remote-address', $pool['pool_name'])
-                ->setArgument('rate-limit', $rate)
-        );
+
+        return [$localAddress, $remoteAddress];
+    }
+
+    protected function resolvePlanPoolRecord($plan, $poolName)
+    {
+        $poolName = trim((string) $poolName);
+        if ($poolName === '') {
+            return null;
+        }
+
+        $routerName = trim((string) ($plan['routers'] ?? ''));
+        if ($routerName !== '') {
+            $pool = ORM::for_table('tbl_pool')
+                ->where('pool_name', $poolName)
+                ->where('routers', $routerName)
+                ->find_one();
+            if ($pool) {
+                return $pool;
+            }
+        }
+
+        return ORM::for_table('tbl_pool')
+            ->where('pool_name', $poolName)
+            ->find_one();
+    }
+
+    protected function findRouterPool($client, $poolName)
+    {
+        $poolName = trim((string) $poolName);
+        if ($poolName === '') {
+            return ['id' => '', 'ranges' => ''];
+        }
+
+        $printRequest = new RouterOS\Request('/ip/pool/print');
+        $printRequest->setQuery(RouterOS\Query::where('name', $poolName));
+        $response = $client->sendSync($printRequest);
+
+        return [
+            'id' => (string) $response->getProperty('.id'),
+            'ranges' => trim((string) $response->getProperty('ranges')),
+        ];
+    }
+
+    protected function ensurePppPoolExists($client, $plan, &$warning = '')
+    {
+        $warning = '';
+        $poolName = trim((string) ($plan['pool'] ?? ''));
+        if ($poolName === '') {
+            return true;
+        }
+
+        if (!$client) {
+            $warning = 'Router client is not available for PPPoE pool sync.';
+            return false;
+        }
+
+        $poolRecord = $this->resolvePlanPoolRecord($plan, $poolName);
+        if (!$poolRecord) {
+            $warning = 'PPPoE pool "' . $poolName . '" is not found in system pool list.';
+            return false;
+        }
+
+        $ranges = trim((string) ($poolRecord['range_ip'] ?? ''));
+        if ($ranges === '') {
+            $warning = 'PPPoE pool "' . $poolName . '" has empty range.';
+            return false;
+        }
+
+        try {
+            $routerPool = $this->findRouterPool($client, $poolName);
+            if ($routerPool['id'] === '') {
+                $addRequest = new RouterOS\Request('/ip/pool/add');
+                $addRequest->setArgument('name', $poolName);
+                $addRequest->setArgument('ranges', $ranges);
+                $client->sendSync($addRequest);
+                return true;
+            }
+
+            if ($routerPool['ranges'] !== $ranges) {
+                $setRequest = new RouterOS\Request('/ip/pool/set');
+                $setRequest->setArgument('numbers', $routerPool['id']);
+                $setRequest->setArgument('name', $poolName);
+                $setRequest->setArgument('ranges', $ranges);
+                $client->sendSync($setRequest);
+            }
+
+            return true;
+        } catch (Throwable $e) {
+            $warning = 'Failed to sync PPPoE pool "' . $poolName . '": ' . $e->getMessage();
+            return false;
+        }
+    }
+
+    protected function findPppProfileId($client, $profileName)
+    {
+        $profileName = trim((string) $profileName);
+        if ($profileName === '') {
+            return '';
+        }
+
+        $printRequest = new RouterOS\Request('/ppp/profile/print');
+        $printRequest->setQuery(RouterOS\Query::where('name', $profileName));
+        return (string) $client->sendSync($printRequest)->getProperty('.id');
+    }
+
+    protected function syncPppProfile($client, $plan, &$warning = '')
+    {
+        $warning = '';
+
+        if (!$client) {
+            $warning = 'Router client is not available for PPPoE profile sync.';
+            return false;
+        }
+
+        $profileName = trim((string) ($plan['name_plan'] ?? ''));
+        if ($profileName === '') {
+            $warning = 'Plan name is empty, cannot sync PPPoE profile.';
+            return false;
+        }
+
+        if (!$this->ensurePppPoolExists($client, $plan, $warning)) {
+            return false;
+        }
+
+        list($localAddress, $remoteAddress) = $this->buildPppProfileAddresses($plan);
+        if ($remoteAddress === '') {
+            $warning = 'PPPoE plan pool is empty. Save a valid pool first.';
+            return false;
+        }
+
+        try {
+            $profileId = $this->findPppProfileId($client, $profileName);
+            $request = new RouterOS\Request($profileId === '' ? '/ppp/profile/add' : '/ppp/profile/set');
+            if ($profileId !== '') {
+                $request->setArgument('numbers', $profileId);
+            } else {
+                $request->setArgument('name', $profileName);
+            }
+
+            $request->setArgument('local-address', $localAddress);
+            $request->setArgument('remote-address', $remoteAddress);
+            $request->setArgument('rate-limit', $this->buildPppProfileRate($plan));
+
+            if (isset($plan['on_login'])) {
+                $request->setArgument('on-up', (string) $plan['on_login']);
+            }
+            if (isset($plan['on_logout'])) {
+                $request->setArgument('on-down', (string) $plan['on_logout']);
+            }
+
+            $client->sendSync($request);
+            return true;
+        } catch (Throwable $e) {
+            $warning = 'Failed to sync PPPoE profile "' . $profileName . '": ' . $e->getMessage();
+            return false;
+        }
+    }
+
+    protected function ensurePppProfileExists($client, $plan, &$warning = '')
+    {
+        $warning = '';
+        $profileName = trim((string) ($plan['name_plan'] ?? ''));
+        if ($profileName === '') {
+            $warning = 'Plan name is empty, cannot ensure PPPoE profile.';
+            return false;
+        }
+
+        $profileId = $this->findPppProfileId($client, $profileName);
+        if ($profileId !== '') {
+            return true;
+        }
+
+        return $this->syncPppProfile($client, $plan, $warning);
     }
 
     /**
@@ -623,43 +821,12 @@ class MikrotikPppoe
     {
         $mikrotik = $this->info($new_plan['routers']);
         $client = $this->getClient($mikrotik['ip_address'], $mikrotik['username'], $mikrotik['password']);
-
-        $printRequest = new RouterOS\Request(
-            '/ppp profile print .proplist=.id',
-            RouterOS\Query::where('name', $old_name['name_plan'])
-        );
-        $profileID = $client->sendSync($printRequest)->getProperty('.id');
-        if (empty($profileID)) {
-            $this->add_plan($new_plan);
-        } else {
-            $bw = ORM::for_table("tbl_bandwidth")->find_one($new_plan['id_bw']);
-            if ($bw['rate_down_unit'] == 'Kbps') {
-                $unitdown = 'K';
-            } else {
-                $unitdown = 'M';
-            }
-            if ($bw['rate_up_unit'] == 'Kbps') {
-                $unitup = 'K';
-            } else {
-                $unitup = 'M';
-            }
-            $rate = $bw['rate_up'] . $unitup . "/" . $bw['rate_down'] . $unitdown;
-            if(!empty(trim($bw['burst']))){
-                $rate .= ' '.$bw['burst'];
-            }
-			if ($bw['rate_up'] == '0' || $bw['rate_down'] == '0') {
-				$rate = '';
-			}
-            $pool = ORM::for_table("tbl_pool")->where("pool_name", $new_plan['pool'])->find_one();
-            $setRequest = new RouterOS\Request('/ppp/profile/set');
-            $client->sendSync(
-                $setRequest
-                    ->setArgument('numbers', $profileID)
-                    ->setArgument('local-address', (!empty($pool['local_ip'])) ? $pool['local_ip']: $pool['pool_name'])
-                    ->setArgument('remote-address', $pool['pool_name'])
-                    ->setArgument('rate-limit', $rate)
-                    ->setArgument('on-up', $new_plan['on_login'])
-                    ->setArgument('on-down', $new_plan['on_logout'])
+        $warning = '';
+        if (!$this->syncPppProfile($client, $new_plan, $warning)) {
+            throw new Exception(
+                $warning !== ''
+                    ? $warning
+                    : ('Failed to update PPPoE profile for plan: ' . ($new_plan['name_plan'] ?? '-'))
             );
         }
     }

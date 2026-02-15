@@ -1914,21 +1914,44 @@ class Message
             $msg = str_replace('[[expired_date]]', "", $msg);
         }
 
-        if (strpos($msg, '[[payment_link]]') !== false) {
+        $templateKeyNormalized = strtolower(trim((string) $templateKey));
+        $needsPaymentLink = strpos($msg, '[[payment_link]]') !== false;
+        $allowExtendLink = ($templateKeyNormalized === 'expired');
+        $hasExtendLinkPlaceholder = strpos($msg, '[[extend_link]]') !== false;
+        $needsExtendLink = $allowExtendLink && $hasExtendLinkPlaceholder;
+        $tur = null;
+        if ($needsPaymentLink || $needsExtendLink) {
+            $tur = ORM::for_table('tbl_user_recharges')
+                ->where('customer_id', $customer['id'])
+                ->where('namebp', $package)
+                ->find_one();
+        }
+
+        if ($needsPaymentLink) {
             // token only valid for 1 day, for security reason
             $token = User::generateToken($customer['id'], 1);
-            if (!empty($token['token'])) {
-                $tur = ORM::for_table('tbl_user_recharges')
-                    ->where('customer_id', $customer['id'])
-                    ->where('namebp', $package)
-                    ->find_one();
-                if ($tur) {
-                    $url = '?_route=home&recharge=' . $tur['id'] . '&uid=' . urlencode($token['token']);
-                    $msg = str_replace('[[payment_link]]', $url, $msg);
-                }
+            if (!empty($token['token']) && $tur) {
+                $url = '?_route=home&recharge=' . $tur['id'] . '&uid=' . urlencode($token['token']);
+                $msg = str_replace('[[payment_link]]', $url, $msg);
             } else {
                 $msg = str_replace('[[payment_link]]', '', $msg);
             }
+        }
+
+        if ($needsExtendLink) {
+            // extend link follows customer portal flow: home&extend=<recharge_id>&uid=<token>&stoken=<nonce>
+            $extendToken = User::generateToken($customer['id'], 1);
+            if (!empty($extendToken['token']) && $tur) {
+                $extendUrl = '?_route=home&extend=' . $tur['id']
+                    . '&uid=' . urlencode($extendToken['token'])
+                    . '&stoken=' . urlencode(App::getToken());
+                $msg = str_replace('[[extend_link]]', $extendUrl, $msg);
+            } else {
+                $msg = str_replace('[[extend_link]]', '', $msg);
+            }
+        } elseif ($hasExtendLinkPlaceholder) {
+            // Restrict extend link placeholder usage to expired notification only.
+            $msg = str_replace('[[extend_link]]', '', $msg);
         }
 
 
@@ -1970,6 +1993,83 @@ class Message
             self::addToInbox($cust['id'], Lang::T('Balance Notification'), $msg);
         }
         return "$via: $msg";
+    }
+
+    /**
+     * Send extend/expiry edit notification based on app settings.
+     * Channel uses `user_notification_payment`; template uses `edit_expiry_message`.
+     *
+     * @param array  $customer Customer row.
+     * @param array  $plan     Plan row.
+     * @param string $expiryAt Expiry datetime in `Y-m-d H:i:s`.
+     * @param string $actor    Sender label for inbox.
+     * @return bool
+     */
+    public static function sendExpiryEditNotification($customer, $plan, $expiryAt, $actor = 'System')
+    {
+        global $config;
+
+        if (!is_array($customer) || empty($customer)) {
+            return false;
+        }
+
+        if (($config['notification_expiry_edit'] ?? 'yes') === 'no') {
+            return false;
+        }
+
+        $planId = (int) ($plan['id'] ?? $plan['plan_id'] ?? 0);
+        $planType = (string) ($plan['type'] ?? '');
+        $planName = trim((string) ($plan['name_plan'] ?? $plan['namebp'] ?? ''));
+
+        $notifyMessage = Lang::getNotifText('edit_expiry_message', [
+            'plan_id' => $planId,
+            'type' => $planType,
+        ]);
+
+        if (trim((string) $notifyMessage) === '') {
+            $notifyMessage = Lang::T('Dear') . ' [[name]], ' .
+                Lang::T('your') . ' [[plan]] ' .
+                Lang::T('has been extended! You can now enjoy seamless internet access until') . ' [[expiry]]. ' .
+                Lang::T('Thank you for choosing') . ' [[company]] ' .
+                Lang::T('for your internet needs') . '!';
+        }
+
+        if ($planName === '') {
+            $planName = Lang::T('Internet Plan');
+        }
+        $notifyMessage = str_replace('[[plan]]', $planName, $notifyMessage);
+
+        $expiryTs = strtotime((string) $expiryAt);
+        $notifyMessage = str_replace('[[company]]', (string) ($config['CompanyName'] ?? ''), $notifyMessage);
+        $notifyMessage = str_replace('[[name]]', (string) ($customer['fullname'] ?? ''), $notifyMessage);
+        $notifyMessage = str_replace('[[username]]', (string) ($customer['username'] ?? ''), $notifyMessage);
+        $notifyMessage = str_replace('[[expiry]]', $expiryTs ? date('M d, Y h:i:s', $expiryTs) : (string) $expiryAt, $notifyMessage);
+
+        $subject = $planName . ' ' . Lang::T('Expiry Extension Notification');
+        $via = (string) ($config['user_notification_payment'] ?? 'none');
+
+        try {
+            if ($via === 'sms') {
+                self::sendSMS((string) ($customer['phonenumber'] ?? ''), $notifyMessage);
+            } elseif ($via === 'email') {
+                self::sendEmail((string) ($customer['email'] ?? ''), $subject, $notifyMessage);
+            } elseif ($via === 'wa') {
+                $options = self::isWhatsappQueueEnabledForNotificationTemplate('edit_expiry_message')
+                    ? ['queue' => true, 'queue_context' => 'notification']
+                    : [];
+                self::sendWhatsapp((string) ($customer['phonenumber'] ?? ''), $notifyMessage, $options);
+            } else {
+                return false;
+            }
+
+            if (!empty($customer['id'])) {
+                self::addToInbox((int) $customer['id'], $subject, $notifyMessage, (string) $actor);
+            }
+            return true;
+        } catch (Throwable $e) {
+            _log('Failed to send expiry edit notification: ' . $e->getMessage());
+            return false;
+        }
     }
 
     public static function sendInvoice($cust, $trx)

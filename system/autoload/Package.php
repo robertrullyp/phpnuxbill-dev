@@ -470,6 +470,72 @@ class Package
             }
         }
     }
+
+    protected static function buildExtendAnchorFieldName($rechargeId)
+    {
+        $rechargeId = (int) $rechargeId;
+        if ($rechargeId < 1) {
+            return '';
+        }
+        return 'extend_anchor_recharge_' . $rechargeId;
+    }
+
+    public static function getExtendAnchorStart($customerId, $rechargeId)
+    {
+        $customerId = (int) $customerId;
+        $fieldName = self::buildExtendAnchorFieldName($rechargeId);
+        if ($customerId < 1 || $fieldName === '') {
+            return '';
+        }
+
+        $value = trim((string) User::getAttribute($fieldName, $customerId, ''));
+        if ($value === '') {
+            return '';
+        }
+
+        $timestamp = strtotime($value);
+        if ($timestamp === false || $timestamp < 1) {
+            return '';
+        }
+
+        return date('Y-m-d H:i:s', $timestamp);
+    }
+
+    public static function setExtendAnchorStartIfMissing($customerId, $rechargeId, $anchorAt = null)
+    {
+        $customerId = (int) $customerId;
+        $fieldName = self::buildExtendAnchorFieldName($rechargeId);
+        if ($customerId < 1 || $fieldName === '') {
+            return '';
+        }
+
+        $existing = self::getExtendAnchorStart($customerId, $rechargeId);
+        if ($existing !== '') {
+            return $existing;
+        }
+
+        $anchorAt = trim((string) $anchorAt);
+        if ($anchorAt === '') {
+            $anchorAt = date('Y-m-d H:i:s');
+        }
+        $anchorTs = strtotime($anchorAt);
+        if ($anchorTs === false || $anchorTs < 1) {
+            $anchorTs = time();
+        }
+        $normalized = date('Y-m-d H:i:s', $anchorTs);
+        User::setAttribute($fieldName, $normalized, $customerId);
+        return $normalized;
+    }
+
+    public static function clearExtendAnchorStart($customerId, $rechargeId)
+    {
+        $customerId = (int) $customerId;
+        $fieldName = self::buildExtendAnchorFieldName($rechargeId);
+        if ($customerId < 1 || $fieldName === '') {
+            return;
+        }
+        User::setAttribute($fieldName, '', $customerId);
+    }
     /**
      * @param int         $id_customer             String user identifier
      * @param string      $router_name             router name for this package
@@ -691,36 +757,72 @@ class Package
                 && PppoeUsage::isSupportedPlan(is_object($p) ? $p->as_array() : (array) $p);
             $lastExpired = Lang::dateAndTimeFormat($b['expiration'], $b['time']);
             $isChangePlan = false;
-            if ($b['namebp'] == $p['name_plan'] && $b['status'] == 'on' && $config['extend_expiry'] == 'yes') {
-                // if it same internet plan, expired will extend
-                if ($isUnlimitedPlan) {
-                    $date_exp = self::getUnlimitedExpirationDate();
-                    $time = self::getUnlimitedExpirationTime();
-                } else {
-                    switch ($p['validity_unit']) {
-                        case 'Months':
-                            $date_exp = date("Y-m-d", strtotime($b['expiration'] . ' +' . $p['validity'] . ' months'));
-                            $time = $b['time'];
-                            break;
-                        case 'Period':
-                            $date_exp = date("Y-m-$day_exp", strtotime($b['expiration'] . ' +' . $p['validity'] . ' months'));
-                            $time = date("23:59:00");
-                            break;
-                        case 'Days':
-                            $date_exp = date("Y-m-d", strtotime($b['expiration'] . ' +' . $p['validity'] . ' days'));
-                            $time = $b['time'];
-                            break;
-                        case 'Hrs':
-                            $datetime = explode(' ', date("Y-m-d H:i:s", strtotime($b['expiration'] . ' ' . $b['time'] . ' +' . $p['validity'] . ' hours')));
-                            $date_exp = $datetime[0];
-                            $time = $datetime[1];
-                            break;
-                        case 'Mins':
-                            $datetime = explode(' ', date("Y-m-d H:i:s", strtotime($b['expiration'] . ' ' . $b['time'] . ' +' . $p['validity'] . ' minutes')));
-                            $date_exp = $datetime[0];
-                            $time = $datetime[1];
-                            break;
+            if ($b['namebp'] == $p['name_plan'] && $b['status'] == 'on') {
+                $extendAnchorAt = self::getExtendAnchorStart($id_customer, (int) ($b['id'] ?? 0));
+                $extendAnchorTs = $extendAnchorAt !== '' ? strtotime($extendAnchorAt) : false;
+                $hasExtendAnchor = ($extendAnchorTs !== false && $extendAnchorTs > 0);
+                $shouldExtendFromCurrent = ($config['extend_expiry'] == 'yes') || $hasExtendAnchor;
+
+                if ($shouldExtendFromCurrent) {
+                    // Extend from existing expiry by default, but if extend anchor exists use anchor start.
+                    $anchorDate = $hasExtendAnchor ? date('Y-m-d', $extendAnchorTs) : '';
+                    $anchorTime = $hasExtendAnchor ? date('H:i:s', $extendAnchorTs) : '';
+                    $anchorDateTime = $hasExtendAnchor ? ($anchorDate . ' ' . $anchorTime) : '';
+
+                    if ($isUnlimitedPlan) {
+                        $date_exp = self::getUnlimitedExpirationDate();
+                        $time = self::getUnlimitedExpirationTime();
+                    } else {
+                        switch ($p['validity_unit']) {
+                            case 'Months':
+                                if ($hasExtendAnchor) {
+                                    $date_exp = date("Y-m-d", strtotime($anchorDateTime . ' +' . $p['validity'] . ' months'));
+                                    $time = $anchorTime;
+                                } else {
+                                    $date_exp = date("Y-m-d", strtotime($b['expiration'] . ' +' . $p['validity'] . ' months'));
+                                    $time = $b['time'];
+                                }
+                                break;
+                            case 'Period':
+                                if ($hasExtendAnchor) {
+                                    $date_exp = date("Y-m-$day_exp", strtotime($anchorDate . ' +' . $p['validity'] . ' months'));
+                                } else {
+                                    $date_exp = date("Y-m-$day_exp", strtotime($b['expiration'] . ' +' . $p['validity'] . ' months'));
+                                }
+                                $time = date("23:59:00");
+                                break;
+                            case 'Days':
+                                if ($hasExtendAnchor) {
+                                    $datetime = explode(' ', date("Y-m-d H:i:s", strtotime($anchorDateTime . ' +' . $p['validity'] . ' days')));
+                                    $date_exp = $datetime[0];
+                                    $time = $datetime[1];
+                                } else {
+                                    $date_exp = date("Y-m-d", strtotime($b['expiration'] . ' +' . $p['validity'] . ' days'));
+                                    $time = $b['time'];
+                                }
+                                break;
+                            case 'Hrs':
+                                if ($hasExtendAnchor) {
+                                    $datetime = explode(' ', date("Y-m-d H:i:s", strtotime($anchorDateTime . ' +' . $p['validity'] . ' hours')));
+                                } else {
+                                    $datetime = explode(' ', date("Y-m-d H:i:s", strtotime($b['expiration'] . ' ' . $b['time'] . ' +' . $p['validity'] . ' hours')));
+                                }
+                                $date_exp = $datetime[0];
+                                $time = $datetime[1];
+                                break;
+                            case 'Mins':
+                                if ($hasExtendAnchor) {
+                                    $datetime = explode(' ', date("Y-m-d H:i:s", strtotime($anchorDateTime . ' +' . $p['validity'] . ' minutes')));
+                                } else {
+                                    $datetime = explode(' ', date("Y-m-d H:i:s", strtotime($b['expiration'] . ' ' . $b['time'] . ' +' . $p['validity'] . ' minutes')));
+                                }
+                                $date_exp = $datetime[0];
+                                $time = $datetime[1];
+                                break;
+                        }
                     }
+                } else {
+                    $isChangePlan = true;
                 }
             } else {
                 $isChangePlan = true;
@@ -778,6 +880,7 @@ class Package
                     $b->admin_id = '0';
                 }
                 $b->save();
+                self::clearExtendAnchorStart($id_customer, (int) ($b['id'] ?? 0));
                 if ($shouldSchedulePreviousExpiryReset) {
                     PppoeUsage::scheduleCounterReset((int) $b['id'], $previousExpiryAt, 'Recharge extension: keep previous expiry reset');
                 }
@@ -985,6 +1088,377 @@ class Package
             $trx->trx_invoice = $inv;
         }
         return $inv;
+    }
+
+    protected static function resolveRechargeDateTime($date, $time)
+    {
+        $date = trim((string) $date);
+        $time = trim((string) $time);
+        if ($date === '') {
+            return date('Y-m-d H:i:s');
+        }
+        if ($time === '') {
+            $time = '00:00:00';
+        }
+        return $date . ' ' . $time;
+    }
+
+    protected static function subtractPlanValidityFromDateTime($currentDateTime, $plan)
+    {
+        $currentDateTime = trim((string) $currentDateTime);
+        if ($currentDateTime === '') {
+            $currentDateTime = date('Y-m-d H:i:s');
+        }
+
+        if (self::isUnlimitedPlan($plan)) {
+            return date('Y-m-d H:i:s', time() - 1);
+        }
+
+        $validity = max(0, (int) ($plan['validity'] ?? 0));
+        if ($validity <= 0) {
+            return date('Y-m-d H:i:s', time() - 1);
+        }
+
+        try {
+            $dt = new DateTime($currentDateTime);
+        } catch (Exception $e) {
+            $dt = new DateTime(date('Y-m-d H:i:s'));
+        }
+
+        $unit = trim((string) ($plan['validity_unit'] ?? 'Days'));
+        switch ($unit) {
+            case 'Months':
+                $dt->modify('-' . $validity . ' month');
+                break;
+            case 'Period':
+                $dt->modify('-' . $validity . ' month');
+                $dt->setTime(23, 59, 59);
+                break;
+            case 'Hrs':
+                $dt->modify('-' . $validity . ' hour');
+                break;
+            case 'Mins':
+                $dt->modify('-' . $validity . ' minute');
+                break;
+            case 'Days':
+            default:
+                $dt->modify('-' . $validity . ' day');
+                break;
+        }
+
+        return $dt->format('Y-m-d H:i:s');
+    }
+
+    protected static function findActiveRechargeRowForRefund($customerId, $plan, $routerName = '')
+    {
+        $customerId = (int) $customerId;
+        if ($customerId <= 0 || !$plan || empty($plan['id'])) {
+            return null;
+        }
+
+        $query = ORM::for_table('tbl_user_recharges')
+            ->where('customer_id', $customerId)
+            ->where('plan_id', (int) $plan['id'])
+            ->where('status', 'on');
+
+        $routerName = trim((string) $routerName);
+        if ($routerName !== '') {
+            $query->where('routers', $routerName);
+        }
+        if (!empty($plan['type'])) {
+            $query->where('type', (string) $plan['type']);
+        }
+
+        $row = $query->order_by_desc('id')->find_one();
+        if ($row) {
+            return $row;
+        }
+
+        return ORM::for_table('tbl_user_recharges')
+            ->where('customer_id', $customerId)
+            ->where('plan_id', (int) $plan['id'])
+            ->where('status', 'on')
+            ->order_by_desc('id')
+            ->find_one();
+    }
+
+    protected static function calculateRefundCharge($customerId, $plan, $gateway, $isLinkedAction = false)
+    {
+        global $config;
+
+        $gateway = strtolower(trim((string) $gateway));
+        $isZero = strpos($gateway, 'zero') !== false;
+        if ($isZero) {
+            return 0;
+        }
+
+        $planPrice = (float) ($plan['price'] ?? 0);
+        if (!$isLinkedAction && ($plan['validity_unit'] ?? '') === 'Period' && !self::isUnlimitedPlan($plan)) {
+            $invoicePrice = User::getAttribute('Invoice', $customerId);
+            if ($invoicePrice !== null && $invoicePrice !== '') {
+                $planPrice = (float) $invoicePrice;
+            }
+        }
+
+        $addCost = 0.0;
+        if (!$isLinkedAction) {
+            list($_bills, $addCostRaw) = User::getBills($customerId);
+            $addCost = (float) $addCostRaw;
+        }
+
+        $tax = 0.0;
+        if (($config['enable_tax'] ?? 'no') === 'yes') {
+            $taxRateSetting = $config['tax_rate'] ?? null;
+            $customTaxRate = isset($config['custom_tax_rate']) ? (float) $config['custom_tax_rate'] : null;
+            $taxRate = ($taxRateSetting === 'custom') ? $customTaxRate : $taxRateSetting;
+            $tax = (float) self::tax($planPrice, (float) $taxRate);
+        }
+
+        return max(0, (float) $planPrice + (float) $addCost + (float) $tax);
+    }
+
+    protected static function reverseLinkedPlans($customerId, $gateway, $channel, $note, array &$processedPlanIds, $plan, $primaryRouterName = '')
+    {
+        if ($customerId <= 0 || !$plan) {
+            return;
+        }
+        if (!is_array($plan)) {
+            $plan = $plan->as_array();
+        }
+        if (empty($plan['id'])) {
+            return;
+        }
+
+        $linkedIds = self::getLinkedPlanIds($plan['id']);
+        if (empty($linkedIds)) {
+            return;
+        }
+
+        foreach ($linkedIds as $linkedId) {
+            if (in_array($linkedId, $processedPlanIds, true)) {
+                continue;
+            }
+
+            $linkedPlan = ORM::for_table('tbl_plans')->find_one($linkedId);
+            if (!$linkedPlan) {
+                continue;
+            }
+            if (!is_array($linkedPlan)) {
+                $linkedPlan = $linkedPlan->as_array();
+            }
+
+            $activeRecharge = self::findActiveRechargeRowForRefund($customerId, $linkedPlan, '');
+            if (!$activeRecharge) {
+                continue;
+            }
+
+            $routerName = trim((string) ($activeRecharge['routers'] ?? ''));
+            if ($routerName === '') {
+                $routerName = self::resolveRouterNameForPlan($linkedPlan);
+            }
+            if ($routerName === '') {
+                $routerName = self::resolveRouterNameForPlan($plan);
+            }
+            if ($routerName === '') {
+                $routerName = trim((string) $primaryRouterName);
+            }
+            if ($routerName === '') {
+                continue;
+            }
+
+            $linkedNote = trim($note . "\n" . Lang::T('Linked Plan Refund Note'));
+            $skipInvoiceNotification = isset($linkedPlan['invoice_notification']) && (int) $linkedPlan['invoice_notification'] === 0;
+
+            try {
+                self::refundUser(
+                    $customerId,
+                    $routerName,
+                    (int) $linkedPlan['id'],
+                    $gateway,
+                    $channel,
+                    $linkedNote,
+                    $processedPlanIds,
+                    true,
+                    $skipInvoiceNotification
+                );
+            } catch (Throwable $throwable) {
+                Message::sendTelegram(
+                    "Failed to refund linked plan automatically\n" .
+                    'Customer: ' . $customerId . "\n" .
+                    'Primary Plan: ' . ($plan['name_plan'] ?? '-') . "\n" .
+                    'Linked Plan ID: ' . $linkedPlan['id'] . "\n" .
+                    $throwable->getMessage()
+                );
+            }
+        }
+    }
+
+    public static function refundUser(
+        $id_customer,
+        $router_name,
+        $plan_id,
+        $gateway,
+        $channel,
+        $note = '',
+        &$processedPlanIds = null,
+        $isLinkedAction = false,
+        $skipInvoiceNotification = false
+    ) {
+        global $admin, $_app_stage;
+
+        $id_customer = (int) $id_customer;
+        $planIdInt = (int) $plan_id;
+        $router_name = trim((string) $router_name);
+        $note = trim((string) $note);
+        if (strlen($note) > 256) {
+            $note = substr($note, 0, 256);
+        }
+
+        if ($processedPlanIds === null) {
+            $processedPlanIds = [];
+        }
+        if ($id_customer <= 0 || $planIdInt <= 0 || in_array($planIdInt, $processedPlanIds, true)) {
+            return false;
+        }
+        $processedPlanIds[] = $planIdInt;
+
+        $plan = ORM::for_table('tbl_plans')->where('id', $planIdInt)->find_one();
+        if (!$plan) {
+            return false;
+        }
+        if (!is_array($plan)) {
+            $plan = $plan->as_array();
+        }
+        if (!$skipInvoiceNotification && isset($plan['invoice_notification']) && (int) $plan['invoice_notification'] === 0) {
+            $skipInvoiceNotification = true;
+        }
+
+        $customer = ORM::for_table('tbl_customers')->where('id', $id_customer)->find_one();
+        if (!$customer) {
+            return false;
+        }
+        $customerData = $customer->as_array();
+
+        $activeRecharge = self::findActiveRechargeRowForRefund($id_customer, $plan, $router_name);
+        if (!$activeRecharge) {
+            return false;
+        }
+
+        if ($router_name === '') {
+            $router_name = trim((string) ($activeRecharge['routers'] ?? ''));
+        }
+        if ($router_name !== '' && trim((string) ($activeRecharge['routers'] ?? '')) !== $router_name) {
+            return false;
+        }
+
+        run_hook('refund_user');
+
+        $previousExpiryAt = self::resolveRechargeDateTime($activeRecharge['expiration'] ?? '', $activeRecharge['time'] ?? '');
+        $newExpiryAt = self::subtractPlanValidityFromDateTime($previousExpiryAt, $plan);
+        $newExpiryTs = strtotime($newExpiryAt);
+        if ($newExpiryTs === false) {
+            $newExpiryTs = time() - 1;
+            $newExpiryAt = date('Y-m-d H:i:s', $newExpiryTs);
+        }
+
+        $now = time();
+        $deactivate = self::isUnlimitedPlan($plan) || $newExpiryTs <= $now;
+        $newDate = date('Y-m-d', $newExpiryTs);
+        $newTime = date('H:i:s', $newExpiryTs);
+
+        $deviceFile = self::getDevice($plan);
+        if ($_app_stage != 'Demo') {
+            try {
+                if (file_exists($deviceFile)) {
+                    require_once $deviceFile;
+                    if ($deactivate) {
+                        (new $plan['device'])->remove_customer($customerData, $plan);
+                    } else {
+                        (new $plan['device'])->add_customer($customerData, $plan);
+                    }
+                }
+            } catch (Throwable $e) {
+                Message::sendTelegram(
+                    "System Error. When refund Package. You may need to sync manually\n" .
+                    "Router: $router_name\n" .
+                    "Customer: u{$customerData['username']}\n" .
+                    "Plan: {$plan['name_plan']}\n" .
+                    $e->getMessage() . "\n" .
+                    $e->getTraceAsString()
+                );
+            }
+        }
+
+        $activeRecharge->recharged_on = date('Y-m-d');
+        $activeRecharge->recharged_time = date('H:i:s');
+        $activeRecharge->expiration = $newDate;
+        $activeRecharge->time = $newTime;
+        $activeRecharge->status = $deactivate ? 'off' : 'on';
+        $activeRecharge->method = "$gateway - $channel";
+        $activeRecharge->routers = $router_name;
+        $activeRecharge->type = $plan['type'];
+        $activeRecharge->admin_id = !empty($admin['id']) ? (int) $admin['id'] : 0;
+        $activeRecharge->save();
+
+        $totalRefund = self::calculateRefundCharge($id_customer, $plan, $gateway, $isLinkedAction);
+        $trxPrice = (strpos(strtolower((string) $gateway), 'zero') !== false) ? 0 : (-1 * $totalRefund);
+
+        $transaction = ORM::for_table('tbl_transactions')->create();
+        $transaction->invoice = $invoice = 'INV-' . self::_raid();
+        $transaction->username = $customerData['username'];
+        $transaction->user_id = $id_customer;
+        $transaction->plan_name = $plan['name_plan'];
+        $transaction->price = $trxPrice;
+        $transaction->recharged_on = date('Y-m-d');
+        $transaction->recharged_time = date('H:i:s');
+        $transaction->expiration = $newDate;
+        $transaction->time = $newTime;
+        $transaction->method = "$gateway - $channel";
+        $transaction->routers = $router_name;
+        $transaction->type = $plan['type'];
+        $transaction->admin_id = !empty($admin['id']) ? (int) $admin['id'] : 0;
+        $trxNote = trim($note . "\nRefund from " . Lang::dateAndTimeFormat(date('Y-m-d', strtotime($previousExpiryAt)), date('H:i:s', strtotime($previousExpiryAt))) . " to " . Lang::dateAndTimeFormat($newDate, $newTime));
+        if (strlen($trxNote) > 256) {
+            $trxNote = substr($trxNote, 0, 256);
+        }
+        $transaction->note = $trxNote;
+        $transaction->save();
+
+        if (class_exists('PppoeUsage') && PppoeUsage::isStorageReady() && PppoeUsage::isSupportedPlan($plan)) {
+            $rechargeId = (int) ($activeRecharge['id'] ?? 0);
+            if ($rechargeId > 0) {
+                PppoeUsage::cancelPendingCounterResetSchedules($rechargeId);
+                if ($deactivate) {
+                    PppoeUsage::closeCycleByRechargeId($rechargeId, date('Y-m-d H:i:s'));
+                } else {
+                    PppoeUsage::rescheduleCounterReset($rechargeId, $newExpiryAt, 'Refund: schedule new expiry reset');
+                }
+            }
+        }
+
+        if (!$isLinkedAction) {
+            self::reverseLinkedPlans($id_customer, $gateway, $channel, $note, $processedPlanIds, $plan, $router_name);
+        }
+
+        Message::sendTelegram(
+            "#u{$customerData['username']} {$customerData['fullname']} #refund #{$plan['type']}\n" .
+            $plan['name_plan'] .
+            "\nRouter: " . $router_name .
+            "\nGateway: " . $gateway .
+            "\nChannel: " . $channel .
+            "\nPrevious Expired: " . Lang::dateAndTimeFormat(date('Y-m-d', strtotime($previousExpiryAt)), date('H:i:s', strtotime($previousExpiryAt))) .
+            "\nNew Expired: " . Lang::dateAndTimeFormat($newDate, $newTime) .
+            "\nAmount: " . Lang::moneyFormat($trxPrice) .
+            "\nStatus: " . ($deactivate ? 'OFF' : 'ON') .
+            ($note !== '' ? "\nNote:\n" . $note : '')
+        );
+
+        run_hook('refund_user_finish');
+        if (!$skipInvoiceNotification) {
+            Message::sendInvoice($customerData, $transaction);
+        }
+
+        return $invoice;
     }
 
     public static function rechargeBalance($customer, $plan, $gateway, $channel, $note = '')

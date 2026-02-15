@@ -154,27 +154,28 @@
                             </tr>
                             {if $genieacs['error'] neq ''}
                                 <tr>
-                                    <td class="small text-warning text-uppercase text-normal">GenieACS</td>
+                                    <td class="small text-warning text-uppercase text-normal">{Lang::T('WiFi Setting')}</td>
                                     <td class="small mb15 text-warning">{$genieacs['error']|escape}</td>
                                 </tr>
                             {/if}
                         {else}
                             <tr>
-                                <td class="small text-warning text-uppercase text-normal">GenieACS</td>
+                                <td class="small text-warning text-uppercase text-normal">{Lang::T('WiFi Setting')}</td>
                                 <td class="small mb15 text-warning">{Lang::T('Device not assigned. Contact admin.')}</td>
                             </tr>
                         {/if}
                     {/if}
                     <tr>
                         <td class="small text-primary text-uppercase text-normal">
-                            {if $_bill['status'] == 'on' && $_bill['prepaid'] != 'YES'}
+                            {if $_bill['status'] == 'on' && $_bill['prepaid']|lower != 'yes'}
                                 <a href="{Text::url('home&deactivate=', $_bill['id'])}"
                                     onclick="return ask(this, '{Lang::T('Deactivate')}?')" class="btn btn-danger btn-xs"><i
                                         class="glyphicon glyphicon-trash"></i></a>
                             {/if}
                         </td>
                         <td class="small row">
-                            {if $_bill['status'] != 'on' && $_bill['prepaid'] != 'yes' && $_c['extend_expired']}
+                            {assign var=allow_prepaid_extend value=($_c['extend_allow_prepaid']|default:'0')}
+                            {if $_bill['status'] != 'on' && $_c['extend_expired'] && ($_bill['prepaid']|lower != 'yes' || $allow_prepaid_extend == '1' || $allow_prepaid_extend == 'yes' || $allow_prepaid_extend == 'true' || $allow_prepaid_extend == 'on')}
                                 <a class="btn btn-warning text-black btn-sm"
                                     href="{Text::url('home&extend=', $_bill['id'], '&stoken=', App::getToken())}"
                                     onclick="return ask(this, '{Text::toHex($_c['extend_confirmation'])}')">{Lang::T('Extend')}</a>
