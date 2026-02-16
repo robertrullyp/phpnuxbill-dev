@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: PHPNuxBill Internal API
-  version: 2026.2.15
+  version: 2026.2.16
   description: 'Generated from `docs/api.md`.
 
 

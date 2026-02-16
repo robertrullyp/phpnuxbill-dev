@@ -2,6 +2,13 @@
 
 # CHANGELOG
 
+## 2026.2.16
+
+- **PPPoE Deactivation Safety:** Updated `MikrotikPppoe::removePpoeActive()` to remove all matching `/ppp/active` sessions for a secret username (not just first match), ensuring full disconnect on expiry/deactivation for multi-session cases.
+- **Self-Extend Guard Baseline:** Finalized release baseline for customer self-extend controls with global app toggle + per-plan guard (`tbl_plans.customer_can_extend`) and aligned runtime checks.
+- **Release Metadata Sync:** Synchronized release references in `version.json`, `README.md`, `docs/openapi.yaml`, and `docs/openapi.json` to represent current runtime state.
+- Version bumped to `2026.2.16`.
+
 ## 2026.2.15
 
 - **Refund Flow (Reverse Recharge):** Added admin refund workflow (`/plan/refund`) with confirm/post handling, reverse validity calculation, linked-plan reversal, negative transaction recording, optional balance credit, and device sync (`add_customer`/`remove_customer`) based on new expiry result.

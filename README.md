@@ -17,8 +17,8 @@ Important notes:
 
 ## Current Release
 
-- **Version:** `2026.2.15`
-- **Focus:** Refund workflow (reverse recharge) + extend anchor consistency, expiry-edit notification controls, scoped `[[extend_link]]` support for expired notice templates, and operational/UI refinements.
+- **Version:** `2026.2.16`
+- **Focus:** PPPoE deactivation safety (remove all active sessions per secret username), finalized customer self-extend guard controls (global + per-plan), and release metadata/documentation sync.
 
 ## What's New in This Fork
 
