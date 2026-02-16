@@ -696,6 +696,78 @@ class Package
         return (int) max(1, ceil($seconds / 86400));
     }
 
+    public static function isTruthyValue($value)
+    {
+        if (is_bool($value)) {
+            return $value;
+        }
+        if (is_int($value) || is_float($value)) {
+            return ((float) $value) !== 0.0;
+        }
+        $value = strtolower(trim((string) $value));
+        return in_array($value, ['1', 'yes', 'true', 'on'], true);
+    }
+
+    protected static function resolveConfigArray($settings)
+    {
+        if (is_array($settings)) {
+            return $settings;
+        }
+        global $config;
+        if (is_array($config)) {
+            return $config;
+        }
+        return [];
+    }
+
+    public static function isCustomerSelfExtendPrepaidAllowed($plan, $settings = null)
+    {
+        $planData = is_array($plan) ? $plan : ($plan && method_exists($plan, 'as_array') ? $plan->as_array() : []);
+        if (empty($planData)) {
+            return false;
+        }
+
+        $isPrepaid = strtolower(trim((string) ($planData['prepaid'] ?? 'no'))) === 'yes';
+        if (!$isPrepaid) {
+            return true;
+        }
+
+        $cfg = self::resolveConfigArray($settings);
+        return self::isTruthyValue($cfg['extend_allow_prepaid'] ?? 0);
+    }
+
+    public static function isCustomerSelfExtendPlanAllowed($plan, $settings = null)
+    {
+        $planData = is_array($plan) ? $plan : ($plan && method_exists($plan, 'as_array') ? $plan->as_array() : []);
+        if (empty($planData)) {
+            return false;
+        }
+
+        $cfg = self::resolveConfigArray($settings);
+        if (!self::isTruthyValue($cfg['extend_expired'] ?? 0)) {
+            return false;
+        }
+        if (array_key_exists('customer_can_extend', $planData) && !self::isTruthyValue($planData['customer_can_extend'])) {
+            return false;
+        }
+        if (array_key_exists('enabled', $planData) && !self::isTruthyValue($planData['enabled'])) {
+            return false;
+        }
+
+        $price = (float) ($planData['price'] ?? 0);
+        if ($price <= 0) {
+            return false;
+        }
+
+        $welcomePlanId = (int) ($cfg['welcome_package_plan'] ?? 0);
+        $planId = (int) ($planData['id'] ?? 0);
+        if ($welcomePlanId > 0 && $planId > 0 && $welcomePlanId === $planId) {
+            return false;
+        }
+
+        return true;
+    }
+
     protected static function appendRechargeChargeSummary(&$chargeSummary, $planId, $amount)
     {
         if (!is_array($chargeSummary)) {

@@ -12,6 +12,8 @@ use PEAR2\Net\RouterOS;
 
 class MikrotikPppoe
 {
+    protected $lastSyncWarning = '';
+
     // show Description
     function description()
     {
@@ -29,6 +31,7 @@ class MikrotikPppoe
 
     function add_customer($customer, $plan)
     {
+        $this->resetLastSyncWarning();
         global $isChangePlan;
         $mikrotik = $this->info($plan['routers']);
         $client = $this->getClient($mikrotik['ip_address'], $mikrotik['username'], $mikrotik['password']);
@@ -84,6 +87,7 @@ class MikrotikPppoe
         $bindingName = '';
         $bindingWarning = '';
         if (!$this->ensurePppoeServerBinding($customer, $plan, $bindingName, $bindingWarning) && $bindingWarning !== '') {
+            $this->setLastSyncWarning($bindingWarning);
             $this->logPppoeBindingWarning($plan, $customer, $bindingWarning, 'add_customer');
         }
     }
@@ -91,6 +95,24 @@ class MikrotikPppoe
 	function sync_customer($customer, $plan)
     {
         $this->add_customer($customer, $plan);
+    }
+
+    public function getLastSyncWarning()
+    {
+        return trim((string) $this->lastSyncWarning);
+    }
+
+    protected function resetLastSyncWarning()
+    {
+        $this->lastSyncWarning = '';
+    }
+
+    protected function setLastSyncWarning($warning)
+    {
+        $warning = trim((string) $warning);
+        if ($warning !== '') {
+            $this->lastSyncWarning = $warning;
+        }
     }
 
     function remove_customer($customer, $plan)
@@ -981,14 +1003,35 @@ class MikrotikPppoe
         if ($_app_stage == 'Demo') {
             return null;
         }
+        $username = trim((string) $username);
+        if ($username === '') {
+            return 0;
+        }
         $onlineRequest = new RouterOS\Request('/ppp/active/print');
         $onlineRequest->setArgument('.proplist', '.id');
         $onlineRequest->setQuery(RouterOS\Query::where('name', $username));
-        $id = $client->sendSync($onlineRequest)->getProperty('.id');
+        $responses = $client->sendSync($onlineRequest);
+        $ids = [];
+        foreach ($responses as $response) {
+            if (!($response instanceof RouterOS\Response)) {
+                continue;
+            }
+            $id = trim((string) $response->getProperty('.id'));
+            if ($id !== '') {
+                $ids[$id] = $id;
+            }
+        }
+        if (empty($ids)) {
+            return 0;
+        }
 
-        $removeRequest = new RouterOS\Request('/ppp/active/remove');
-        $removeRequest->setArgument('numbers', $id);
-        $client->sendSync($removeRequest);
+        foreach ($ids as $id) {
+            $removeRequest = new RouterOS\Request('/ppp/active/remove');
+            $removeRequest->setArgument('numbers', $id);
+            $client->sendSync($removeRequest);
+        }
+
+        return count($ids);
     }
 
     function getIpHotspotUser($client, $username)

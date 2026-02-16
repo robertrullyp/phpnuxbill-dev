@@ -119,6 +119,7 @@ CREATE TABLE `tbl_plans` (
   `enabled` tinyint(1) NOT NULL DEFAULT '1' COMMENT '0 disabled\r\n',
   `reminder_enabled` tinyint(1) NOT NULL DEFAULT '1' COMMENT '0 disabled reminders',
   `invoice_notification` tinyint(1) NOT NULL DEFAULT '1' COMMENT '0 disable invoice notifications',
+  `customer_can_extend` tinyint(1) NOT NULL DEFAULT '1' COMMENT '0 disable customer self extend',
   `prepaid` enum('yes','no') CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci DEFAULT 'yes' COMMENT 'is prepaid',
   `visibility` enum('all','custom','exclude') CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL DEFAULT 'all' COMMENT 'plan visibility for customers',
   `plan_type` enum('Business','Personal') COLLATE utf8mb4_general_ci DEFAULT 'Personal' COMMENT 'For selecting account type',

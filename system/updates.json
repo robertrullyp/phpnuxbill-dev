@@ -252,5 +252,8 @@
     "CREATE TABLE IF NOT EXISTS `tbl_recharge_usage_samples` (`id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, `cycle_id` BIGINT UNSIGNED NOT NULL DEFAULT 0, `recharge_id` INT UNSIGNED NOT NULL DEFAULT 0, `sample_at` DATETIME NOT NULL, `counter_tx` BIGINT UNSIGNED NOT NULL DEFAULT 0, `counter_rx` BIGINT UNSIGNED NOT NULL DEFAULT 0, `delta_tx` BIGINT UNSIGNED NOT NULL DEFAULT 0, `delta_rx` BIGINT UNSIGNED NOT NULL DEFAULT 0, `usage_tx_total` BIGINT UNSIGNED NOT NULL DEFAULT 0, `usage_rx_total` BIGINT UNSIGNED NOT NULL DEFAULT 0, `source` VARCHAR(24) NOT NULL DEFAULT 'cron', `note` VARCHAR(255) NOT NULL DEFAULT '', `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY (`id`), KEY `idx_usage_sample_cycle` (`cycle_id`), KEY `idx_usage_sample_recharge` (`recharge_id`), KEY `idx_usage_sample_time` (`sample_at`), KEY `idx_usage_sample_source` (`source`)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;"
   ],
   "2026.2.14.2": [],
-  "2026.2.15": []
+  "2026.2.15": [],
+  "2026.2.16": [
+    "ALTER TABLE `tbl_plans` ADD `customer_can_extend` TINYINT(1) NOT NULL DEFAULT '1' COMMENT '0 disable customer self extend' AFTER `invoice_notification`;"
+  ]
 }

@@ -235,19 +235,32 @@ if (isset($_GET['sync']) && !empty($_GET['sync'])) {
                     $c = ORM::for_table('tbl_customers')->findOne($tur['customer_id']);
                     if ($c) {
                         $dvc = Package::getDevice($p);
+                        $syncWarning = '';
                         if ($_app_stage != 'demo') {
                             if (file_exists($dvc)) {
                                 require_once $dvc;
-                                if (method_exists($dvc, 'sync_customer')) {
-                                    (new $p['device'])->sync_customer($c, $p);
+                                $deviceClass = trim((string) ($p['device'] ?? ''));
+                                if ($deviceClass === '' || !class_exists($deviceClass)) {
+                                    throw new Exception('Device class not found: ' . $deviceClass);
+                                }
+                                $device = new $deviceClass();
+                                if (method_exists($device, 'sync_customer')) {
+                                    $device->sync_customer($c, $p);
                                 } else {
-                                    (new $p['device'])->add_customer($c, $p);
+                                    $device->add_customer($c, $p);
+                                }
+                                if (method_exists($device, 'getLastSyncWarning')) {
+                                    $syncWarning = trim((string) $device->getLastSyncWarning());
                                 }
                             } else {
                                 throw new Exception(Lang::T("Devices Not Found"));
                             }
                         }
-                        $log .= "DONE : {$tur['namebp']}, {$tur['type']}, {$tur['routers']}<br>";
+                        if ($syncWarning !== '') {
+                            $log .= "WARN : {$tur['namebp']}, {$tur['type']}, {$tur['routers']} ({$syncWarning})<br>";
+                        } else {
+                            $log .= "DONE : {$tur['namebp']}, {$tur['type']}, {$tur['routers']}<br>";
+                        }
                     } else {
                         $log .= "Customer NOT FOUND : {$tur['namebp']}, {$tur['type']}, {$tur['routers']}<br>";
                     }
@@ -316,8 +329,8 @@ if (isset($_GET['recharge']) && !empty($_GET['recharge'])) {
     if ($user['status'] != 'Active') {
         _alert(Lang::T('This account status') . ' : ' . Lang::T($user['status']), 'danger', "");
     }
-    if (!$config['extend_expired']) {
-        r2(getUrl('home'), 'e', "cannot extend");
+    if (!Package::isTruthyValue($config['extend_expired'] ?? 0)) {
+        r2(getUrl('home'), 'e', Lang::T('Customer self-extend is disabled'));
     }
     if (!empty(App::getTokenValue(_get('stoken')))) {
         r2(getUrl('home'), 'e', "You already extend");
@@ -329,9 +342,21 @@ if (isset($_GET['recharge']) && !empty($_GET['recharge'])) {
         if (!$p) {
             r2(getUrl('home'), 'e', "Plan Not Found");
         }
-        $allowPrepaidExtend = in_array(strtolower(trim((string) ($config['extend_allow_prepaid'] ?? '0'))), ['1', 'yes', 'true', 'on'], true);
-        $isPrepaidPlan = strtolower(trim((string) ($p['prepaid'] ?? 'no'))) === 'yes';
-        if ($isPrepaidPlan && !$allowPrepaidExtend) {
+        if (!Package::isCustomerSelfExtendPlanAllowed($p, $config)) {
+            $reasonMessage = Lang::T('Customer self-extend is disabled');
+            if (!Package::isTruthyValue($p['customer_can_extend'] ?? 1)) {
+                $reasonMessage = Lang::T('Customer self-extend is disabled for this plan');
+            } elseif (!Package::isTruthyValue($p['enabled'] ?? 0)) {
+                $reasonMessage = Lang::T('This plan is inactive and cannot be extended by customer');
+            } elseif ((float) ($p['price'] ?? 0) <= 0) {
+                $reasonMessage = Lang::T('Free plan cannot be extended by customer');
+            } elseif ((int) ($config['welcome_package_plan'] ?? 0) > 0 && (int) ($config['welcome_package_plan'] ?? 0) === (int) ($p['id'] ?? 0)) {
+                $reasonMessage = Lang::T('Welcome package cannot be extended by customer');
+            }
+            r2(getUrl('home'), 'e', $reasonMessage);
+        }
+
+        if (!Package::isCustomerSelfExtendPrepaidAllowed($p, $config)) {
             r2(getUrl('home'), 'e', Lang::T('Extend for prepaid plan is disabled'));
         }
 

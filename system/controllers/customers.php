@@ -382,27 +382,59 @@ switch ($action) {
         $bs = ORM::for_table('tbl_user_recharges')->where('customer_id', $id_customer)->where('status', 'on')->findMany();
         if ($bs) {
             $routers = [];
+            $warnings = [];
+            $errors = [];
             foreach ($bs as $b) {
-                $c = ORM::for_table('tbl_customers')->find_one($id_customer);
-                $p = ORM::for_table('tbl_plans')->where('id', $b['plan_id'])->find_one();
-                if ($p) {
-                    $routers[] = $b['routers'];
-                    $dvc = Package::getDevice($p);
-                    if ($_app_stage != 'demo') {
-                        if (file_exists($dvc)) {
-                            require_once $dvc;
-                            if (method_exists($dvc, 'sync_customer')) {
-                                (new $p['device'])->sync_customer($c, $p);
-                            }else{
-                                (new $p['device'])->add_customer($c, $p);
+                try {
+                    $c = ORM::for_table('tbl_customers')->find_one($id_customer);
+                    $p = ORM::for_table('tbl_plans')->where('id', $b['plan_id'])->find_one();
+                    if ($p) {
+                        $routers[] = $b['routers'];
+                        $dvc = Package::getDevice($p);
+                        if ($_app_stage != 'demo') {
+                            if (file_exists($dvc)) {
+                                require_once $dvc;
+                                $deviceClass = trim((string) ($p['device'] ?? ''));
+                                if ($deviceClass === '' || !class_exists($deviceClass)) {
+                                    throw new Exception('Device class not found: ' . $deviceClass);
+                                }
+                                $device = new $deviceClass();
+                                if (method_exists($device, 'sync_customer')) {
+                                    $device->sync_customer($c, $p);
+                                }else{
+                                    $device->add_customer($c, $p);
+                                }
+                                if (method_exists($device, 'getLastSyncWarning')) {
+                                    $syncWarning = trim((string) $device->getLastSyncWarning());
+                                    if ($syncWarning !== '') {
+                                        $warnings[] = trim((string) ($p['name_plan'] ?? 'Plan')) . ': ' . $syncWarning;
+                                    }
+                                }
+                            } else {
+                                throw new Exception(Lang::T("Devices Not Found"));
                             }
-                        } else {
-                            new Exception(Lang::T("Devices Not Found"));
                         }
                     }
+                } catch (Throwable $e) {
+                    $syncError = trim((string) $e->getMessage());
+                    if ($syncError === '') {
+                        $syncError = 'Unknown sync error';
+                    }
+                    $errors[] = trim((string) ($b['namebp'] ?? 'Plan')) . ': ' . $syncError;
                 }
             }
-            r2(getUrl('customers/view/') . $id_customer, 's', 'Sync success to ' . implode(", ", $routers));
+            $routers = array_values(array_unique(array_filter($routers)));
+            $message = 'Sync success to ' . implode(", ", $routers);
+            if (!empty($warnings)) {
+                $message .= '<br>WARN: ' . implode(' | ', $warnings);
+            }
+            if (!empty($errors) && empty($routers)) {
+                r2(getUrl('customers/view/') . $id_customer, 'e', 'Sync failed: ' . implode(' | ', $errors));
+            }
+            if (!empty($errors)) {
+                $message .= '<br>ERROR: ' . implode(' | ', $errors);
+            }
+            r2(getUrl('customers/view/') . $id_customer, empty($errors) ? 's' : 'w', $message);
         }
         r2(getUrl('customers/view/') . $id_customer, 'e', 'Cannot find active plan');
         break;

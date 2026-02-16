@@ -1924,6 +1924,7 @@ class Message
             $tur = ORM::for_table('tbl_user_recharges')
                 ->where('customer_id', $customer['id'])
                 ->where('namebp', $package)
+                ->order_by_desc('id')
                 ->find_one();
         }
 
@@ -1941,7 +1942,15 @@ class Message
         if ($needsExtendLink) {
             // extend link follows customer portal flow: home&extend=<recharge_id>&uid=<token>&stoken=<nonce>
             $extendToken = User::generateToken($customer['id'], 1);
-            if (!empty($extendToken['token']) && $tur) {
+            $allowExtendForRecharge = false;
+            if ($tur && (string) ($tur['status'] ?? '') !== 'on') {
+                $extendPlan = ORM::for_table('tbl_plans')->find_one((int) ($tur['plan_id'] ?? 0));
+                if ($extendPlan) {
+                    $allowExtendForRecharge = Package::isCustomerSelfExtendPlanAllowed($extendPlan, $config)
+                        && Package::isCustomerSelfExtendPrepaidAllowed($extendPlan, $config);
+                }
+            }
+            if (!empty($extendToken['token']) && $tur && $allowExtendForRecharge) {
                 $extendUrl = '?_route=home&extend=' . $tur['id']
                     . '&uid=' . urlencode($extendToken['token'])
                     . '&stoken=' . urlencode(App::getToken());

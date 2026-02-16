@@ -42,6 +42,32 @@ if (!function_exists('ensureVisibilityEnumSupportsExclude')) {
 }
 ensureVisibilityEnumSupportsExclude();
 
+if (!function_exists('ensurePlansCustomerCanExtendColumn')) {
+    function ensurePlansCustomerCanExtendColumn()
+    {
+        static $done = false;
+        if ($done) {
+            return;
+        }
+        try {
+            $db = ORM::get_db();
+            if ($db) {
+                $stmt = $db->query("SHOW COLUMNS FROM `tbl_plans` LIKE 'customer_can_extend'");
+                if ($stmt) {
+                    $col = $stmt->fetch(PDO::FETCH_ASSOC);
+                    if (!$col) {
+                        $db->exec("ALTER TABLE `tbl_plans` ADD `customer_can_extend` TINYINT(1) NOT NULL DEFAULT '1' COMMENT '0 disable customer self extend' AFTER `invoice_notification`");
+                    }
+                }
+            }
+        } catch (Exception $e) {
+            // silently ignore; do not block UI if DB user has no alter privilege
+        }
+        $done = true;
+    }
+}
+ensurePlansCustomerCanExtendColumn();
+
 if (!function_exists('normalizePppoeServiceName')) {
     function normalizePppoeServiceName($value)
     {
@@ -387,6 +413,7 @@ switch ($action) {
         $_SESSION['last_visibility'] = $visibility ?? 'all';
         $reminderEnabled = isset($_POST['reminder_enabled']) ? (int) $_POST['reminder_enabled'] : 0;
         $invoiceNotification = isset($_POST['invoice_notification']) ? (int) $_POST['invoice_notification'] : 0;
+        $customerCanExtend = isset($_POST['customer_can_extend']) ? (int) $_POST['customer_can_extend'] : 0;
         $linkedPlans = $_POST['linked_plans'] ?? null;
 
         $msg = '';
@@ -442,6 +469,7 @@ switch ($action) {
             $d->prepaid = $prepaid;
             $d->reminder_enabled = $reminderEnabled ? 1 : 0;
             $d->invoice_notification = $invoiceNotification ? 1 : 0;
+            $d->customer_can_extend = $customerCanExtend ? 1 : 0;
             // set visibility for new plan
             $d->visibility = $visibility;
             $d->device = $device;
@@ -517,6 +545,7 @@ switch ($action) {
         $_SESSION['last_visibility'] = $visibility ?? 'all';
         $reminderEnabled = isset($_POST['reminder_enabled']) ? (int) $_POST['reminder_enabled'] : 0;
         $invoiceNotification = isset($_POST['invoice_notification']) ? (int) $_POST['invoice_notification'] : 0;
+        $customerCanExtend = isset($_POST['customer_can_extend']) ? (int) $_POST['customer_can_extend'] : 0;
         $linkedPlans = $_POST['linked_plans'] ?? null;
         $msg = '';
         if (Validator::UnsignedNumber($validity) == false) {
@@ -586,6 +615,7 @@ switch ($action) {
             $d->prepaid = $prepaid;
             $d->reminder_enabled = $reminderEnabled ? 1 : 0;
             $d->invoice_notification = $invoiceNotification ? 1 : 0;
+            $d->customer_can_extend = $customerCanExtend ? 1 : 0;
             $d->visibility = $visibility;
             $d->on_login = $on_login;
             $d->on_logout = $on_logout;
@@ -871,6 +901,7 @@ switch ($action) {
         $expired_date = _post('expired_date');
         $reminderEnabled = isset($_POST['reminder_enabled']) ? (int) $_POST['reminder_enabled'] : 0;
         $invoiceNotification = isset($_POST['invoice_notification']) ? (int) $_POST['invoice_notification'] : 0;
+        $customerCanExtend = isset($_POST['customer_can_extend']) ? (int) $_POST['customer_can_extend'] : 0;
         $linkedPlans = $_POST['linked_plans'] ?? null;
         $visibilityInput = _post('visibility', null);
         $visibility = Package::normalizeVisibility($visibilityInput);
@@ -953,6 +984,7 @@ switch ($action) {
             $d->prepaid = $prepaid;
             $d->reminder_enabled = $reminderEnabled ? 1 : 0;
             $d->invoice_notification = $invoiceNotification ? 1 : 0;
+            $d->customer_can_extend = $customerCanExtend ? 1 : 0;
             $d->visibility = $visibility;
             $d->device = $device;
             $d->save();
@@ -1012,6 +1044,7 @@ switch ($action) {
         $on_logout = _post('on_logout');
         $reminderEnabled = isset($_POST['reminder_enabled']) ? (int) $_POST['reminder_enabled'] : 0;
         $invoiceNotification = isset($_POST['invoice_notification']) ? (int) $_POST['invoice_notification'] : 0;
+        $customerCanExtend = isset($_POST['customer_can_extend']) ? (int) $_POST['customer_can_extend'] : 0;
         $linkedPlans = $_POST['linked_plans'] ?? null;
 
         $msg = '';
@@ -1083,6 +1116,7 @@ switch ($action) {
             $d->on_logout = $on_logout;
             $d->reminder_enabled = $reminderEnabled ? 1 : 0;
             $d->invoice_notification = $invoiceNotification ? 1 : 0;
+            $d->customer_can_extend = $customerCanExtend ? 1 : 0;
             $d->visibility = $visibility;
             if ($prepaid == 'no') {
                 if ($expired_date > 28 && $expired_date < 1) {
@@ -1223,6 +1257,7 @@ switch ($action) {
         $_SESSION['last_visibility'] = $visibility ?? 'all';
         $reminderEnabled = isset($_POST['reminder_enabled']) ? (int) $_POST['reminder_enabled'] : 0;
         $invoiceNotification = isset($_POST['invoice_notification']) ? (int) $_POST['invoice_notification'] : 0;
+        $customerCanExtend = isset($_POST['customer_can_extend']) ? (int) $_POST['customer_can_extend'] : 0;
         $linkedPlans = $_POST['linked_plans'] ?? null;
 
         $msg = '';
@@ -1250,6 +1285,7 @@ switch ($action) {
             $d->prepaid = 'yes';
             $d->reminder_enabled = $reminderEnabled ? 1 : 0;
             $d->invoice_notification = $invoiceNotification ? 1 : 0;
+            $d->customer_can_extend = $customerCanExtend ? 1 : 0;
             $d->visibility = $visibility;
             $d->save();
 
@@ -1283,6 +1319,7 @@ switch ($action) {
         $_SESSION['last_visibility'] = $visibility ?? 'all';
         $reminderEnabled = isset($_POST['reminder_enabled']) ? (int) $_POST['reminder_enabled'] : 0;
         $invoiceNotification = isset($_POST['invoice_notification']) ? (int) $_POST['invoice_notification'] : 0;
+        $customerCanExtend = isset($_POST['customer_can_extend']) ? (int) $_POST['customer_can_extend'] : 0;
         $linkedPlans = $_POST['linked_plans'] ?? null;
 
         $msg = '';
@@ -1312,6 +1349,7 @@ switch ($action) {
             $d->prepaid = 'yes';
             $d->reminder_enabled = $reminderEnabled ? 1 : 0;
             $d->invoice_notification = $invoiceNotification ? 1 : 0;
+            $d->customer_can_extend = $customerCanExtend ? 1 : 0;
             $d->visibility = $visibility;
             $d->save();
 
@@ -1575,6 +1613,7 @@ switch ($action) {
         $_SESSION['last_visibility'] = $visibility ?? 'all';
         $reminderEnabled = isset($_POST['reminder_enabled']) ? (int) $_POST['reminder_enabled'] : 0;
         $invoiceNotification = isset($_POST['invoice_notification']) ? (int) $_POST['invoice_notification'] : 0;
+        $customerCanExtend = isset($_POST['customer_can_extend']) ? (int) $_POST['customer_can_extend'] : 0;
         $linkedPlans = $_POST['linked_plans'] ?? null;
 
 
@@ -1650,6 +1689,7 @@ switch ($action) {
             $d->device = $device;
             $d->reminder_enabled = $reminderEnabled ? 1 : 0;
             $d->invoice_notification = $invoiceNotification ? 1 : 0;
+            $d->customer_can_extend = $customerCanExtend ? 1 : 0;
             $d->visibility = $visibility;
             $d->save();
 
@@ -1704,6 +1744,7 @@ switch ($action) {
         $visibility = Package::normalizeVisibility($visibilityInput);
         $reminderEnabled = isset($_POST['reminder_enabled']) ? (int) $_POST['reminder_enabled'] : 0;
         $invoiceNotification = isset($_POST['invoice_notification']) ? (int) $_POST['invoice_notification'] : 0;
+        $customerCanExtend = isset($_POST['customer_can_extend']) ? (int) $_POST['customer_can_extend'] : 0;
         $linkedPlans = $_POST['linked_plans'] ?? null;
 
         $msg = '';
@@ -1771,6 +1812,7 @@ switch ($action) {
             $d->on_logout = $on_logout;
             $d->reminder_enabled = $reminderEnabled ? 1 : 0;
             $d->invoice_notification = $invoiceNotification ? 1 : 0;
+            $d->customer_can_extend = $customerCanExtend ? 1 : 0;
             if ($prepaid == 'no') {
                 if ($expired_date > 28 && $expired_date < 1) {
                     $expired_date = 20;

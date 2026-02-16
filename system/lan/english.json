@@ -865,5 +865,13 @@
     "Radius_Package": "Radius Package",
     "Change_title_in_user_Plan_order": "Change title in user Plan order",
     "Hotspot_Package": "Hotspot Package",
-    "VPN_Package": "VPN Package"
+    "VPN_Package": "VPN Package",
+    "Customer_Self_Extend": "Customer Self Extend",
+    "Allow_customer_self_extend_for_this_plan": "Allow customer self-extend for this plan",
+    "Customer_self_extend_is_disabled": "Customer self-extend is disabled",
+    "Customer_self_extend_is_disabled_for_this_plan": "Customer self-extend is disabled for this plan",
+    "This_plan_is_inactive_and_cannot_be_extended_by_customer": "This plan is inactive and cannot be extended by customer",
+    "Free_plan_cannot_be_extended_by_customer": "Free plan cannot be extended by customer",
+    "Welcome_package_cannot_be_extended_by_customer": "Welcome package cannot be extended by customer",
+    "Unable_to_load_PPPoE_service_list": "Unable to load PPPoE service list"
 }

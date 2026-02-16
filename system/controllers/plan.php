@@ -58,31 +58,51 @@ switch ($action) {
         set_time_limit(-1);
         $turs = ORM::for_table('tbl_user_recharges')->where('status', 'on')->find_many();
         $log = '';
-        $router = '';
         foreach ($turs as $tur) {
-            $p = ORM::for_table('tbl_plans')->findOne($tur['plan_id']);
-            if ($p) {
-                $c = ORM::for_table('tbl_customers')->findOne($tur['customer_id']);
-                if ($c) {
-                    $dvc = Package::getDevice($p);
-                    if ($_app_stage != 'Demo') {
-                        if (file_exists($dvc)) {
-                            require_once $dvc;
-                            if (method_exists($dvc, 'sync_customer')) {
-                                (new $p['device'])->sync_customer($c, $p);
+            try {
+                $p = ORM::for_table('tbl_plans')->findOne($tur['plan_id']);
+                if ($p) {
+                    $c = ORM::for_table('tbl_customers')->findOne($tur['customer_id']);
+                    if ($c) {
+                        $syncWarning = '';
+                        $dvc = Package::getDevice($p);
+                        if ($_app_stage != 'Demo') {
+                            if (file_exists($dvc)) {
+                                require_once $dvc;
+                                $deviceClass = trim((string) ($p['device'] ?? ''));
+                                if ($deviceClass === '' || !class_exists($deviceClass)) {
+                                    throw new Exception('Device class not found: ' . $deviceClass);
+                                }
+                                $device = new $deviceClass();
+                                if (method_exists($device, 'sync_customer')) {
+                                    $device->sync_customer($c, $p);
+                                } else {
+                                    $device->add_customer($c, $p);
+                                }
+                                if (method_exists($device, 'getLastSyncWarning')) {
+                                    $syncWarning = trim((string) $device->getLastSyncWarning());
+                                }
                             } else {
-                                (new $p['device'])->add_customer($c, $p);
+                                throw new Exception(Lang::T("Devices Not Found"));
                             }
-                        } else {
-                            new Exception(Lang::T("Devices Not Found"));
                         }
+                        if ($syncWarning !== '') {
+                            $log .= "WARN : {$tur['username']}, {$tur['namebp']}, {$tur['type']}, {$tur['routers']} ({$syncWarning})<br>";
+                        } else {
+                            $log .= "DONE : {$tur['username']}, {$tur['namebp']}, {$tur['type']}, {$tur['routers']}<br>";
+                        }
+                    } else {
+                        $log .= "Customer NOT FOUND : {$tur['username']}, {$tur['namebp']}, {$tur['type']}, {$tur['routers']}<br>";
                     }
-                    $log .= "DONE : $tur[username], $ptur[namebp], $tur[type], $tur[routers]<br>";
                 } else {
-                    $log .= "Customer NOT FOUND : $tur[username], $tur[namebp], $tur[type], $tur[routers]<br>";
+                    $log .= "PLAN NOT FOUND : {$tur['username']}, {$tur['namebp']}, {$tur['type']}, {$tur['routers']}<br>";
                 }
-            } else {
-                $log .= "PLAN NOT FOUND : $tur[username], $tur[namebp], $tur[type], $tur[routers]<br>";
+            } catch (Throwable $e) {
+                $syncError = trim((string) $e->getMessage());
+                if ($syncError === '') {
+                    $syncError = 'Unknown sync error.';
+                }
+                $log .= "SYNC FAILED : {$tur['username']}, {$tur['namebp']}, {$tur['type']}, {$tur['routers']} ({$syncError})<br>";
             }
         }
         r2(getUrl('plan/list'), 's', $log);

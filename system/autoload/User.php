@@ -275,6 +275,8 @@ class User
             ->left_outer_join('tbl_bandwidth', ['tbl_bandwidth.id', '=', 'tbl_plans.id_bw'])
             ->select('tbl_bandwidth.name_bw', 'name_bw')
             ->select('tbl_plans.price', 'price')
+            ->select('tbl_plans.enabled', 'plan_enabled')
+            ->select('tbl_plans.customer_can_extend', 'customer_can_extend')
             ->where('tur.customer_id', $id)
             ->where_raw(
                 "`tur`.`id` = (

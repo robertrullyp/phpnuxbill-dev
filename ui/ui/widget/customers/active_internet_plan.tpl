@@ -174,8 +174,15 @@
                             {/if}
                         </td>
                         <td class="small row">
+                            {assign var=extend_global_raw value=($_c['extend_expired']|default:'0')}
+                            {assign var=extend_global_allowed value=($extend_global_raw == '1' || $extend_global_raw == 1 || $extend_global_raw == 'yes' || $extend_global_raw == 'true' || $extend_global_raw == 'on')}
                             {assign var=allow_prepaid_extend value=($_c['extend_allow_prepaid']|default:'0')}
-                            {if $_bill['status'] != 'on' && $_c['extend_expired'] && ($_bill['prepaid']|lower != 'yes' || $allow_prepaid_extend == '1' || $allow_prepaid_extend == 'yes' || $allow_prepaid_extend == 'true' || $allow_prepaid_extend == 'on')}
+                            {assign var=plan_self_extend_enabled value=(!isset($_bill['customer_can_extend']) || $_bill['customer_can_extend'] != 0)}
+                            {assign var=plan_is_enabled value=(!isset($_bill['plan_enabled']) || $_bill['plan_enabled'] != 0)}
+                            {assign var=plan_has_price value=(($_bill['price']+0) > 0)}
+                            {assign var=welcome_plan_id value=($_c['welcome_package_plan']|default:'0'|intval)}
+                            {assign var=is_welcome_plan value=($welcome_plan_id > 0 && ($_bill['plan_id']|intval) == $welcome_plan_id)}
+                            {if $_bill['status'] != 'on' && $extend_global_allowed && $plan_self_extend_enabled && $plan_is_enabled && $plan_has_price && !$is_welcome_plan && ($_bill['prepaid']|lower != 'yes' || $allow_prepaid_extend == '1' || $allow_prepaid_extend == 'yes' || $allow_prepaid_extend == 'true' || $allow_prepaid_extend == 'on')}
                                 <a class="btn btn-warning text-black btn-sm"
                                     href="{Text::url('home&extend=', $_bill['id'], '&stoken=', App::getToken())}"
                                     onclick="return ask(this, '{Text::toHex($_c['extend_confirmation'])}')">{Lang::T('Extend')}</a>

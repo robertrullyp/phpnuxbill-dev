@@ -1946,6 +1946,9 @@ function runCoreSchemaHardening($db)
         if (!updateColumnExists($db, 'tbl_plans', 'pppoe_service')) {
             $db->exec("ALTER TABLE `tbl_plans` ADD `pppoe_service` VARCHAR(64) NOT NULL DEFAULT '' COMMENT 'PPPoE server service-name' AFTER `pool`;");
         }
+        if (!updateColumnExists($db, 'tbl_plans', 'customer_can_extend')) {
+            $db->exec("ALTER TABLE `tbl_plans` ADD `customer_can_extend` TINYINT(1) NOT NULL DEFAULT '1' COMMENT '0 disable customer self extend' AFTER `invoice_notification`;");
+        }
     }
 
     if (updateTableExists($db, 'tbl_transactions') && updateColumnExists($db, 'tbl_transactions', 'type')) {
