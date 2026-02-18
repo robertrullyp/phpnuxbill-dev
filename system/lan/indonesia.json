@@ -1101,5 +1101,7 @@
     "Register_Success__You_can_login_now": "Daftar Sukses! Anda dapat masuk sekarang",
     "List": "Daftar",
     "Select_Account_Manager": "Pilih Manajer Akun",
-    "Auto_discovered_from_GenieACS_Devices_list__Available_for_PPPoE_Other_service_type_": "Ditemukan secara otomatis dari daftar Perangkat GenieACS. Tersedia untuk PPPoE\/jenis layanan lainnya."
+    "Auto_discovered_from_GenieACS_Devices_list__Available_for_PPPoE_Other_service_type_": "Ditemukan secara otomatis dari daftar Perangkat GenieACS. Tersedia untuk PPPoE\/jenis layanan lainnya.",
+    "Unpaid_Order": "Unpaid Order",
+    "PAY_NOW": "BAYAR SEKARANG"
 }
