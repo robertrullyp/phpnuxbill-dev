@@ -25,7 +25,8 @@
                     <div class="col-md-6">
                         <div class="input-group">
                             <span class="input-group-addon" id="basic-addon1">+</span>
-                            <input type="number" class="form-control" name="phone" id="phone" value="{$new_phone}"
+                            <input type="text" class="form-control" name="phone" id="phone" value="{$new_phone}"
+                                inputmode="tel" autocomplete="tel"
                                 required placeholder="{Lang::T('Input your phone number')}">
                             <span class="input-group-btn">
                                 <button type="submit" class="btn btn-info btn-flat">{Lang::T('Request OTP')}</button>

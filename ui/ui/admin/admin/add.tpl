@@ -20,7 +20,7 @@
                     <div class="form-group">
                         <label class="col-md-3 control-label">{Lang::T('Phone')}</label>
                         <div class="col-md-9">
-                            <input type="number" class="form-control" id="phone" name="phone">
+                            <input type="text" class="form-control" id="phone" name="phone" inputmode="tel" autocomplete="tel">
                         </div>
                     </div>
                     <div class="form-group">

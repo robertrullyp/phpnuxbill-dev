@@ -302,7 +302,7 @@ class Validator
     }
 
     /**
-     * Phone number with country code (62) or leading zero
+     * Phone number with country code (e.g. 62 / +62) or leading zero
      *
      * @access public
      * @param string $number
@@ -311,9 +311,32 @@ class Validator
     public static function PhoneWithCountry($number)
     {
         global $config;
-        $code = isset($config['country_code_phone']) ? preg_replace('/\D/', '', $config['country_code_phone']) : '';
-        $pattern = $code === '' ? '/^0[0-9]+$/' : '/^(' . $code . '|0)[0-9]+$/';
-        return (bool)preg_match($pattern, $number);
+
+        $number = trim((string) $number);
+        if ($number === '') {
+            return false;
+        }
+
+        // Only one leading plus is allowed.
+        if (strpos($number, '+') === 0) {
+            $number = substr($number, 1);
+        } elseif (strpos($number, '+') !== false) {
+            return false;
+        }
+
+        // Allow common separators in user input.
+        $number = str_replace([' ', '-', '.', '(', ')'], '', $number);
+        if ($number === '' || preg_match('/\D/', $number)) {
+            return false;
+        }
+
+        $code = isset($config['country_code_phone']) ? preg_replace('/\D+/', '', (string) $config['country_code_phone']) : '';
+        if ($code === '') {
+            return (bool) preg_match('/^0[0-9]+$/', $number);
+        }
+
+        $pattern = '/^(?:' . preg_quote($code, '/') . '|0)[0-9]+$/';
+        return (bool) preg_match($pattern, $number);
     }
 
     public static function countRouterPlan($plans, $router)

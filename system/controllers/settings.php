@@ -1517,7 +1517,7 @@ switch ($action) {
         $fullname = _post('fullname');
         $password = _post('password');
         $user_type = trim((string) _post('user_type'));
-        $phone = _post('phone');
+        $phone = Lang::phoneFormat(_post('phone'));
         $email = _post('email');
         $city = _post('city');
         $subdistrict = _post('subdistrict');
@@ -1611,7 +1611,7 @@ switch ($action) {
         $fullname = _post('fullname');
         $password = _post('password');
         $cpassword = _post('cpassword');
-        $phone = _post('phone');
+        $phone = Lang::phoneFormat(_post('phone'));
         $email = _post('email');
         $city = _post('city');
         $subdistrict = _post('subdistrict');
@@ -2199,9 +2199,10 @@ switch ($action) {
         }
 
         $templateKey = trim((string)_post('template'));
-        $phone = trim((string)_post('phone'));
+        $phoneRaw = trim((string)_post('phone'));
+        $phone = Lang::phoneFormat($phoneRaw);
         $message = (string)_post('message');
-        if ($phone === '') {
+        if ($phoneRaw === '') {
             echo json_encode(['ok' => false, 'message' => 'Nomor WA tidak boleh kosong.']);
             exit;
         }
@@ -2276,10 +2277,10 @@ switch ($action) {
             $replacements['[[extend_link]]'] = '?_route=home&extend=0&uid=test&stoken=test';
         }
 
-        $phoneFormatted = Lang::phoneFormat($phone);
+        $phoneFormatted = $phone;
         $customer = ORM::for_table('tbl_customers')->where('phonenumber', $phoneFormatted)->find_one();
-        if (!$customer && $phoneFormatted !== $phone) {
-            $customer = ORM::for_table('tbl_customers')->where('phonenumber', $phone)->find_one();
+        if (!$customer && $phoneFormatted !== $phoneRaw) {
+            $customer = ORM::for_table('tbl_customers')->where('phonenumber', $phoneRaw)->find_one();
         }
         if ($customer) {
             $replacements['[[name]]'] = $customer['fullname'] ?: $replacements['[[name]]'];
@@ -2363,7 +2364,7 @@ switch ($action) {
         $message = strtr($message, $replacements);
 
 	        $sendOptions = ['skip_queue' => true, 'queue_context' => 'test'];
-	        $sent = Message::sendWhatsapp($phone, $message, $sendOptions);
+	        $sent = Message::sendWhatsapp($phoneFormatted, $message, $sendOptions);
 	        $newToken = Csrf::generateAndStoreToken();
 	        if ($sent === false || $sent === 'kosong') {
 	            echo json_encode(['ok' => false, 'message' => 'Gagal mengirim.', 'csrf_token' => $newToken]);
