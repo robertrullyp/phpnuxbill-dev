@@ -4,6 +4,7 @@ config.php
 .vscode/
 .playwright/
 node_modules/
+system/backup/*
 ui/ui/compiled
 ui/compiled/*.php
 ui/cache/*.php
