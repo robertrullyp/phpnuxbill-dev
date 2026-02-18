@@ -127,11 +127,12 @@
             theme: 'bootstrap',
             ajax: {
                 url: function (params) {
-                    if (params.term != undefined) {
-                        return '{Text::url('autoload/customer_select2')}&s=' + params.term;
-                    } else {
-                        return '{Text::url('autoload/customer_select2')}';
+                    var baseUrl = "{Text::url('autoload/customer_select2')}";
+                    if (params.term != undefined && params.term !== '') {
+                        var separator = baseUrl.indexOf('?') === -1 ? '?' : '&';
+                        return baseUrl + separator + 's=' + encodeURIComponent(params.term);
                     }
+                    return baseUrl;
                 },
                 dataType: 'json', delay: 250, processResults: function (data) { return data; }, cache: true
             }
