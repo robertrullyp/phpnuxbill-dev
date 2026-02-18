@@ -921,7 +921,7 @@
     "Success": "Berhasil",
     "Fullname": "Nama Lengkap",
     "Usernames___Password": "Nama Pengguna & Kata Sandi",
-    "Choose_a_Usernames": "Pilih nama pengguna",
+    "Choose_a_Usernames": "Atur nama pengguna",
     "Phone_number_already_exists": "Nomor telepon sudah ada",
     "Display_bandwidth_plan_for_customer": "Tampilkan paket bandwidth untuk pelanggan",
     "Radius_Rest_Interim_Update": "Pembaruan interim Radius (rest)",
@@ -1098,5 +1098,8 @@
     "Cancel_it_": "Batalkan?",
     "Transaction_still_unpaid_": "Transaksi masih belum dibayar.",
     "Verification_Code": "Kode Verifikasi",
-    "Register_Success__You_can_login_now": "Daftar Sukses! Anda dapat masuk sekarang"
+    "Register_Success__You_can_login_now": "Daftar Sukses! Anda dapat masuk sekarang",
+    "List": "Daftar",
+    "Select_Account_Manager": "Pilih Manajer Akun",
+    "Auto_discovered_from_GenieACS_Devices_list__Available_for_PPPoE_Other_service_type_": "Ditemukan secara otomatis dari daftar Perangkat GenieACS. Tersedia untuk PPPoE\/jenis layanan lainnya."
 }
