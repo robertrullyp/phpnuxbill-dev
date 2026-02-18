@@ -102,7 +102,7 @@
                         </form>
                     </div>
                     <div class="col-md-8">
-                        <form class="form-inline" method="post" action="{Text::url('')}logs/message/">
+                        <form class="form-inline" method="post" action="{Text::url('logs/message/')}">
                             <div class="input-group has-error">
                                 <span class="input-group-addon">{Lang::T('Keep Logs')} </span>
                                 <input type="text" name="keep" class="form-control" placeholder="90" value="90">
@@ -121,7 +121,9 @@
                                 <th>{Lang::T('ID')}</th>
                                 <th>{Lang::T('Date Sent')}</th>
                                 <th>{Lang::T('Type')}</th>
+                                <th>{Lang::T('Recipient')}</th>
                                 <th>{Lang::T('Status')}</th>
+                                <th>{Lang::T('Action')}</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -130,6 +132,7 @@
                                 <td>{$ds['id']}</td>
                                 <td>{Lang::dateTimeFormat($ds['sent_at'])}</td>
                                 <td>{$ds['message_type']}</td>
+                                <td>{$ds['recipient']}</td>
                                 <td>
                                     {if $ds['status'] == 'Success'}
                                     <span class="badge badge-success"> {$ds['status']} </span>
@@ -137,22 +140,27 @@
                                     <span class="badge badge-danger"> {$ds['status']} </span>
                                     {/if}
                                 </td>
+                                <td>
+                                    {if $ds['status'] != 'Success'}
+                                    <a class="btn btn-warning btn-xs" href="{Text::url('message/resend/')}{$ds['id']}">Edit &amp; Resend</a>
+                                    {/if}
+                                </td>
                             </tr>
                             {if $ds['message_content']}
                             <tr>
-                                <td colspan="4" style="text-align: center;" style="overflow-x: scroll;">
+                                <td colspan="6" style="text-align: center;" style="overflow-x: scroll;">
                                     {nl2br($ds['message_content'])}</td>
                             </tr>
                             {/if}
                             {if $ds['error_message']}
                             <tr>
-                                <td colspan="4" style="text-align: center;" style="overflow-x: scroll;">
+                                <td colspan="6" style="text-align: center;" style="overflow-x: scroll;">
                                     {nl2br($ds['error_message'])}</td>
                             </tr>
                             {/if}
                             {/foreach}{else}
                             <tr>
-                                <td colspan="4" style="text-align: center;">
+                                <td colspan="6" style="text-align: center;">
                                     {Lang::T('No logs found.')}
                                 </td>
                             </tr>

@@ -147,6 +147,31 @@
                             </span>
                         </div>
                     </div>
+                    {if $customer_am_enabled && $can_edit_customer_am}
+                        <div class="form-group">
+                            <label class="col-md-3 control-label">{Lang::T('Account Manager')}</label>
+                            <div class="col-md-9">
+                                <select class="form-control" id="account_manager_mode" name="account_manager_mode">
+                                    <option value="all" {if $selected_account_manager_mode|default:'all' eq 'all'}selected{/if}>{Lang::T('All')}</option>
+                                    <option value="list" {if $selected_account_manager_mode|default:'all' eq 'list'}selected{/if}>{Lang::T('List')}</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="form-group" id="account-manager-list-wrap">
+                            <label class="col-md-3 control-label">{Lang::T('Select Account Manager')}</label>
+                            <div class="col-md-9">
+                                <select class="form-control select2" id="account_manager_id" name="account_manager_id" style="width: 100%">
+                                    <option value="">- {Lang::T('Select')} -</option>
+                                    {foreach $am_users as $amUser}
+                                        <option value="{$amUser['id']}" {if $selected_account_manager_id|default:0 eq $amUser['id']}selected{/if}>
+                                            {$amUser['fullname']} ({$amUser['username']}) [{$amUser['user_type']}]
+                                        </option>
+                                    {/foreach}
+                                </select>
+                                <span class="help-block">Set to <b>All</b> to allow all users, or <b>List</b> to bind one user.</span>
+                            </div>
+                        </div>
+                    {/if}
                 </div>
                 <div class="panel-heading">PPPoE</div>
                 <div class="panel-body">
@@ -174,6 +199,37 @@
                             <input type="text" class="form-control" id="pppoe_ip" name="pppoe_ip"
                                 onkeyup="checkIP(this, {$d['id']})" value="{$d['pppoe_ip']}">
                             <span class="help-block">{Lang::T('Not Working with Freeradius Mysql')}</span>
+                        </div>
+                    </div>
+                    <div id="genieacs-device-wrap">
+                        <div class="form-group">
+                            <label class="col-md-3 control-label">GenieACS Device</label>
+                            <div class="col-md-9">
+                                {if $genieacs_enabled}
+                                    <select class="form-control select2" id="genieacs_device_id" name="genieacs_device_id"
+                                        style="width: 100%">
+                                        <option value="">- {Lang::T('Select')} -</option>
+                                        {foreach $genieacs_devices as $gDevice}
+                                            <option value="{$gDevice['id']|escape}"
+                                                data-label="{$gDevice['text']|escape}"
+                                                {if $genieacs_selected_device_id eq $gDevice['id']}selected{/if}>
+                                                {$gDevice['text']|escape}
+                                            </option>
+                                        {/foreach}
+                                    </select>
+                                    {if !empty($genieacs_error)}
+                                        <span class="help-block text-warning">{$genieacs_error|escape}</span>
+                                    {/if}
+                                {else}
+                                    <input type="text" class="form-control"
+                                        value="{Lang::T('GenieACS integration disabled in Settings > App')}" disabled>
+                                {/if}
+                                <input type="hidden" id="genieacs_device_label" name="genieacs_device_label"
+                                    value="{$genieacs_selected_device_label|default:''|escape}">
+                                <span class="help-block">
+                                    {Lang::T('Auto-discovered from GenieACS Devices list. Available for PPPoE/Other service type.')}
+                                </span>
+                            </div>
                         </div>
                     </div>
                     <span class="help-block">
@@ -272,6 +328,81 @@
         document.addEventListener("DOMContentLoaded", function() {
             var customFieldsContainer = document.getElementById('custom-fields-container');
             var addCustomFieldButton = document.getElementById('add-custom-field');
+            var accountManagerMode = document.getElementById('account_manager_mode');
+            var accountManagerListWrap = document.getElementById('account-manager-list-wrap');
+            var accountManagerSelect = document.getElementById('account_manager_id');
+            var serviceTypeSelect = document.getElementById('service_type');
+            var genieAcsDeviceWrap = document.getElementById('genieacs-device-wrap');
+            var genieAcsDeviceSelect = document.getElementById('genieacs_device_id');
+            var genieAcsDeviceLabel = document.getElementById('genieacs_device_label');
+
+            function toggleAccountManagerList() {
+                if (!accountManagerMode || !accountManagerListWrap || !accountManagerSelect) {
+                    return;
+                }
+                var isList = accountManagerMode.value === 'list';
+                accountManagerListWrap.style.display = isList ? 'block' : 'none';
+                accountManagerSelect.disabled = !isList;
+                if (!isList) {
+                    accountManagerSelect.value = '';
+                    if (window.jQuery && jQuery(accountManagerSelect).hasClass('select2-hidden-accessible')) {
+                        jQuery(accountManagerSelect).val('').trigger('change.select2');
+                    }
+                }
+            }
+
+            function isGenieAcsServiceType(value) {
+                var normalized = (value || '').toLowerCase();
+                return normalized === 'pppoe' || normalized === 'others';
+            }
+
+            function syncGenieAcsLabel() {
+                if (!genieAcsDeviceSelect || !genieAcsDeviceLabel) {
+                    return;
+                }
+                var option = genieAcsDeviceSelect.options[genieAcsDeviceSelect.selectedIndex];
+                if (!option || genieAcsDeviceSelect.value === '') {
+                    genieAcsDeviceLabel.value = '';
+                    return;
+                }
+                genieAcsDeviceLabel.value = option.getAttribute('data-label') || option.text || '';
+            }
+
+            function toggleGenieAcsFields() {
+                if (!serviceTypeSelect || !genieAcsDeviceWrap) {
+                    return;
+                }
+                var show = isGenieAcsServiceType(serviceTypeSelect.value);
+                genieAcsDeviceWrap.style.display = show ? 'block' : 'none';
+                if (genieAcsDeviceSelect) {
+                    genieAcsDeviceSelect.disabled = !show;
+                    if (!show) {
+                        genieAcsDeviceSelect.value = '';
+                        if (window.jQuery && jQuery(genieAcsDeviceSelect).hasClass('select2-hidden-accessible')) {
+                            jQuery(genieAcsDeviceSelect).val('').trigger('change.select2');
+                        }
+                    }
+                }
+                if (!show && genieAcsDeviceLabel) {
+                    genieAcsDeviceLabel.value = '';
+                }
+            }
+
+            toggleAccountManagerList();
+            toggleGenieAcsFields();
+            syncGenieAcsLabel();
+            if (accountManagerMode) {
+                accountManagerMode.addEventListener('change', toggleAccountManagerList);
+            }
+            if (serviceTypeSelect) {
+                serviceTypeSelect.addEventListener('change', toggleGenieAcsFields);
+            }
+            if (genieAcsDeviceSelect) {
+                genieAcsDeviceSelect.addEventListener('change', syncGenieAcsLabel);
+                if (window.jQuery && jQuery(genieAcsDeviceSelect).hasClass('select2-hidden-accessible')) {
+                    jQuery(genieAcsDeviceSelect).on('change', syncGenieAcsLabel);
+                }
+            }
 
             addCustomFieldButton.addEventListener('click', function() {
                 var fieldIndex = customFieldsContainer.children.length;

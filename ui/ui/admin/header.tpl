@@ -5,7 +5,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
     <title>{$_title} - {$_c['CompanyName']}</title>
-    <link rel="shortcut icon" href="{$app_url}/ui/ui/images/logo.png" type="image/x-icon" />
+    <link rel="shortcut icon" href="{$app_url}{$brand_favicon|replace:'\\':'/'}" type="image/x-icon" />
 
     <script>
         var appUrl = '{$app_url}';
@@ -49,18 +49,18 @@
                     <ul class="nav navbar-nav">
                         <div class="wrap">
                             <div class="">
-                                <button id="openSearch" class="search"><i class="fa fa-search x2"></i></button>
+                                <button type="button" id="openSearch" class="search"><i class="fa fa-search x2"></i></button>
                             </div>
                         </div>
                         <div id="searchOverlay" class="search-overlay">
-                            <div class="search-container">
+                            <form id="adminSearchForm" class="search-container" role="search" autocomplete="off" onsubmit="return false;">
                                 <input type="text" id="searchTerm" class="searchTerm"
                                     placeholder="{Lang::T('Search Users')}" autocomplete="off">
                                 <div id="searchResults" class="search-results">
                                     <!-- Search results will be displayed here -->
                                 </div>
                                 <button type="button" id="closeSearch" class="cancelButton">{Lang::T('Cancel')}</button>
-                            </div>
+                            </form>
                         </div>
                         <li>
                             <a class="toggle-container" href="#">
@@ -69,13 +69,8 @@
                         </li>
                         <li class="dropdown user user-menu">
                             {assign var='adminPhotoPath' value=$_admin['photo']}
-                            {assign var='adminAvatarFallback' value=$app_url|cat:'/'|cat:$UPLOAD_PATH|cat:'/admin.default.png'}
-                            {if !$adminPhotoPath || strstr($adminPhotoPath, 'default')}
-                                {assign var='adminAvatarSrc' value=$adminAvatarFallback}
-                            {else}
-                                {assign var='cleanAdminPhoto' value=$adminPhotoPath|trim:'/'}
-                                {assign var='adminAvatarSrc' value=$app_url|cat:'/'|cat:$UPLOAD_PATH|cat:'/'|cat:$cleanAdminPhoto|cat:'.thumb.jpg'}
-                            {/if}
+                            {assign var='adminAvatarFallback' value=Text::resolveUploadPhotoUrl('', 'admin.default.png')}
+                            {assign var='adminAvatarSrc' value=Text::resolveUploadPhotoUrl($adminPhotoPath, 'admin.default.png')}
                             <a href="#" class="dropdown-toggle" data-toggle="dropdown">
                                 <img src="{$adminAvatarSrc}"
                                     onerror="this.src='{$adminAvatarFallback}'" class="user-image"
@@ -162,6 +157,8 @@
                             {/if}
                             <li {if $_routes[1] eq 'recharge' }class="active" {/if}><a
                                     href="{Text::url('plan/recharge')}">{Lang::T('Recharge Customer')}</a></li>
+                            <li {if $_routes[1] eq 'refund' }class="active" {/if}><a
+                                    href="{Text::url('plan/refund')}">{Lang::T('Refund Customer')}</a></li>
                             {if $_c['enable_balance'] == 'yes'}
                             <li {if $_routes[1] eq 'deposit' }class="active" {/if}><a
                                     href="{Text::url('plan/deposit')}">{Lang::T('Refill Balance')}</a></li>
@@ -233,6 +230,7 @@
                         </ul>
                     </li>
                     {$_MENU_AFTER_REPORTS nofilter}
+                    {if in_array($_admin['user_type'],['SuperAdmin','Admin','Agent','Sales'])}
                     <li class="{if $_system_menu eq 'message'}active{/if} treeview">
                         <a href="#">
                             <i class="ion ion-android-chat"></i> <span>{Lang::T('Send Message')}</span>
@@ -248,6 +246,7 @@
                             {$_MENU_MESSAGE nofilter}
                         </ul>
                     </li>
+                    {/if}
                     {$_MENU_AFTER_MESSAGE nofilter}
                     {if in_array($_admin['user_type'],['SuperAdmin','Admin'])}
                     <li class="{if $_system_menu eq 'network'}active{/if} treeview">

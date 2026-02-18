@@ -13,16 +13,26 @@ Update and maintenance in this fork are done by reviewing upstream changes and s
 Important notes:
 
 - Install and basic usage documentation continue to follow the original project (links below).
-- The built-in updater in this fork downloads release ZIPs from this fork (see `install/update.php`), while database migrations are executed from `system/updates.json` within the codebase.
+- The built-in updater in this fork downloads release ZIPs from this fork (see `update.php`), while database migrations are executed from `system/updates.json` within the codebase.
 
 ## Current Release
 
-- **Version:** `2025.10.27`
-- **Focus:** Keep logout CSRF tokens fresh during long admin sessions and align custom themes with the secure POST-based logout flow.
+- **Version:** `2026.2.16`
+- **Focus:** PPPoE deactivation safety (remove all active sessions per secret username), finalized customer self-extend guard controls (global + per-plan), and release metadata/documentation sync.
 
 ## What's New in This Fork
 
 Enhancements and changes added on top of upstream:
+
+- WhatsApp gateway & messaging
+  - POST/GET method selection with auth support (Basic, Header, JWT) for external WA servers.
+  - Human-friendly `[[wa]]` template blocks and UI builder for interactive messages (buttons/list/template).
+  - Template override scopes in notification settings: `Per Category`, `Per Plan`, and `Per Purpose` (OTP/Welcome), with explicit fallback priority.
+  - Builder productivity actions: `Test Send` directly from preview and `Edit in Builder` from override list to load target+scope for fast editing.
+  - Header media upload with temporary URL, progress/preview, and auto-cleanup (max 7 days).
+  - WA queue & retry system with configurable max retries/interval and per-flow toggles (notifications, send, bulk).
+  - Idempotency keys to reduce duplicate sends when retries occur.
+  - Interactive delivery fallback to plain text when gateway/device methods do not support interactive payloads.
 
 - Plan visibility per customer
   - New column `tbl_plans.visibility` (enum: `all`, `custom`, `exclude`) and mapping table `tbl_plan_customers`.
@@ -50,20 +60,37 @@ Enhancements and changes added on top of upstream:
 - Billing and packages
   - Optional “welcome package” support (including inactive plans for welcome selection).
   - Voucher fixes: filtering, batch selection tracking, and stability improvements.
+  - Unlimited logic generalized for `validity <= 0` across validity units (including `Period`) in recharge/package lifecycle and cron execution.
   - Reminder toggles per plan allow disabling due-date notifications for specific offerings (respected by cron reminders and all plan forms).
   - Linked plan relationships let admins preconfigure upgrade/downgrade suggestions; links are stored in the new `tbl_plan_links` table and enforced idempotently during updates.
+  - Optional transaction notes stored on recharge and shown on invoice/reports when enabled.
 
 - Plugin Manager improvements
   - Three tabs (Plugins, Payment Gateway, Devices), cache refresh, and clearer source/install actions.
   - ZIP extension checks and safer prompts to avoid partial installs.
+  - Plugin catalog source now tracks official upstream (`hotspotbilling.github.io`) and merges local overrides from `plugin-repository.custom.json` into `plugin-repository.json`.
+  - Manual sync command available: `php system/sync_plugin_repository.php` (suitable for cron).
 
 - Update process clarifications
   - Updater default ZIP source points to this fork (`robertrullyp/phpnuxbill-dev`), while DB updates run from `system/updates.json` (idempotent).
+  - Updater creates a full pre-update backup (`system/backup/`) plus a SQL database dump, and preserves `config.php`, uploads, caches, and `ui/ui_custom`.
+  - Updater now supports API-driven step flow, lock-safe resumable progress, heartbeat handling for proxy environments, and robust fallback download validation.
+
+- Role hierarchy and router-access hardening
+  - Added strict role matrix validation so manual request tampering cannot escalate privileges when creating/updating admin users.
+  - Hierarchical downline structure is enforced: `SuperAdmin -> Admin -> Agent -> Sales` (with `Report` under `Admin`).
+  - Router Access can be assigned as `All` or `List`; child assignments are constrained by parent-allowed routers.
+  - SuperAdmin keeps unrestricted router visibility and assignment capabilities.
+
+- Customer Account Manager (AM)
+  - Added `account_manager_id` in `tbl_customers` (`0 = All`) and AM selector in customer Add/Edit UI.
+  - AM mode supports `All` and `List`; customer visibility and related flows follow AM assignment.
+  - AM reassignment/edit remains restricted to `SuperAdmin` and `Admin`.
 
 Compatibility:
 
 - Fresh installs: schema included in `install/phpnuxbill.sql` matches fork features.
-- Upgrades: run `install/update.php` to apply `system/updates.json` migrations; the fork includes a runtime guard to keep `tbl_plans.visibility` in sync.
+- Upgrades: run `update.php` (admin session required) to apply `system/updates.json` migrations; includes runtime guards for plan visibility consistency and legacy user hierarchy cleanup.
 
 ## Server Requirements & Dependencies
 
@@ -117,6 +144,8 @@ Ringkasan pembaruan perbaikan dibanding repo asli (hotspotbilling/phpnuxbill):
 - Paket & voucher: opsi “welcome package”, perbaikan filter voucher dan pelacakan batch, serta aneka bug-fix stabilitas.
 - Plugin Manager: tab terpisah (Plugin/Payment Gateway/Devices), tombol refresh cache, pemeriksaan ekstensi ZIP, alur instal lebih aman.
 - Proses update: sumber ZIP bawaan diarahkan ke fork ini; migrasi DB dari `system/updates.json` (idempotent).
+- Hardening role admin: validasi matrix role/upline-downline + pembatasan assign router berdasarkan hirarki parent.
+- Account Manager customer: mode `All/List` dengan kolom `account_manager_id` (nilai `0` = semua user).
 - Peningkatan terjemahan (ID) dan banyak perbaikan kecil lain (validasi input, pesan error, pengalihan yang tepat, dsb.).
 
 Lihat detail lengkap di CHANGELOG untuk daftar perubahan harian/mingguan.
@@ -184,6 +213,23 @@ OTP timing can be tuned through two settings available in Admin > Settings > Mis
 
 Ensure the `country_code_phone` setting is configured in Admin > Settings > Localisation. All modules should normalize phone numbers using `Lang::phoneFormat` before storing or comparing values to maintain consistency across the system.
 
+### Filesystem Permissions (Recommended)
+
+Use restrictive defaults for code and explicit writable access only for runtime cache paths:
+
+```bash
+# project defaults
+find . -type d -not -path './.git*' -exec chmod 755 {} +
+find . -type f -not -path './.git*' -exec chmod 644 {} +
+
+# writable runtime paths
+sudo chown -R <deploy_user>:www-data system/cache ui/compiled
+sudo find system/cache ui/compiled -type d -exec chmod 2775 {} +
+sudo find system/cache ui/compiled -type f -exec chmod 664 {} +
+```
+
+Keep `.htaccess_firewall` enabled in deployment, and avoid granting write access outside `system/cache` and `ui/compiled`.
+
 ### Upstream Tracking
 
 This fork tracks upstream and periodically syncs or cherry-picks changes.
@@ -206,8 +252,8 @@ Use the following quick checks after deploying or updating to ensure the billing
 
 1. **Authentication & Session Flow** – Verify admin and customer logins (including Turnstile/OTP if enabled) and confirm single-session restrictions behave as configured.
 2. **Billing Lifecycle** – Create a test invoice, apply a voucher, and confirm plan visibility/links reflect the expected customer rules.
-3. **Messaging & Notifications** – Trigger OTP, WhatsApp, and email notifications from the dashboard to ensure the message log records the attempt and no delivery errors occur.
-4. **Scheduler & Cron Jobs** – Check the Cron Monitor widget for recent runs and confirm automated expirations or reminders update affected accounts.
+3. **Messaging & Notifications** – Trigger OTP, WhatsApp, and email notifications; confirm interactive templates, queueing, and message logs work as expected.
+4. **Scheduler & Cron Jobs** – Check the Cron Monitor widget and confirm cron runs handle expirations, reminders, WA queue processing, and media cleanup.
 5. **Plugin & Update Manager** – Refresh plugin caches, ensure repository data loads without errors, and run the updater dry-run to validate version metadata against `system/updates.json`.
 
 Document the outcome of each check in your operations runbook so that future releases can be verified consistently.

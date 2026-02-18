@@ -40,6 +40,14 @@ foreach ($d as $ds) {
         if (!$p) {
             continue;
         }
+        $planValidity = (int) ($p['validity'] ?? 0);
+        if ($planValidity <= 0) {
+            $u->expiration = '2099-12-31';
+            $u->time = '23:59:59';
+            $u->status = 'on';
+            $u->save();
+            continue;
+        }
         if (isset($p['reminder_enabled']) && (int) $p['reminder_enabled'] === 0) {
             continue;
         }
@@ -57,12 +65,17 @@ foreach ($d as $ds) {
         }
         if ($ds['expiration'] == $day7 && $config['notification_reminder_7days'] !== 'no') {
             try {
+                $template = Lang::getNotifText('reminder_7_day', [
+                    'plan_id' => (int) ($p['id'] ?? 0),
+                    'type' => (string) ($p['type'] ?? ''),
+                ]);
                 echo Message::sendPackageNotification(
                     $c,
                     $p['name_plan'],
                     $price,
-                    Message::getMessageType($p['type'], Lang::getNotifText('reminder_7_day')),
-                    $config['user_notification_reminder']
+                    Message::getMessageType($p['type'], $template),
+                    $config['user_notification_reminder'],
+                    'reminder_7_day'
                 ) . "\n";
 				sleep(1); // Add 1 second delay after sending notification
             } catch (Exception $e) {
@@ -70,12 +83,17 @@ foreach ($d as $ds) {
             }
         } else if ($ds['expiration'] == $day3 && $config['notification_reminder_3days'] !== 'no') {
             try {
+                $template = Lang::getNotifText('reminder_3_day', [
+                    'plan_id' => (int) ($p['id'] ?? 0),
+                    'type' => (string) ($p['type'] ?? ''),
+                ]);
                 echo Message::sendPackageNotification(
                     $c,
                     $p['name_plan'],
                     $price,
-                    Message::getMessageType($p['type'], Lang::getNotifText('reminder_3_day')),
-                    $config['user_notification_reminder']
+                    Message::getMessageType($p['type'], $template),
+                    $config['user_notification_reminder'],
+                    'reminder_3_day'
                 ) . "\n";
 				sleep(1); // Add 1 second delay after sending notification
             } catch (Exception $e) {
@@ -83,12 +101,17 @@ foreach ($d as $ds) {
             }
         } else if ($ds['expiration'] == $day1 && $config['notification_reminder_1day'] !== 'no') {
             try {
+                $template = Lang::getNotifText('reminder_1_day', [
+                    'plan_id' => (int) ($p['id'] ?? 0),
+                    'type' => (string) ($p['type'] ?? ''),
+                ]);
                 echo Message::sendPackageNotification(
                     $c,
                     $p['name_plan'],
                     $price,
-                    Message::getMessageType($p['type'], Lang::getNotifText('reminder_1_day')),
-                    $config['user_notification_reminder']
+                    Message::getMessageType($p['type'], $template),
+                    $config['user_notification_reminder'],
+                    'reminder_1_day'
                 ) . "\n";
 				sleep(1); // Add 1 second delay after sending notification
             } catch (Exception $e) {

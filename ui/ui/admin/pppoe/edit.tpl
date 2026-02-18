@@ -90,6 +90,16 @@
                         </div>
                     </div>
                     <div class="form-group">
+                        <label class="col-md-3 control-label">{Lang::T('Customer Self Extend')}</label>
+                        <div class="col-md-9">
+                            <input type="hidden" name="customer_can_extend" value="0">
+                            <label class="checkbox-inline">
+                                <input type="checkbox" name="customer_can_extend" value="1" {if !isset($d['customer_can_extend']) || $d['customer_can_extend'] != 0}checked{/if}>
+                                {Lang::T('Allow customer self-extend for this plan')}
+                            </label>
+                        </div>
+                    </div>
+                    <div class="form-group">
                         <label class="col-md-3 control-label">{Lang::T('Linked Plans')}</label>
                         <div class="col-md-9">
                             <select name="linked_plans[]" class="form-control select2" multiple>
@@ -199,7 +209,8 @@
                                         {Lang::T('Period')}</option>
                                 {/if}
                             </select>
-                            <p class="help-block">{Lang::T('1 Period = 1 Month, Expires the 20th of each month')}</p>
+                            <p class="help-block">{Lang::T('1 Period = 1 Month, Expires the 20th of each month')}
+                                <br>{Lang::T('Set Period to 0 for no expiry')}</p>
                         </div>
 
                     </div>
@@ -227,6 +238,21 @@
                             </select>
                         </div>
                     </div>
+                    {if !$d['is_radius']}
+                        <div class="form-group">
+                            <label class="col-md-3 control-label">{Lang::T('PPPoE Service')}</label>
+                            <div class="col-md-9">
+                                <select id="pppoe_service" name="pppoe_service" class="form-control select2"
+                                    data-selected="{$d['pppoe_service']|escape}">
+                                    <option value="">{Lang::T('Select PPPoE Service')}</option>
+                                    {if $d['pppoe_service'] neq ''}
+                                        <option value="{$d['pppoe_service']|escape}" selected>{$d['pppoe_service']|escape}</option>
+                                    {/if}
+                                </select>
+                                <p class="help-block">{Lang::T('Loaded from router PPPoE server list. If empty, sync/recharge will try the first available service.')}</p>
+                            </div>
+                        </div>
+                    {/if}
                     <div class="form-group">
                         <label class="col-md-3 control-label">{Lang::T('Router Name')}</label>
                         <div class="col-md-9">

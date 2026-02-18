@@ -2,6 +2,81 @@
 
 # CHANGELOG
 
+## 2026.2.16
+
+- **PPPoE Deactivation Safety:** Updated `MikrotikPppoe::removePpoeActive()` to remove all matching `/ppp/active` sessions for a secret username (not just first match), ensuring full disconnect on expiry/deactivation for multi-session cases.
+- **Self-Extend Guard Baseline:** Finalized release baseline for customer self-extend controls with global app toggle + per-plan guard (`tbl_plans.customer_can_extend`) and aligned runtime checks.
+- **Release Metadata Sync:** Synchronized release references in `version.json`, `README.md`, `docs/openapi.yaml`, and `docs/openapi.json` to represent current runtime state.
+- Version bumped to `2026.2.16`.
+
+## 2026.2.15
+
+- **Refund Flow (Reverse Recharge):** Added admin refund workflow (`/plan/refund`) with confirm/post handling, reverse validity calculation, linked-plan reversal, negative transaction recording, optional balance credit, and device sync (`add_customer`/`remove_customer`) based on new expiry result.
+- **PPPoE Usage Schedule on Refund:** Integrated PPPoE usage cycle handling into refund actions to cancel pending reset schedules, close usage cycle on deactivation, and reschedule counter reset when package stays active.
+- **Extend Lifecycle Improvements:** Strengthened extend behavior with anchor-based expiry arithmetic and customer-UI gating for prepaid via setting (`extend_allow_prepaid`) while preserving extend request consistency for next recharge calculation.
+- **Expiry Edit Notification Control:** Added app-level toggle for `Expiry Edit Notification` and wired extend-success flow to send `edit_expiry_message` template through selected channels with queue-aware WhatsApp options.
+- **`[[extend_link]]` Placeholder Scope:** Added `[[extend_link]]` placeholder support in notification templating and constrained replacement to expired notification context to avoid leakage into unrelated templates.
+- **Customer Widget Labeling:** Updated GenieACS customer-facing wording to `WiFi Setting` and aligned usage wording to more readable Download/Upload terms in related views.
+- **Fresh Install Schema Sync:** Updated `install/phpnuxbill.sql` to include latest runtime schema (`tbl_plans.pppoe_service`, `tbl_user_recharges.usage_tx_bytes/usage_rx_bytes`, `tbl_recharge_usage_cycles`, `tbl_recharge_usage_samples`) plus default app settings for extend and expiry-edit notification behavior.
+- **Release Metadata:** Updated version references in `version.json`, `README.md`, `docs/openapi.yaml`, `docs/openapi.json`, updater registry (`system/updates.json`), and added release audit document.
+- Version bumped to `2026.2.15`.
+
+## 2026.2.14.2
+
+- **PPPoE Service Mapping:** Added `pppoe_service` support on PPPoE plan add/edit with router-driven autoload (`/interface/pppoe-server/server/print`) and sync-time fallback to first available service.
+- **PPPoE Binding Automation (Non-RADIUS):** Extended `MikrotikPppoe` flow to reconcile `/interface/pppoe-server` bindings (`name`, `user`, `service`, `comment`) alongside `/ppp/secret` during add/edit/recharge/remove.
+- **PPPoE Usage History Per Activation:** Added activation-cycle usage engine (`PppoeUsage`) with cycle/sample persistence and aggregate counters (`usage_tx_bytes`, `usage_rx_bytes`) stored per recharge transaction.
+- **Cron Traffic Collector:** Added periodic PPPoE sampling in `system/cron.php`, including counter-reset handling, final expiry sampling, safe close behavior, and non-fatal warning strategy when router/binding is unavailable.
+- **Usage Visibility in UI:** Surfaced TX/RX usage in customer active-plan widget, admin active-plan list (`/plan/list`), and activation report (`/reports/activation`).
+- **Updater Migration Compatibility:** Hardened `update.php` migration executor to safely skip known legacy enum-downgrade failures (`Data truncated for column 'type'`) so newer schemas are not blocked by obsolete migration steps.
+- **Release Metadata:** Updated release references in `version.json`, `README.md`, `docs/openapi.yaml`, `docs/openapi.json`, and updater registry (`system/updates.json`).
+- Version bumped to `2026.2.14.2`.
+
+## 2026.2.14
+
+- **WhatsApp Notification Overrides:** Added scoped override management for notification templates (`Per Category`, `Per Plan`, `Per Purpose`) with clear runtime priority resolution in settings UI.
+- **WhatsApp Interactive Builder:** Added builder-side `Test Send` from preview content and `Edit in Builder` action in the override panel to load selected override context directly for editing.
+- **WhatsApp Delivery Fallback:** Improved message delivery handling so interactive payloads are downgraded to plain text when gateway/device methods do not support interactive sends, while preserving logs.
+- **OTP/Welcome Template Contexts:** Added purpose-aware template resolution (`Register`/`Verify`/`Forgot` and `Admin Register`/`Self Register`) plus OTP timing placeholders (`[[otp_expires_at]]`, `[[otp_request_allowed_at]]`, `[[otp_expiry_seconds]]`, `[[otp_wait_seconds]]`).
+- **Unlimited Plan Logic:** Generalized unlimited handling for `validity <= 0` across validity units (including `Period`) in package processing, recharge normalization, cron expiry flow, and reminder flow.
+- **Recharge Record Consistency:** Updated recharge lookups to consistently use the latest active record for matching customer/service dimensions, reducing stale-row side effects.
+- **Updater Reliability & UX:** Enhanced updater flow with API-driven step execution, resumable flow state/progress polling, process locking, safer archive validation, robust GitHub download fallback, and automatic pre-update SQL backup.
+- **Plugin Repository Sync:** Plugin manager now syncs from official upstream repository and merges local overrides (`plugin-repository.custom.json`) into `plugin-repository.json`, with CLI sync helper `system/sync_plugin_repository.php`.
+- **Documentation:** Added/updated FreeRADIUS setup guides and synchronized release metadata references.
+- Version bumped to `2026.2.14`.
+
+## 2026.2.9
+
+- **GenieACS Integration:** Added ACS settings panel (`ACS Integration`) and device assignment on customer add/edit for PPPoE/Other service types.
+- **Customer Dashboard:** Added customer-side WiFi management for eligible active PPPoE plans with assigned GenieACS device (edit SSID/password from dashboard).
+- **ACS Sync Reliability:** Updated device detail fetch flow to support GenieACS deployments that reject `GET /devices/{id}` (HTTP 405) by using query-based fetch.
+- **PPPoE Credential Sync:** Limited PPP sync target to WAN connections with names containing `Internet`, and synchronized WLAN5 automatically when WLAN5 parameters are present.
+- **UX:** Refined customer WiFi editor into compact action-button workflow (`Edit WiFi` / `Save Changes` / `Cancel`) with no inline edit icons in SSID/password rows.
+- **API/Docs:** Synced API examples/spec references and release metadata for production rollout.
+- **Maintenance:** Fixed `customers/edit/{id}` flow to allow direct GET navigation while preserving CSRF validation for POST-triggered entry points.
+- **Updater/Installer:** Hardened database migration execution (idempotent-aware error handling + post-migration schema hardening) and synchronized fresh-install schema with current runtime (`VPN` enums, `account_manager_id`, `batch_name`, `tbl_invoices`, and `tbl_plan_customers` primary key/auto-increment).
+- Version bumped to `2026.2.9`.
+
+## 2026.2.8
+
+- **Security (RBAC):** Hardened admin-user create/edit flows with a strict role-assignment matrix and root-parent validation to block privilege escalation via manual requests.
+- **Router Access:** Added hierarchical router assignment (`All`/`List`) with inheritance limits across downline structure (`SuperAdmin -> Admin -> Agent -> Sales`).
+- **Customers:** Added Account Manager assignment mode (`All`/`List`) backed by `tbl_customers.account_manager_id`, including visibility filtering and controlled reassignment by higher roles.
+- **Legacy Cleanup:** Integrated user-hierarchy normalization in updater flow to reduce risk from invalid legacy `root` relations.
+- **Maintenance:** Normalized runtime cache permissions/ownership recommendations (`system/cache`, `ui/compiled`) and synchronized release metadata.
+- **Database:** Added updater migration for `tbl_customers.account_manager_id`.
+
+## 2026.01.31
+
+- **WhatsApp Gateway:** Added POST/GET method selection, auth headers, idempotency keys, and richer response handling for external WA servers.
+- **Interactive Builder:** Human-friendly `[[wa]]` blocks, multi-section list support, template buttons, and auto-fill on resend flows.
+- **Media Uploads:** Temporary header media upload with progress/preview, usage tracking, and automatic cleanup (max 7 days).
+- **Queue & Retry:** Configurable WA queue (max retries & interval) with cron processing and optional toggles for notifications and manual send flows.
+- **Billing Notes:** Optional recharge notes stored in `tbl_transactions.note` and configurable display on invoice views and transaction reports.
+- **Database:** Added WA queue/media tables (`tbl_wa_queue`, `tbl_wa_media_tmp`, `tbl_wa_media_usage`) via updater migration.
+- **Updater:** Added pre-update SQL database backup alongside the existing file backup for safer releases.
+- **Maintenance:** Updated documentation and release metadata (`version.json`, `README.md`, `system/updates.json`).
+
 ## 2025.10.27
 
 - **Security:** Refreshed CSRF logout tokens alongside the standard form tokens so long-running admin/customer sessions can still submit valid POST logouts after the 1-hour expiry window.

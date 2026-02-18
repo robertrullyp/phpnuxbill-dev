@@ -12,19 +12,23 @@ $ui->assign('_system_menu', 'plan');
 $action = $routes['1'];
 $ui->assign('_admin', $admin);
 
-$appUrl = APP_URL;
+$appPath = (string) parse_url(APP_URL, PHP_URL_PATH);
+$appPath = rtrim($appPath, '/');
+$customerSelect2Url = ($appPath === '' ? '' : $appPath) . '/?_route=autoload/customer_select2';
+$customerSelect2UrlJs = json_encode($customerSelect2Url, JSON_UNESCAPED_SLASHES);
 
 $select2_customer = <<<EOT
 <script>
 document.addEventListener("DOMContentLoaded", function(event) {
-    $('#personSelect').select2({
+    var customerSelect2Url = {$customerSelect2UrlJs};
+    $('#personSelect, #refund_customer').select2({
         theme: "bootstrap",
         ajax: {
             url: function(params) {
                 if(params.term != undefined){
-                    return '{$appUrl}/?_route=autoload/customer_select2&s='+params.term;
+                    return customerSelect2Url + '&s=' + encodeURIComponent(params.term);
                 }else{
-                    return '{$appUrl}/?_route=autoload/customer_select2';
+                    return customerSelect2Url;
                 }
             }
         }
@@ -33,6 +37,19 @@ document.addEventListener("DOMContentLoaded", function(event) {
 </script>
 EOT;
 getUrl('docs');
+$accessibleRouterNames = _router_get_accessible_router_names($admin, false);
+$applyPlanRouterScope = function ($query, $routerColumn = 'routers', $radiusColumn = 'is_radius') use ($admin, $accessibleRouterNames) {
+    if (($admin['user_type'] ?? '') === 'SuperAdmin') {
+        return $query;
+    }
+    if (empty($accessibleRouterNames)) {
+        $query->where($radiusColumn, 1);
+        return $query;
+    }
+    $placeholders = implode(',', array_fill(0, count($accessibleRouterNames), '?'));
+    $query->where_raw('(' . $radiusColumn . ' = 1 OR ' . $routerColumn . ' IN (' . $placeholders . '))', $accessibleRouterNames);
+    return $query;
+};
 switch ($action) {
     case 'sync':
         if (!in_array($admin['user_type'], ['SuperAdmin', 'Admin'])) {
@@ -41,31 +58,51 @@ switch ($action) {
         set_time_limit(-1);
         $turs = ORM::for_table('tbl_user_recharges')->where('status', 'on')->find_many();
         $log = '';
-        $router = '';
         foreach ($turs as $tur) {
-            $p = ORM::for_table('tbl_plans')->findOne($tur['plan_id']);
-            if ($p) {
-                $c = ORM::for_table('tbl_customers')->findOne($tur['customer_id']);
-                if ($c) {
-                    $dvc = Package::getDevice($p);
-                    if ($_app_stage != 'Demo') {
-                        if (file_exists($dvc)) {
-                            require_once $dvc;
-                            if (method_exists($dvc, 'sync_customer')) {
-                                (new $p['device'])->sync_customer($c, $p);
+            try {
+                $p = ORM::for_table('tbl_plans')->findOne($tur['plan_id']);
+                if ($p) {
+                    $c = ORM::for_table('tbl_customers')->findOne($tur['customer_id']);
+                    if ($c) {
+                        $syncWarning = '';
+                        $dvc = Package::getDevice($p);
+                        if ($_app_stage != 'Demo') {
+                            if (file_exists($dvc)) {
+                                require_once $dvc;
+                                $deviceClass = trim((string) ($p['device'] ?? ''));
+                                if ($deviceClass === '' || !class_exists($deviceClass)) {
+                                    throw new Exception('Device class not found: ' . $deviceClass);
+                                }
+                                $device = new $deviceClass();
+                                if (method_exists($device, 'sync_customer')) {
+                                    $device->sync_customer($c, $p);
+                                } else {
+                                    $device->add_customer($c, $p);
+                                }
+                                if (method_exists($device, 'getLastSyncWarning')) {
+                                    $syncWarning = trim((string) $device->getLastSyncWarning());
+                                }
                             } else {
-                                (new $p['device'])->add_customer($c, $p);
+                                throw new Exception(Lang::T("Devices Not Found"));
                             }
-                        } else {
-                            new Exception(Lang::T("Devices Not Found"));
                         }
+                        if ($syncWarning !== '') {
+                            $log .= "WARN : {$tur['username']}, {$tur['namebp']}, {$tur['type']}, {$tur['routers']} ({$syncWarning})<br>";
+                        } else {
+                            $log .= "DONE : {$tur['username']}, {$tur['namebp']}, {$tur['type']}, {$tur['routers']}<br>";
+                        }
+                    } else {
+                        $log .= "Customer NOT FOUND : {$tur['username']}, {$tur['namebp']}, {$tur['type']}, {$tur['routers']}<br>";
                     }
-                    $log .= "DONE : $tur[username], $ptur[namebp], $tur[type], $tur[routers]<br>";
                 } else {
-                    $log .= "Customer NOT FOUND : $tur[username], $tur[namebp], $tur[type], $tur[routers]<br>";
+                    $log .= "PLAN NOT FOUND : {$tur['username']}, {$tur['namebp']}, {$tur['type']}, {$tur['routers']}<br>";
                 }
-            } else {
-                $log .= "PLAN NOT FOUND : $tur[username], $tur[namebp], $tur[type], $tur[routers]<br>";
+            } catch (Throwable $e) {
+                $syncError = trim((string) $e->getMessage());
+                if ($syncError === '') {
+                    $syncError = 'Unknown sync error.';
+                }
+                $log .= "SYNC FAILED : {$tur['username']}, {$tur['namebp']}, {$tur['type']}, {$tur['routers']} ({$syncError})<br>";
             }
         }
         r2(getUrl('plan/list'), 's', $log);
@@ -75,7 +112,11 @@ switch ($action) {
         }
         $ui->assign('xfooter', $select2_customer);
         if (isset($routes['2']) && !empty($routes['2'])) {
-            $ui->assign('cust', ORM::for_table('tbl_customers')->find_one($routes['2']));
+            $prefillCustomer = ORM::for_table('tbl_customers')->find_one((int) $routes['2']);
+            if (!$prefillCustomer || !_customer_can_access($prefillCustomer, $admin)) {
+                r2(getUrl('plan/recharge'), 'e', Lang::T('Customer not found'));
+            }
+            $ui->assign('cust', $prefillCustomer);
         }
         $usings = explode(',', $config['payment_usings']);
         $usings = array_filter(array_unique($usings));
@@ -100,17 +141,48 @@ switch ($action) {
         $server = _post('server');
         $planId = _post('plan');
         $using = _post('using');
+        $note = trim((string) _post('note'));
+        if (strlen($note) > 256) {
+            $note = substr($note, 0, 256);
+        }
 
         $msg = '';
         if ($id_customer == '' or $server == '' or $planId == '' or $using == '') {
             $msg .= Lang::T('All field is required') . '<br>';
         }
+        if (!empty($server) && !_router_can_access_router($server, $admin, ['radius'])) {
+            $msg .= Lang::T('Selected router is outside your allowed scope') . '<br>';
+        }
+        $custRow = null;
+        if ($id_customer !== '') {
+            $custRow = ORM::for_table('tbl_customers')->find_one((int) $id_customer);
+            if (!$custRow || !_customer_can_access($custRow, $admin)) {
+                $msg .= Lang::T('Customer not found') . '<br>';
+            }
+        }
 
         if ($msg == '') {
             $gateway = 'Recharge';
             $channel = $admin['fullname'];
-            $cust = User::_info($id_customer);
+            $cust = $custRow ? $custRow->as_array() : User::_info($id_customer);
             $plan = ORM::for_table('tbl_plans')->find_one($planId);
+            if (!$plan) {
+                $msg .= Lang::T('Plan not found') . '<br>';
+            } elseif (!empty($plan['is_radius'])) {
+                if ($server !== 'radius') {
+                    $msg .= Lang::T('Invalid plan for selected router') . '<br>';
+                }
+            } else {
+                if ($server !== (string) ($plan['routers'] ?? '')) {
+                    $msg .= Lang::T('Invalid plan for selected router') . '<br>';
+                }
+                if (!_router_can_access_router((string) ($plan['routers'] ?? ''), $admin, ['radius'])) {
+                    $msg .= Lang::T('Selected router is outside your allowed scope') . '<br>';
+                }
+            }
+        }
+
+        if ($msg == '') {
             list($bills, $add_cost) = User::getBills($id_customer);
             $add_inv = User::getAttribute("Invoice", $id_customer);
             if (!empty($add_inv)) {
@@ -170,6 +242,7 @@ switch ($action) {
             $ui->assign('using', $using);
             $ui->assign('plan', $plan);
             $ui->assign('add_inv', $add_inv);
+            $ui->assign('note', $note);
             $ui->assign('csrf_token', Csrf::generateAndStoreToken());
             $ui->display('admin/plan/recharge-confirm.tpl');
         } else {
@@ -190,6 +263,10 @@ switch ($action) {
         $planId = _post('plan');
         $using = _post('using');
         $svoucher = _post('svoucher');
+        $note = trim((string) _post('note'));
+        if (strlen($note) > 256) {
+            $note = substr($note, 0, 256);
+        }
 
         $plan = ORM::for_table('tbl_plans')->find_one($planId);
 
@@ -206,11 +283,35 @@ switch ($action) {
         if ($id_customer == '' or $server == '' or $planId == '' or $using == '') {
             $msg .= Lang::T('All field is required') . '<br>';
         }
+        if (!empty($server) && !_router_can_access_router($server, $admin, ['radius'])) {
+            $msg .= Lang::T('Selected router is outside your allowed scope') . '<br>';
+        }
+        $custRow = null;
+        if ($id_customer !== '') {
+            $custRow = ORM::for_table('tbl_customers')->find_one((int) $id_customer);
+            if (!$custRow || !_customer_can_access($custRow, $admin)) {
+                $msg .= Lang::T('Customer not found') . '<br>';
+            }
+        }
+        if (!$plan) {
+            $msg .= Lang::T('Plan not found') . '<br>';
+        } elseif (!empty($plan['is_radius'])) {
+            if ($server !== 'radius') {
+                $msg .= Lang::T('Invalid plan for selected router') . '<br>';
+            }
+        } else {
+            if ($server !== (string) ($plan['routers'] ?? '')) {
+                $msg .= Lang::T('Invalid plan for selected router') . '<br>';
+            }
+            if (!_router_can_access_router((string) ($plan['routers'] ?? ''), $admin, ['radius'])) {
+                $msg .= Lang::T('Selected router is outside your allowed scope') . '<br>';
+            }
+        }
 
         if ($msg == '') {
             $gateway = ucwords($using);
             $channel = $admin['fullname'];
-            $cust = User::_info($id_customer);
+            $cust = $custRow ? $custRow->as_array() : User::_info($id_customer);
             list($bills, $add_cost) = User::getBills($id_customer);
 
             // Tax calculation start
@@ -231,6 +332,9 @@ switch ($action) {
             }
             // Tax calculation stop
             $total_cost = $plan['price'] + $add_cost + $tax;
+            $estimatedChargeGraph = Package::estimateRechargeChargeGraph((int) $id_customer, $plan, $server, true);
+            $estimatedLinkedCharge = max(0, (float) ($estimatedChargeGraph['linked_charge'] ?? 0));
+            $total_balance_cost = $total_cost + $estimatedLinkedCharge;
 
             if ($using == 'balance' && $config['enable_balance'] == 'yes') {
                 //$plan = ORM::for_table('tbl_plans')->find_one($planId);
@@ -240,7 +344,7 @@ switch ($action) {
                 if (!$plan) {
                     r2(getUrl('plan/recharge'), 'e', Lang::T('Plan not found'));
                 }
-                if ($cust['balance'] < $total_cost) {
+                if ($cust['balance'] < $total_balance_cost) {
                     r2(getUrl('plan/recharge'), 'e', Lang::T('insufficient balance'));
                 }
                 $gateway = 'Recharge Balance';
@@ -250,9 +354,13 @@ switch ($action) {
                 $zero = 1;
                 $gateway = 'Recharge Zero';
             }
-            if (Package::rechargeUser($id_customer, $server, $planId, $gateway, $channel)) {
+            $processedPlanIds = [];
+            $chargeSummary = [];
+            if (Package::rechargeUser($id_customer, $server, $planId, $gateway, $channel, $note, $processedPlanIds, false, $chargeSummary)) {
                 if ($using == 'balance') {
-                    Balance::min($cust['id'], $total_cost);
+                    $actualLinkedCharge = max(0, (float) ($chargeSummary['linked_charge'] ?? 0));
+                    $finalBalanceCost = $total_cost + $actualLinkedCharge;
+                    Balance::min($cust['id'], $finalBalanceCost);
                 }
                 $in = ORM::for_table('tbl_transactions')->where('username', $cust['username'])->order_by_desc('id')->find_one();
                 Package::createInvoice($in);
@@ -265,6 +373,297 @@ switch ($action) {
             }
         } else {
             r2(getUrl('plan/recharge'), 'e', $msg);
+        }
+        break;
+    case 'refund':
+        if (!in_array($admin['user_type'], ['SuperAdmin', 'Admin', 'Agent', 'Sales'])) {
+            _alert(Lang::T('You do not have permission to access this page'), 'danger', "dashboard");
+        }
+        $ui->assign('_title', Lang::T('Refund Account'));
+        $ui->assign('xfooter', $select2_customer);
+        if (isset($routes['2']) && !empty($routes['2'])) {
+            $prefillCustomer = ORM::for_table('tbl_customers')->find_one((int) $routes['2']);
+            if (!$prefillCustomer || !_customer_can_access($prefillCustomer, $admin)) {
+                r2(getUrl('plan/refund'), 'e', Lang::T('Customer not found'));
+            }
+            $ui->assign('cust', $prefillCustomer);
+        }
+        $usings = explode(',', $config['payment_usings']);
+        $usings = array_filter(array_unique($usings));
+        if (count($usings) == 0) {
+            $usings[] = Lang::T('Cash');
+        }
+        $ui->assign('usings', $usings);
+        $ui->assign('is_refund', true);
+        $ui->assign('csrf_token', Csrf::generateAndStoreToken());
+        $ui->display('admin/plan/refund.tpl');
+        break;
+    case 'refund-confirm':
+        if (!in_array($admin['user_type'], ['SuperAdmin', 'Admin', 'Agent', 'Sales'])) {
+            _alert(Lang::T('You do not have permission to access this page'), 'danger', "dashboard");
+        }
+        $ui->assign('_title', Lang::T('Refund Confirmation'));
+        $csrf_token = _post('csrf_token');
+        if (!Csrf::check($csrf_token)) {
+            r2(getUrl('plan/refund'), 'e', Lang::T('Invalid or Expired CSRF Token'));
+        }
+        $id_customer = (int) _post('id_customer');
+        $server = trim((string) _post('server'));
+        $planId = (int) _post('plan');
+        $using = trim((string) _post('using'));
+        $note = trim((string) _post('note'));
+        if (strlen($note) > 256) {
+            $note = substr($note, 0, 256);
+        }
+
+        $msg = '';
+        if ($id_customer <= 0 || $server === '' || $planId <= 0 || $using === '') {
+            $msg .= Lang::T('All field is required') . '<br>';
+        }
+        if (!empty($server) && !_router_can_access_router($server, $admin, ['radius'])) {
+            $msg .= Lang::T('Selected router is outside your allowed scope') . '<br>';
+        }
+
+        $custRow = null;
+        if ($id_customer > 0) {
+            $custRow = ORM::for_table('tbl_customers')->find_one($id_customer);
+            if (!$custRow || !_customer_can_access($custRow, $admin)) {
+                $msg .= Lang::T('Customer not found') . '<br>';
+            }
+        }
+
+        $plan = ORM::for_table('tbl_plans')->find_one($planId);
+        if (!$plan) {
+            $msg .= Lang::T('Plan not found') . '<br>';
+        } elseif (!empty($plan['is_radius'])) {
+            if ($server !== 'radius') {
+                $msg .= Lang::T('Invalid plan for selected router') . '<br>';
+            }
+        } else {
+            if ($server !== (string) ($plan['routers'] ?? '')) {
+                $msg .= Lang::T('Invalid plan for selected router') . '<br>';
+            }
+            if (!_router_can_access_router((string) ($plan['routers'] ?? ''), $admin, ['radius'])) {
+                $msg .= Lang::T('Selected router is outside your allowed scope') . '<br>';
+            }
+        }
+
+        $activeRecharge = null;
+        if ($msg === '' && $custRow && $plan) {
+            $activeRecharge = ORM::for_table('tbl_user_recharges')
+                ->where('customer_id', $id_customer)
+                ->where('plan_id', $planId)
+                ->where('status', 'on')
+                ->where('routers', $server)
+                ->where('type', (string) ($plan['type'] ?? ''))
+                ->order_by_desc('id')
+                ->find_one();
+            if (!$activeRecharge) {
+                $msg .= Lang::T('No active package found for the selected scope') . '<br>';
+            }
+        }
+
+        if ($msg !== '') {
+            r2(getUrl('plan/refund'), 'e', $msg);
+        }
+
+        $cust = $custRow->as_array();
+        $planData = $plan->as_array();
+        list($bills, $add_cost) = User::getBills($id_customer);
+        $add_inv = User::getAttribute("Invoice", $id_customer);
+        $planPrice = (float) $planData['price'];
+        if (($planData['validity_unit'] ?? '') === 'Period' && $add_inv !== '' && $add_inv !== null) {
+            $planPrice = (float) $add_inv;
+        }
+
+        $tax_enable = isset($config['enable_tax']) ? $config['enable_tax'] : 'no';
+        $tax_rate_setting = isset($config['tax_rate']) ? $config['tax_rate'] : null;
+        $custom_tax_rate = isset($config['custom_tax_rate']) ? (float) $config['custom_tax_rate'] : null;
+        $tax_rate = ($tax_rate_setting === 'custom') ? $custom_tax_rate : $tax_rate_setting;
+        $tax = ($tax_enable === 'yes' && strtolower($using) !== 'zero') ? Package::tax($planPrice, $tax_rate) : 0;
+        $gatewayPreview = 'Refund ' . ucwords($using);
+        if (strtolower($using) === 'balance') {
+            $gatewayPreview = 'Refund Balance';
+        } else if (strtolower($using) === 'zero') {
+            $gatewayPreview = 'Refund Zero';
+        }
+        $estimatedRefundGraph = Package::estimateRefundChargeGraph($id_customer, $planData, $server, $gatewayPreview);
+        $total_refund = max(0, (float) ($estimatedRefundGraph['total_refund'] ?? 0));
+
+        $currentExpiry = trim((string) ($activeRecharge['expiration'] ?? '')) . ' ' . trim((string) ($activeRecharge['time'] ?? '00:00:00'));
+        $currentExpiry = trim($currentExpiry);
+        if ($currentExpiry === '') {
+            $currentExpiry = date('Y-m-d H:i:s');
+        }
+        $newExpiry = $currentExpiry;
+        if ((int) ($planData['validity'] ?? 0) <= 0) {
+            $newExpiry = date('Y-m-d H:i:s', time() - 1);
+        } else {
+            $validity = max(0, (int) $planData['validity']);
+            $dt = new DateTime($currentExpiry);
+            switch ((string) ($planData['validity_unit'] ?? 'Days')) {
+                case 'Months':
+                    $dt->modify('-' . $validity . ' month');
+                    break;
+                case 'Period':
+                    $dt->modify('-' . $validity . ' month');
+                    $dt->setTime(23, 59, 59);
+                    break;
+                case 'Hrs':
+                    $dt->modify('-' . $validity . ' hour');
+                    break;
+                case 'Mins':
+                    $dt->modify('-' . $validity . ' minute');
+                    break;
+                case 'Days':
+                default:
+                    $dt->modify('-' . $validity . ' day');
+                    break;
+            }
+            $newExpiry = $dt->format('Y-m-d H:i:s');
+        }
+        $willDeactivate = strtotime($newExpiry) <= time();
+
+        $usings = explode(',', $config['payment_usings']);
+        $usings = array_filter(array_unique($usings));
+        if (count($usings) == 0) {
+            $usings[] = Lang::T('Cash');
+        }
+        $ui->assign('usings', $usings);
+        $ui->assign('bills', $bills);
+        $ui->assign('add_cost', $add_cost);
+        $ui->assign('tax', $tax);
+        $ui->assign('cust', $cust);
+        $ui->assign('server', $server);
+        $ui->assign('using', $using);
+        $ui->assign('plan', $planData);
+        $ui->assign('note', $note);
+        $ui->assign('add_inv', $add_inv);
+        $ui->assign('active_recharge', $activeRecharge->as_array());
+        $ui->assign('old_expiry', $currentExpiry);
+        $ui->assign('new_expiry', $newExpiry);
+        $ui->assign('will_deactivate', $willDeactivate);
+        $ui->assign('total_refund', $total_refund);
+        $ui->assign('is_refund', true);
+        $ui->assign('csrf_token', Csrf::generateAndStoreToken());
+        $ui->display('admin/plan/refund-confirm.tpl');
+        break;
+    case 'refund-post':
+        if (!in_array($admin['user_type'], ['SuperAdmin', 'Admin', 'Agent', 'Sales'])) {
+            _alert(Lang::T('You do not have permission to access this page'), 'danger', "dashboard");
+        }
+        $csrf_token = _post('csrf_token');
+        if (!Csrf::check($csrf_token)) {
+            r2(getUrl('plan/refund'), 'e', Lang::T('Invalid or Expired CSRF Token'));
+        }
+        $id_customer = (int) _post('id_customer');
+        $server = trim((string) _post('server'));
+        $planId = (int) _post('plan');
+        $using = trim((string) _post('using'));
+        $note = trim((string) _post('note'));
+        if (strlen($note) > 256) {
+            $note = substr($note, 0, 256);
+        }
+
+        $msg = '';
+        if ($id_customer <= 0 || $server === '' || $planId <= 0 || $using === '') {
+            $msg .= Lang::T('All field is required') . '<br>';
+        }
+        if (!empty($server) && !_router_can_access_router($server, $admin, ['radius'])) {
+            $msg .= Lang::T('Selected router is outside your allowed scope') . '<br>';
+        }
+
+        $cust = ORM::for_table('tbl_customers')->find_one($id_customer);
+        if (!$cust || !_customer_can_access($cust, $admin)) {
+            $msg .= Lang::T('Customer not found') . '<br>';
+        }
+
+        $plan = ORM::for_table('tbl_plans')->find_one($planId);
+        if (!$plan) {
+            $msg .= Lang::T('Plan not found') . '<br>';
+        } elseif (!empty($plan['is_radius'])) {
+            if ($server !== 'radius') {
+                $msg .= Lang::T('Invalid plan for selected router') . '<br>';
+            }
+        } else {
+            if ($server !== (string) ($plan['routers'] ?? '')) {
+                $msg .= Lang::T('Invalid plan for selected router') . '<br>';
+            }
+            if (!_router_can_access_router((string) ($plan['routers'] ?? ''), $admin, ['radius'])) {
+                $msg .= Lang::T('Selected router is outside your allowed scope') . '<br>';
+            }
+        }
+
+        if ($msg !== '') {
+            r2(getUrl('plan/refund'), 'e', $msg);
+        }
+
+        $planData = $plan->as_array();
+        $activeRecharge = ORM::for_table('tbl_user_recharges')
+            ->where('customer_id', $id_customer)
+            ->where('plan_id', $planId)
+            ->where('status', 'on')
+            ->where('routers', $server)
+            ->where('type', (string) ($planData['type'] ?? ''))
+            ->order_by_desc('id')
+            ->find_one();
+        if (!$activeRecharge) {
+            r2(getUrl('plan/refund'), 'e', Lang::T('No active package found for the selected scope'));
+        }
+
+        list($bills, $add_cost) = User::getBills($id_customer);
+        $add_inv = User::getAttribute("Invoice", $id_customer);
+        $planPrice = (float) $planData['price'];
+        if (($planData['validity_unit'] ?? '') === 'Period' && $add_inv !== '' && $add_inv !== null) {
+            $planPrice = (float) $add_inv;
+        }
+        $tax_enable = isset($config['enable_tax']) ? $config['enable_tax'] : 'no';
+        $tax_rate_setting = isset($config['tax_rate']) ? $config['tax_rate'] : null;
+        $custom_tax_rate = isset($config['custom_tax_rate']) ? (float) $config['custom_tax_rate'] : null;
+        $tax_rate = ($tax_rate_setting === 'custom') ? $custom_tax_rate : $tax_rate_setting;
+        $tax = ($tax_enable === 'yes' && strtolower($using) !== 'zero') ? Package::tax($planPrice, $tax_rate) : 0;
+        $estimatedRefundGraph = Package::estimateRefundChargeGraph($id_customer, $planData, $server, 'Refund ' . ucwords($using));
+        $total_refund = max(0, (float) ($estimatedRefundGraph['total_refund'] ?? 0));
+
+        $gateway = 'Refund ' . ucwords($using);
+        if (strtolower($using) === 'balance') {
+            $gateway = 'Refund Balance';
+        } else if (strtolower($using) === 'zero') {
+            $gateway = 'Refund Zero';
+            $total_refund = 0;
+        }
+        $channel = $admin['fullname'];
+
+        $processedPlanIds = [];
+        $refundSummary = [];
+        $invoice = Package::refundUser($id_customer, $server, $planId, $gateway, $channel, $note, $processedPlanIds, false, false, $refundSummary);
+        if (!$invoice) {
+            r2(getUrl('plan/refund'), 'e', Lang::T('Failed to refund account'));
+        }
+
+        if (is_array($refundSummary) && isset($refundSummary['total_refund'])) {
+            $total_refund = max(0, (float) $refundSummary['total_refund']);
+        }
+        if (strtolower($using) === 'balance' && $total_refund > 0) {
+            Balance::plus($id_customer, $total_refund);
+        }
+
+        $trx = ORM::for_table('tbl_transactions')->where('invoice', $invoice)->find_one();
+        if (!$trx) {
+            $trx = ORM::for_table('tbl_transactions')
+                ->where('username', $cust['username'])
+                ->order_by_desc('id')
+                ->find_one();
+        }
+        if ($trx) {
+            Package::createInvoice($trx);
+            $ui->assign('_title', Lang::T('Refund Account'));
+            $ui->assign('is_refund', true);
+            $ui->assign('csrf_token', Csrf::generateAndStoreToken());
+            $ui->display('admin/plan/invoice.tpl');
+            _log('[' . $admin['username'] . ']: ' . 'Refund ' . $cust['username'] . ' [' . $trx['plan_name'] . '][' . Lang::moneyFormat($trx['price']) . ']', $admin['user_type'], $admin['id']);
+        } else {
+            r2(getUrl('plan/refund'), 's', Lang::T('Refund processed but transaction invoice not found'));
         }
         break;
 
@@ -403,6 +802,8 @@ switch ($action) {
 
         $customer = User::_info($d['customer_id']);
         $oldPlanID = $d['plan_id'];
+        $previousExpiration = trim((string) ($d['expiration'] ?? ''));
+        $previousTime = trim((string) ($d['time'] ?? ''));
         $newPlan = ORM::for_table('tbl_plans')->where('id', $id_plan)->find_one();
 
         if (!$newPlan) {
@@ -451,36 +852,50 @@ switch ($action) {
 
             $planName = $d['namebp'];
             $d->save();
+            if (class_exists('PppoeUsage') && PppoeUsage::isStorageReady()) {
+                $newPlanData = $newPlan ? $newPlan->as_array() : [];
+                if (PppoeUsage::isSupportedPlan($newPlanData)) {
+                    $rechargeId = (int) ($d['id'] ?? 0);
+                    if ($rechargeId > 0) {
+                        $oldExpiryAt = PppoeUsage::toDateTime($previousExpiration, $previousTime);
+                        $newExpiryAt = PppoeUsage::toDateTime($expiration, $time);
+                        PppoeUsage::scheduleCounterReset($rechargeId, $oldExpiryAt, 'Admin plan edit: keep previous expiry reset');
+                        PppoeUsage::scheduleCounterReset($rechargeId, $newExpiryAt, 'Admin plan edit: schedule new expiry reset');
+                    }
+                }
+            }
 
             // Send  Notifications
             if (isset($_POST['notify']) && $_POST['notify'] == true) {
-                if ($oldPlanID != $id_plan) {
-                    $oldPlan = ORM::for_table('tbl_plans')->find_one($oldPlanID);
-                    $oldPlanName = $oldPlan ? $oldPlan['name_plan'] : 'Old Plan';
-                    $notifyMessage = Lang::getNotifText('plan_change_message');
-                    if (empty($notifyMessage)) {
-                        $notifyMessage = Lang::T('Great news') . ', [[name]]! ' .
-                            Lang::T('Your plan has been successfully upgraded from ') . ' [[old_plan]] ' .
-                            Lang::T('to') . ' [[new_plan]]. ' .
+                $templateKey = 'plan_change_message';
+	                if ($oldPlanID != $id_plan) {
+	                    $oldPlan = ORM::for_table('tbl_plans')->find_one($oldPlanID);
+	                    $oldPlanName = $oldPlan ? $oldPlan['name_plan'] : 'Old Plan';
+	                    // plan_change_message is treated as global (no per plan/category override).
+	                    $notifyMessage = Lang::getNotifText('plan_change_message');
+	                    if (empty($notifyMessage)) {
+	                        $notifyMessage = Lang::T('Great news') . ', [[name]]! ' .
+	                            Lang::T('Your plan has been successfully upgraded from ') . ' [[old_plan]] ' .
+	                            Lang::T('to') . ' [[new_plan]]. ' .
                             Lang::T('You can now enjoy seamless internet access until') . ' [[expiry]]. ' .
                             Lang::T('Thank you for choosing') . ' [[company]] ' .
                             Lang::T('for your internet needs') . ', ' .
                             Lang::T('Enjoy enhanced features and benefits starting today') . '!';
-                    } else {
-                        $notifyMessage = Lang::getNotifText('plan_change_message');
                     }
                     $notifyMessage = str_replace('[[old_plan]]', $oldPlanName, $notifyMessage);
                     $notifyMessage = str_replace('[[new_plan]]', $planName, $notifyMessage);
                 } else {
-                    $notifyMessage = Lang::getNotifText('edit_expiry_message');
+                    $templateKey = 'edit_expiry_message';
+                    $notifyMessage = Lang::getNotifText('edit_expiry_message', [
+                        'plan_id' => (int) ($newPlan['id'] ?? 0),
+                        'type' => (string) ($newPlan['type'] ?? ''),
+                    ]);
                     if (empty($notifyMessage)) {
                         $notifyMessage = Lang::T('Dear') . ' [[name]], ' .
                             Lang::T('your') . ' [[plan]] ' .
                             Lang::T('has been extended! You can now enjoy seamless internet access until') . ' [[expiry]]. ' .
                             Lang::T('Thank you for choosing') . ' [[company]] ' .
                             Lang::T('for your internet needs') . '!';
-                    } else {
-                        $notifyMessage = Lang::getNotifText('edit_expiry_message');
                     }
                     $notifyMessage = str_replace('[[plan]]', $planName, $notifyMessage);
                 }
@@ -492,6 +907,10 @@ switch ($action) {
 
                 $subject = $planName . ' ' . Lang::T('Expiry Extension Notification');
 
+                $waOptions = Message::isWhatsappQueueEnabledForNotificationTemplate($templateKey)
+                    ? ['queue' => true, 'queue_context' => 'notification']
+                    : [];
+
                 $channels = [
                     'sms' => [
                         'enabled' => isset($_POST['sms']),
@@ -501,7 +920,7 @@ switch ($action) {
                     'whatsapp' => [
                         'enabled' => isset($_POST['wa']),
                         'method' => 'sendWhatsapp',
-                        'args' => [$customer['phonenumber'], $notifyMessage]
+                        'args' => [$customer['phonenumber'], $notifyMessage, $waOptions]
                     ],
                     'email' => [
                         'enabled' => isset($_POST['mail']),
@@ -539,6 +958,9 @@ switch ($action) {
         $ui->assign('_title', Lang::T('Voucher Cards'));
         $search = _req('search');
         $router = _req('router');
+        if (!empty($router) && !_router_can_access_router($router, $admin, ['radius'])) {
+            $router = '';
+        }
         $customer = _req('customer');
         $plan = _req('plan');
         $status = _req('status');
@@ -553,6 +975,19 @@ switch ($action) {
 
         $query = ORM::for_table('tbl_plans')
             ->inner_join('tbl_voucher', ['tbl_plans.id', '=', 'tbl_voucher.id_plan']);
+
+        if (($admin['user_type'] ?? '') !== 'SuperAdmin') {
+            $allowedVoucherRouters = $accessibleRouterNames;
+            if (!empty($config['radius_enable'])) {
+                $allowedVoucherRouters[] = 'radius';
+            }
+            $allowedVoucherRouters = array_values(array_unique(array_filter($allowedVoucherRouters)));
+            if (empty($allowedVoucherRouters)) {
+                $query->where('tbl_voucher.id', -1);
+            } else {
+                $query->where_in('tbl_voucher.routers', $allowedVoucherRouters);
+            }
+        }
 
         if (!empty($router)) {
             $query->where('tbl_voucher.routers', $router);
@@ -606,7 +1041,11 @@ switch ($action) {
         } else {
             $ui->assign('plans', []);
         }
-        $ui->assign('routers', array_column(ORM::for_table('tbl_voucher')->distinct()->select("routers")->findArray(), 'routers'));
+        $ui->assign('routers', _router_filter_allowed_names(
+            array_column(ORM::for_table('tbl_voucher')->distinct()->select("routers")->findArray(), 'routers'),
+            $admin,
+            ['radius']
+        ));
 
         if ($search != '') {
             if (in_array($admin['user_type'], ['SuperAdmin', 'Admin'])) {
@@ -680,9 +1119,11 @@ switch ($action) {
         $ui->assign('_title', Lang::T('Add Vouchers'));
         $c = ORM::for_table('tbl_customers')->find_many();
         $ui->assign('c', $c);
-        $p = ORM::for_table('tbl_plans')->where('enabled', '1')->find_many();
+        $p = ORM::for_table('tbl_plans')->where('enabled', '1');
+        $applyPlanRouterScope($p, 'routers', 'is_radius');
+        $p = $p->find_many();
         $ui->assign('p', $p);
-        $r = ORM::for_table('tbl_routers')->where('enabled', '1')->find_many();
+        $r = _router_get_accessible_routers($admin, true);
         $ui->assign('r', $r);
         run_hook('view_add_voucher'); #HOOK
         $ui->display('admin/voucher/add.tpl');
@@ -868,6 +1309,30 @@ switch ($action) {
         }
         if (!Validator::UnsignedNumber($lengthcode)) {
             $msg .= "The Length Code must be a number<br>";
+        }
+        if (!empty($server) && !_router_can_access_router($server, $admin, ['radius'])) {
+            $msg .= Lang::T('Selected router is outside your allowed scope') . '<br>';
+        }
+
+        $planRow = ORM::for_table('tbl_plans')->find_one((int) $plan);
+        if (!$planRow) {
+            $msg .= Lang::T('Plan not found') . '<br>';
+        } else {
+            if (!empty($planRow['is_radius'])) {
+                if ($server !== 'radius') {
+                    $msg .= Lang::T('Invalid plan for selected router') . '<br>';
+                }
+            } else {
+                if ($server !== (string) ($planRow['routers'] ?? '')) {
+                    $msg .= Lang::T('Invalid plan for selected router') . '<br>';
+                }
+                if (!_router_can_access_router((string) ($planRow['routers'] ?? ''), $admin, ['radius'])) {
+                    $msg .= Lang::T('Selected router is outside your allowed scope') . '<br>';
+                }
+            }
+            if (!empty($type) && strcasecmp((string) $planRow['type'], (string) $type) !== 0) {
+                $msg .= Lang::T('Invalid plan type') . '<br>';
+            }
         }
 
         if ($msg == '') {
@@ -1184,6 +1649,10 @@ switch ($action) {
     case 'extend':
         $id = $routes[2];
         $days = $routes[3];
+        $days = (int) $days;
+        if ($days < 1) {
+            $days = 1;
+        }
         $svoucher = $_GET['svoucher'];
         if (App::getVoucherValue($svoucher)) {
             r2(getUrl('plan'), 's', "Extend already done");
@@ -1191,18 +1660,18 @@ switch ($action) {
         $tur = ORM::for_table('tbl_user_recharges')->find_one($id);
         $status = $tur['status'];
         if ($status == 'off') {
-            if (strtotime($tur['expiration'] . ' ' . $tur['time']) > time()) {
-                // not expired
-                $expiration = date('Y-m-d', strtotime($tur['expiration'] . " +$days day"));
-            } else {
-                //expired
-                $expiration = date('Y-m-d', strtotime(" +$days day"));
-            }
+            $extendStartedAt = date('Y-m-d H:i:s');
+            $extendStartedTs = strtotime($extendStartedAt);
             App::setVoucher($svoucher, $id);
             $c = ORM::for_table('tbl_customers')->findOne($tur['customer_id']);
             if ($c) {
                 $p = ORM::for_table('tbl_plans')->find_one($tur['plan_id']);
                 if ($p) {
+                    $extendDurationSeconds = Package::resolveExtendDurationSeconds($p, $days);
+                    $effectiveDays = Package::secondsToDaysRoundedUp($extendDurationSeconds);
+                    $newExpiryTs = $extendStartedTs + $extendDurationSeconds;
+                    $expiration = date('Y-m-d', $newExpiryTs);
+                    $expirationTime = date('H:i:s', $newExpiryTs);
                     $dvc = Package::getDevice($p);
                     if ($_app_stage != 'Demo') {
                         if (file_exists($dvc)) {
@@ -1214,9 +1683,26 @@ switch ($action) {
                             new Exception(Lang::T("Devices Not Found"));
                         }
                     }
+                    Package::setExtendAnchorStartIfMissing((int) ($tur['customer_id'] ?? 0), (int) ($tur['id'] ?? 0), $extendStartedAt);
                     $tur->expiration = $expiration;
+                    $tur->time = $expirationTime;
                     $tur->status = "on";
                     $tur->save();
+                    if (class_exists('PppoeUsage') && PppoeUsage::isStorageReady()) {
+                        $planData = $p ? $p->as_array() : [];
+                        if (PppoeUsage::isSupportedPlan($planData)) {
+                            $expiryAt = PppoeUsage::toDateTime($expiration, $expirationTime);
+                            PppoeUsage::scheduleCounterReset((int) ($tur['id'] ?? 0), $expiryAt, 'Admin extend: schedule new expiry reset');
+                        }
+                    }
+
+                    // Optional auto-notification after successful extend.
+                    Message::sendExpiryEditNotification(
+                        $c->as_array(),
+                        $p->as_array(),
+                        $expiration . ' ' . $expirationTime,
+                        'Admin'
+                    );
                 } else {
                     r2(getUrl('plan'), 's', "Plan not found");
                 }
@@ -1226,8 +1712,8 @@ switch ($action) {
             Message::sendTelegram("#u$tur[username] #id$tur[customer_id]  #extend by $admin[fullname] #" . $p['type'] . " \n" . $p['name_plan'] .
                 "\nLocation: " . $p['routers'] .
                 "\nCustomer: " . $c['fullname'] .
-                "\nNew Expired: " . Lang::dateAndTimeFormat($expiration, $tur['time']));
-            _log("$admin[fullname] extend Customer $tur[customer_id] $tur[username] #$tur[customer_id] for $days days", $admin['user_type'], $admin['id']);
+                "\nNew Expired: " . Lang::dateAndTimeFormat($expiration, $expirationTime));
+            _log("$admin[fullname] extend Customer $tur[customer_id] $tur[username] #$tur[customer_id] for $effectiveDays days", $admin['user_type'], $admin['id']);
             r2(getUrl('plan'), 's', "Extend until $expiration");
         } else {
             r2(getUrl('plan'), 's', "Customer is not expired yet");
@@ -1239,6 +1725,9 @@ switch ($action) {
         $search = _req('search');
         $status = _req('status', '-');
         $router = _req('router');
+        if (!empty($router) && !_router_can_access_router($router, $admin, ['radius'])) {
+            $router = '';
+        }
         $plan = _req('plan');
 
         $buildFilters = static function ($searchValue, $statusValue, $routerValue, $planValue) {
@@ -1272,6 +1761,9 @@ switch ($action) {
             $search = _post('search', $search);
             $status = _post('status', $status);
             $router = _post('router', $router);
+            if (!empty($router) && !_router_can_access_router($router, $admin, ['radius'])) {
+                $router = '';
+            }
             $plan = _post('plan', $plan);
 
             $queryParams = $buildFilters($search, $status, $router, $plan);
@@ -1294,13 +1786,17 @@ switch ($action) {
         $ui->assign('plan', $plan);
         $ui->assign('status', $status);
         $ui->assign('router', $router);
-        $ui->assign('routers', array_column(
-            ORM::for_table('tbl_user_recharges')
-                ->distinct()
-                ->select('tbl_user_recharges.routers', 'routers')
-                ->whereNotEqual('tbl_user_recharges.routers', '')
-                ->findArray(),
-            'routers'
+        $ui->assign('routers', _router_filter_allowed_names(
+            array_column(
+                ORM::for_table('tbl_user_recharges')
+                    ->distinct()
+                    ->select('tbl_user_recharges.routers', 'routers')
+                    ->whereNotEqual('tbl_user_recharges.routers', '')
+                    ->findArray(),
+                'routers'
+            ),
+            $admin,
+            ['radius']
         ));
 
         $plns = ORM::for_table('tbl_user_recharges')
@@ -1318,6 +1814,19 @@ switch ($action) {
             ->select('tbl_customers.fullname', 'customer_fullname')
             ->left_outer_join('tbl_customers', ['tbl_user_recharges.customer_id', '=', 'tbl_customers.id'])
             ->order_by_desc('tbl_user_recharges.id');
+
+        if (($admin['user_type'] ?? '') !== 'SuperAdmin') {
+            $allowedRechargeRouters = $accessibleRouterNames;
+            if (!empty($config['radius_enable'])) {
+                $allowedRechargeRouters[] = 'radius';
+            }
+            $allowedRechargeRouters = array_values(array_unique(array_filter($allowedRechargeRouters)));
+            if (empty($allowedRechargeRouters)) {
+                $query->where('tbl_user_recharges.id', -1);
+            } else {
+                $query->where_in('tbl_user_recharges.routers', $allowedRechargeRouters);
+            }
+        }
 
         if (isset($filters['search'])) {
             $searchTerm = $filters['search'];

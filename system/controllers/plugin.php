@@ -4,6 +4,10 @@
  *  by https://t.me/ibnux
  **/
 
+if (!_admin(false) && !_auth(false)) {
+    r2(getUrl('login'));
+}
+
 if(function_exists($routes[1])){
     call_user_func($routes[1]);
 }else{

@@ -27,7 +27,7 @@
                             </div>
                         </div>
                         <div class="form-group">
-                            <label>{Lang::T('SMS Verification Code')}</label>
+                            <label>{Lang::T('Verification Code')}</label>
                             <input type="text" required class="form-control" id="otp_code" value=""
                                 placeholder="{Lang::T('Verification Code')}" name="otp_code">
                         </div>

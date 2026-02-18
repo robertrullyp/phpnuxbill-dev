@@ -64,6 +64,16 @@
                         </div>
                     </div>
                     <div class="form-group">
+                        <label class="col-md-2 control-label">{Lang::T('Customer Self Extend')}</label>
+                        <div class="col-md-10">
+                            <input type="hidden" name="customer_can_extend" value="0">
+                            <label class="checkbox-inline">
+                                <input type="checkbox" name="customer_can_extend" value="1" checked>
+                                {Lang::T('Allow customer self-extend for this plan')}
+                            </label>
+                        </div>
+                    </div>
+                    <div class="form-group">
                         <label class="col-md-2 control-label">{Lang::T('Linked Plans')}</label>
                         <div class="col-md-6">
                             <select name="linked_plans[]" class="form-control select2" multiple>
@@ -160,6 +170,7 @@
                             </select>
                         </div>
                         <p class="help-block col-md-4">{Lang::T('1 Period = 1 Month, Expires the 20th of each month')}
+                            <br>{Lang::T('Set Period to 0 for no expiry')}
                         </p>
                     </div>
                     <div class="form-group hidden" id="expired_date">
@@ -191,6 +202,15 @@
                             <select id="pool_name" name="pool_name" required class="form-control select2">
                                 <option value=''>{Lang::T('Select Pool')}</option>
                             </select>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label class="col-md-2 control-label">{Lang::T('PPPoE Service')}</label>
+                        <div class="col-md-6">
+                            <select id="pppoe_service" name="pppoe_service" class="form-control select2" data-selected="">
+                                <option value="">{Lang::T('Select PPPoE Service')}</option>
+                            </select>
+                            <p class="help-block">{Lang::T('Loaded from router PPPoE server list. If empty, sync/recharge will try the first available service.')}</p>
                         </div>
                     </div>
                     <div class="form-group">
@@ -254,6 +274,10 @@
                 if (cek.checked) {
                     document.getElementById("routers").required = false;
                     document.getElementById("routers").disabled = true;
+                    if (document.getElementById("pppoe_service")) {
+                        document.getElementById("pppoe_service").disabled = true;
+                        $("#pppoe_service").html('<option value="">{/literal}{Lang::T("Select PPPoE Service")}{literal}</option>');
+                    }
                     $.ajax({
                         url: "{/literal}{Text::url('autoload/pool')}{literal}",
                         data: "routers=radius",
@@ -265,6 +289,10 @@
                 } else {
                     document.getElementById("routers").required = true;
                     document.getElementById("routers").disabled = false;
+                    if (document.getElementById("pppoe_service")) {
+                        document.getElementById("pppoe_service").disabled = false;
+                    }
+                    $("#routers").trigger('change');
                 }
             }
         </script>

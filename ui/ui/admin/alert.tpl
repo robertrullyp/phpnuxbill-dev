@@ -6,7 +6,7 @@
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <title>{ucwords(Lang::T($type))} - {$_c['CompanyName']}</title>
     <meta content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" name="viewport">
-    <link rel="shortcut icon" href="{$app_url}/ui/ui/images/logo.png" type="image/x-icon" />
+    <link rel="shortcut icon" href="{$app_url}/{$brand_favicon|replace:'\\':'/'|trim:'/'}" type="image/x-icon" />
     <link rel="stylesheet" href="{$app_url}/ui/ui/styles/bootstrap.min.css">
     <link rel="stylesheet" href="{$app_url}/ui/ui/styles/modern-AdminLTE.min.css">
     <meta http-equiv="refresh" content="{$time}; url={$url}">

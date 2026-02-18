@@ -155,14 +155,104 @@ class Lang
         }
     }
 
-    public static function getNotifText($key)
+    public static function getNotifText($key, $context = null)
     {
         global $_notifmsg, $_notifmsg_default;
-        if (isset($_notifmsg[$key])) {
-            return $_notifmsg[$key];
-        } else {
-            return $_notifmsg_default[$key];
+
+        $key = trim((string) $key);
+        if ($key === '') {
+            return '';
         }
+
+        $planId = null;
+        $planType = null;
+        $purposeKey = null;
+
+        if (is_array($context)) {
+            if (array_key_exists('plan_id', $context)) {
+                $planId = (int) $context['plan_id'];
+            } elseif (array_key_exists('planId', $context)) {
+                $planId = (int) $context['planId'];
+            }
+
+            if (array_key_exists('type', $context)) {
+                $planType = (string) $context['type'];
+            } elseif (array_key_exists('plan_type', $context)) {
+                $planType = (string) $context['plan_type'];
+            } elseif (array_key_exists('planType', $context)) {
+                $planType = (string) $context['planType'];
+            }
+
+            if (array_key_exists('purpose', $context)) {
+                $purposeKey = (string) $context['purpose'];
+            } elseif (array_key_exists('purpose_key', $context)) {
+                $purposeKey = (string) $context['purpose_key'];
+            } elseif (array_key_exists('purposeKey', $context)) {
+                $purposeKey = (string) $context['purposeKey'];
+            }
+        }
+
+        $resolved = self::resolveNotifTemplate($key, $_notifmsg, $planId, $planType, $purposeKey);
+        if ($resolved !== null) {
+            return $resolved;
+        }
+
+        $resolved = self::resolveNotifTemplate($key, $_notifmsg_default, $planId, $planType, $purposeKey);
+        if ($resolved !== null) {
+            return $resolved;
+        }
+
+        return '';
+    }
+
+    private static function resolveNotifTemplate($key, $source, $planId = null, $planType = null, $purposeKey = null)
+    {
+        if (!is_array($source)) {
+            return null;
+        }
+
+        $overrides = $source['template_overrides'] ?? null;
+        if (is_array($overrides)) {
+            $planId = (int) $planId;
+            $planType = strtoupper(trim((string) $planType));
+            $purposeKey = strtolower(trim((string) $purposeKey));
+
+            if ($planId > 0 && isset($overrides['plan']) && is_array($overrides['plan'])) {
+                $planOverrides = $overrides['plan'][$planId] ?? null;
+                if (is_array($planOverrides)) {
+                    $value = $planOverrides[$key] ?? null;
+                    if (is_string($value) && trim($value) !== '') {
+                        return $value;
+                    }
+                }
+            }
+
+            if ($planType !== '' && isset($overrides['type']) && is_array($overrides['type'])) {
+                $typeOverrides = $overrides['type'][$planType] ?? null;
+                if (is_array($typeOverrides)) {
+                    $value = $typeOverrides[$key] ?? null;
+                    if (is_string($value) && trim($value) !== '') {
+                        return $value;
+                    }
+                }
+            }
+
+            if ($purposeKey !== '' && isset($overrides['purpose']) && is_array($overrides['purpose'])) {
+                $purposeOverrides = $overrides['purpose'][$purposeKey] ?? null;
+                if (is_array($purposeOverrides)) {
+                    $value = $purposeOverrides[$key] ?? null;
+                    if (is_string($value) && trim($value) !== '') {
+                        return $value;
+                    }
+                }
+            }
+        }
+
+        if (isset($source[$key]) && is_string($source[$key]) && trim((string) $source[$key]) !== '') {
+            return (string) $source[$key];
+        }
+
+        return null;
     }
 
     public static function ucWords($text)

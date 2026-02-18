@@ -141,6 +141,9 @@
                                 <th>Photo</th>
                                 <th>{Lang::T('Account Type')}</th>
                                 <th>{Lang::T('Full Name')}</th>
+                                {if $customer_am_enabled}
+                                    <th>{Lang::T('Account Manager')}</th>
+                                {/if}
                                 <th>{Lang::T('Balance')}</th>
                                 <th>{Lang::T('Contact')}</th>
                                 <th>{Lang::T('Package')}</th>
@@ -172,6 +175,18 @@
                                 <td>{$ds['account_type']}</td>
                                 <td onclick="window.location.href = '{Text::url('customers/view/', $ds['id'])}'"
                                     style="cursor: pointer;">{$ds['fullname']}</td>
+                                {if $customer_am_enabled}
+                                    {assign var='rowAmId' value=$ds['account_manager_id']|default:0}
+                                    <td>
+                                        {if $rowAmId gt 0 && isset($customer_am_labels[$rowAmId])}
+                                            {$customer_am_labels[$rowAmId]}
+                                        {elseif $rowAmId gt 0}
+                                            User #{$rowAmId}
+                                        {else}
+                                            All Users
+                                        {/if}
+                                    </td>
+                                {/if}
                                 <td>{Lang::moneyFormat($ds['balance'])}</td>
                                 <td align="center">
                                     {if $ds['phonenumber']}
@@ -203,8 +218,8 @@
                                     <a href="{Text::url('customers/view/')}{$ds['id']}" id="{$ds['id']}"
                                         style="margin: 0px; color:black"
                                         class="btn btn-success btn-xs">&nbsp;&nbsp;{Lang::T('View')}&nbsp;&nbsp;</a>
-                                    <a href="{Text::url('customers/edit/', $ds['id'])}"
-                                        id="{$ds['id']}" style="margin: 0px; color:black"
+                                    <a href="{Text::url('customers/edit/')}{$ds['id']}" id="{$ds['id']}"
+                                        style="margin: 0px; color:black"
                                         class="btn btn-info btn-xs">&nbsp;&nbsp;{Lang::T('Edit')}&nbsp;&nbsp;</a>
                                     <form method="post" action="{Text::url('customers/sync/', $ds['id'])}"
                                         style="display:inline;">
@@ -260,6 +275,11 @@
                     <option value="sms">{Lang::T('SMS')}</option>
                     <option value="wa">{Lang::T('WhatsApp')}</option>
                 </select>
+                <div style="margin-bottom: 10px;">
+                    <label class="checkbox-inline">
+                        <input type="checkbox" id="wa_queue_modal" value="1"> Aktifkan antrian/auto-retry WhatsApp
+                    </label>
+                </div>
                 <input type="text" style="margin-bottom: 10px;" class="form-control" id="subject-content" value=""
                     placeholder="{Lang::T('Enter message subject here')}">
                 <textarea id="messageContent" class="form-control" rows="4"
@@ -341,7 +361,8 @@
                 data: {
                     customer_ids: selectedCustomerIds,
                     message_type: messageType,
-                    message: message
+                    message: message,
+                    wa_queue: $('#wa_queue_modal').is(':checked') ? '1' : '0'
                 },
                 dataType: 'json',
                 success: function (response) {

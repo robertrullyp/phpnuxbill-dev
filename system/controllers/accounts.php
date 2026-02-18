@@ -198,9 +198,19 @@ switch ($action) {
             r2(getUrl('accounts/phone-update'), 'e', Lang::T('SMS server not Available, Please try again later'));
             return;
         }
-        if (in_array($_c['phone_otp_type'], ['whatsapp', 'both']) && empty($config['wa_url'])) {
-            r2(getUrl('accounts/phone-update'), 'e', Lang::T('WhatsApp gateway not Available, Please try again later'));
-            return;
+        if (in_array($_c['phone_otp_type'], ['whatsapp', 'both'])) {
+            $waMethod = strtolower(trim((string)($config['wa_gateway_method'] ?? '')));
+            if ($waMethod === 'get') {
+                $waAvailable = !empty($config['wa_url']);
+            } elseif ($waMethod === 'post') {
+                $waAvailable = !empty($config['wa_gateway_url']);
+            } else {
+                $waAvailable = !empty($config['wa_url']) || !empty($config['wa_gateway_url']) || !empty($config['wa_gateway_secret']);
+            }
+            if (!$waAvailable) {
+                r2(getUrl('accounts/phone-update'), 'e', Lang::T('WhatsApp gateway not Available, Please try again later'));
+                return;
+            }
         }
 
         $d = ORM::for_table('tbl_customers')->whereNotEqual('username', $username)->where('phonenumber', $phone)->find_one();
@@ -219,27 +229,34 @@ switch ($action) {
         if (file_exists($otpFile) && time() - filemtime($otpFile) < (int)$_c['otp_wait']) {
             r2(getUrl('accounts/phone-update'), 'e', Lang::T('Please wait ') . ((int)$_c['otp_wait'] - (time() - filemtime($otpFile))) . Lang::T(' seconds before sending another SMS'));
             return;
-        } else {
-            $otp = rand(100000, 999999);
-            file_put_contents($otpFile, $otp);
-            file_put_contents($phoneFile, $phone);
-            // send send OTP to user
-            if ($config['phone_otp_type'] === 'sms') {
-                Message::sendSMS($phone, $config['CompanyName'] . "\n\n" . Lang::T("Verification code") . "\n$otp");
-            } elseif ($config['phone_otp_type'] === 'whatsapp') {
-                $waSent = Message::sendWhatsapp($phone, $config['CompanyName'] . "\n\n" . Lang::T("Verification code") . "\n$otp");
-                if ($waSent === false) {
-                    r2(getUrl('accounts/phone-update'), 'e', Lang::T('OTP not sent: phone number isn\'t registered on WhatsApp'));
-                    return;
-                }
-            } elseif ($config['phone_otp_type'] === 'both') {
-                Message::sendSMS($phone, $config['CompanyName'] . "\n\n" . Lang::T("Verification code") . "\n$otp");
-                $waSent = Message::sendWhatsapp($phone, $config['CompanyName'] . "\n\n" . Lang::T("Verification code") . "\n$otp");
-                if ($waSent === false) {
-                    r2(getUrl('accounts/phone-update'), 'e', Lang::T('OTP not sent: phone number isn\'t registered on WhatsApp'));
-                    return;
-                }
-            }
+	        } else {
+	            $otp = rand(100000, 999999);
+	            file_put_contents($otpFile, $otp);
+	            file_put_contents($phoneFile, $phone);
+	            $otpMessage = Message::renderOtpMessage($otp, Lang::T("Verification code"), 'verify');
+	            $otpPlainMessage = Message::whatsappTemplateToPlainText($otpMessage);
+	            if ($otpPlainMessage === '') {
+	                $otpPlainMessage = 'Kode OTP: ' . $otp;
+	            } elseif (strpos($otpPlainMessage, (string) $otp) === false) {
+	                $otpPlainMessage .= "\n\nKode OTP: " . $otp;
+	            }
+	            // send send OTP to user
+	            if ($config['phone_otp_type'] === 'sms') {
+	                Message::sendSMS($phone, $otpPlainMessage);
+	            } elseif ($config['phone_otp_type'] === 'whatsapp') {
+	                $waSent = Message::sendWhatsapp($phone, $otpMessage);
+	                if ($waSent === false) {
+	                    r2(getUrl('accounts/phone-update'), 'e', Lang::T('OTP not sent: phone number isn\'t registered on WhatsApp'));
+	                    return;
+	                }
+	            } elseif ($config['phone_otp_type'] === 'both') {
+	                Message::sendSMS($phone, $otpPlainMessage);
+	                $waSent = Message::sendWhatsapp($phone, $otpMessage);
+	                if ($waSent === false) {
+	                    r2(getUrl('accounts/phone-update'), 'e', Lang::T('OTP not sent: phone number isn\'t registered on WhatsApp'));
+	                    return;
+	                }
+	            }
             //redirect after sending OTP
             r2(getUrl('accounts/phone-update'), 'e', Lang::T('Verification code has been sent to your phone'));
             return;
@@ -266,8 +283,18 @@ switch ($action) {
         if (in_array($_c['phone_otp_type'], ['sms', 'both']) && empty($config['sms_url'])) {
             r2(getUrl('accounts/phone-update'), 'e', Lang::T('SMS server not Available, Please try again later'));
         }
-        if (in_array($_c['phone_otp_type'], ['whatsapp', 'both']) && empty($config['wa_url'])) {
-            r2(getUrl('accounts/phone-update'), 'e', Lang::T('WhatsApp gateway not Available, Please try again later'));
+        if (in_array($_c['phone_otp_type'], ['whatsapp', 'both'])) {
+            $waMethod = strtolower(trim((string)($config['wa_gateway_method'] ?? '')));
+            if ($waMethod === 'get') {
+                $waAvailable = !empty($config['wa_url']);
+            } elseif ($waMethod === 'post') {
+                $waAvailable = !empty($config['wa_gateway_url']);
+            } else {
+                $waAvailable = !empty($config['wa_url']) || !empty($config['wa_gateway_url']) || !empty($config['wa_gateway_secret']);
+            }
+            if (!$waAvailable) {
+                r2(getUrl('accounts/phone-update'), 'e', Lang::T('WhatsApp gateway not Available, Please try again later'));
+            }
         }
 
         $otpFile = $otpPath . sha1($username . $db_pass) . ".txt";

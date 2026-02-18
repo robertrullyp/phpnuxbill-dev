@@ -11,6 +11,7 @@ $ui->assign('_system_menu', 'customers');
 
 $action = $routes['1'];
 $ui->assign('_admin', $admin);
+$customer = null;
 
 if (empty($action)) {
     $action = 'list';
@@ -19,6 +20,76 @@ if (empty($action)) {
 $leafletpickerHeader = <<<EOT
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.3/dist/leaflet.css">
 EOT;
+
+$getGenieAcsFormData = function ($customerId = 0) use ($config) {
+    $customerId = (int) $customerId;
+    $enabled = class_exists('GenieACS') && GenieACS::isEnabled($config);
+    $devices = [];
+    $error = '';
+    $selectedDeviceId = '';
+    $selectedDeviceLabel = '';
+
+    if ($customerId > 0 && class_exists('GenieACS')) {
+        $selectedDeviceId = GenieACS::getAssignedDeviceId($customerId);
+        $selectedDeviceLabel = GenieACS::getAssignedDeviceLabel($customerId, $selectedDeviceId);
+    }
+
+    if ($enabled && class_exists('GenieACS')) {
+        $discovery = GenieACS::discoverDevices($config, '', 0);
+        $devices = $discovery['devices'] ?? [];
+        if (empty($discovery['success'])) {
+            $error = (string) ($discovery['error'] ?? '');
+        }
+    }
+
+    if ($selectedDeviceId !== '') {
+        $knownIds = array_column($devices, 'id');
+        if (!in_array($selectedDeviceId, $knownIds, true)) {
+            $devices[] = [
+                'id' => $selectedDeviceId,
+                'text' => ($selectedDeviceLabel !== '' ? $selectedDeviceLabel : $selectedDeviceId) . ' (Saved)',
+            ];
+        }
+    }
+
+    return [
+        'enabled' => $enabled,
+        'devices' => $devices,
+        'error' => $error,
+        'selected_device_id' => $selectedDeviceId,
+        'selected_device_label' => $selectedDeviceLabel,
+    ];
+};
+
+$syncGenieAcsPppCredentials = function ($customerId, $serviceSupportsGenieAcs, $deviceId, $pppoeUsername, $pppoePassword) use ($config) {
+    $customerId = (int) $customerId;
+    $deviceId = trim((string) $deviceId);
+    if (
+        $customerId < 1 ||
+        !$serviceSupportsGenieAcs ||
+        !class_exists('GenieACS') ||
+        $deviceId === ''
+    ) {
+        return '';
+    }
+
+    $syncResult = GenieACS::syncPppoeCredentials($config, $deviceId, $pppoeUsername, $pppoePassword);
+    if (empty($syncResult['success'])) {
+        $syncError = trim((string) ($syncResult['error'] ?? 'Unknown error.'));
+        if ($syncError === '') {
+            $syncError = 'Unknown error.';
+        }
+        _log('GenieACS PPP sync failed for customer #' . $customerId . ' (device ' . $deviceId . '): ' . $syncError);
+        return 'GenieACS PPP sync warning: ' . $syncError;
+    }
+
+    $syncWarning = trim((string) ($syncResult['warning'] ?? ''));
+    if ($syncWarning !== '') {
+        return 'GenieACS PPP sync warning: ' . $syncWarning;
+    }
+
+    return '';
+};
 
 switch ($action) {
     case 'csv':
@@ -97,10 +168,10 @@ switch ($action) {
             ->select('email')
             ->select('balance')
             ->select('service_type')
-            ->select('namebp')
-            ->select('routers')
-            ->select('status')
-            ->select('method', 'Payment')
+            ->select('tbl_user_recharges.namebp', 'namebp')
+            ->select('tbl_user_recharges.routers', 'routers')
+            ->select('tbl_user_recharges.status', 'status')
+            ->select('tbl_user_recharges.method', 'Payment')
             ->left_outer_join('tbl_user_recharges', array('tbl_customers.id', '=', 'tbl_user_recharges.customer_id'))
             ->order_by_asc('tbl_customers.id')
             ->find_array();
@@ -157,6 +228,16 @@ switch ($action) {
             _alert(Lang::T('You do not have permission to access this page'), 'danger', "dashboard");
         }
         $ui->assign('xheader', $leafletpickerHeader);
+        $ui->assign('customer_am_enabled', _customer_am_column_exists());
+        $ui->assign('am_users', _customer_am_rows());
+        $ui->assign('selected_account_manager_id', 0);
+        $ui->assign('selected_account_manager_mode', 'all');
+        $genieAcsFormData = $getGenieAcsFormData(0);
+        $ui->assign('genieacs_enabled', $genieAcsFormData['enabled']);
+        $ui->assign('genieacs_devices', $genieAcsFormData['devices']);
+        $ui->assign('genieacs_error', $genieAcsFormData['error']);
+        $ui->assign('genieacs_selected_device_id', $genieAcsFormData['selected_device_id']);
+        $ui->assign('genieacs_selected_device_label', $genieAcsFormData['selected_device_label']);
         run_hook('view_add_customer'); #HOOK
         $ui->assign('csrf_token',  Csrf::generateAndStoreToken());
         $ui->display('admin/customers/add.tpl');
@@ -175,6 +256,10 @@ switch ($action) {
             r2(getUrl('customers/view/') . $id_customer, 'e', Lang::T('Invalid or Expired CSRF Token') . ".");
         }
         Csrf::generateAndStoreToken();
+        $targetCustomer = ORM::for_table('tbl_customers')->find_one($id_customer);
+        if (!$targetCustomer || !_customer_can_access($targetCustomer, $admin)) {
+            r2(getUrl('customers/list'), 'e', Lang::T('Account Not Found'));
+        }
         $b = ORM::for_table('tbl_user_recharges')->where('customer_id', $id_customer)->where('plan_id', $plan_id)->find_one();
         if ($b) {
             $gateway = 'Recharge';
@@ -290,30 +375,66 @@ switch ($action) {
             r2(getUrl('customers/view/') . $id_customer, 'e', Lang::T('Invalid or Expired CSRF Token') . ".");
         }
         Csrf::generateAndStoreToken();
+        $targetCustomer = ORM::for_table('tbl_customers')->find_one($id_customer);
+        if (!$targetCustomer || !_customer_can_access($targetCustomer, $admin)) {
+            r2(getUrl('customers/list'), 'e', Lang::T('Account Not Found'));
+        }
         $bs = ORM::for_table('tbl_user_recharges')->where('customer_id', $id_customer)->where('status', 'on')->findMany();
         if ($bs) {
             $routers = [];
+            $warnings = [];
+            $errors = [];
             foreach ($bs as $b) {
-                $c = ORM::for_table('tbl_customers')->find_one($id_customer);
-                $p = ORM::for_table('tbl_plans')->where('id', $b['plan_id'])->find_one();
-                if ($p) {
-                    $routers[] = $b['routers'];
-                    $dvc = Package::getDevice($p);
-                    if ($_app_stage != 'demo') {
-                        if (file_exists($dvc)) {
-                            require_once $dvc;
-                            if (method_exists($dvc, 'sync_customer')) {
-                                (new $p['device'])->sync_customer($c, $p);
-                            }else{
-                                (new $p['device'])->add_customer($c, $p);
+                try {
+                    $c = ORM::for_table('tbl_customers')->find_one($id_customer);
+                    $p = ORM::for_table('tbl_plans')->where('id', $b['plan_id'])->find_one();
+                    if ($p) {
+                        $routers[] = $b['routers'];
+                        $dvc = Package::getDevice($p);
+                        if ($_app_stage != 'demo') {
+                            if (file_exists($dvc)) {
+                                require_once $dvc;
+                                $deviceClass = trim((string) ($p['device'] ?? ''));
+                                if ($deviceClass === '' || !class_exists($deviceClass)) {
+                                    throw new Exception('Device class not found: ' . $deviceClass);
+                                }
+                                $device = new $deviceClass();
+                                if (method_exists($device, 'sync_customer')) {
+                                    $device->sync_customer($c, $p);
+                                }else{
+                                    $device->add_customer($c, $p);
+                                }
+                                if (method_exists($device, 'getLastSyncWarning')) {
+                                    $syncWarning = trim((string) $device->getLastSyncWarning());
+                                    if ($syncWarning !== '') {
+                                        $warnings[] = trim((string) ($p['name_plan'] ?? 'Plan')) . ': ' . $syncWarning;
+                                    }
+                                }
+                            } else {
+                                throw new Exception(Lang::T("Devices Not Found"));
                             }
-                        } else {
-                            new Exception(Lang::T("Devices Not Found"));
                         }
                     }
+                } catch (Throwable $e) {
+                    $syncError = trim((string) $e->getMessage());
+                    if ($syncError === '') {
+                        $syncError = 'Unknown sync error';
+                    }
+                    $errors[] = trim((string) ($b['namebp'] ?? 'Plan')) . ': ' . $syncError;
                 }
             }
-            r2(getUrl('customers/view/') . $id_customer, 's', 'Sync success to ' . implode(", ", $routers));
+            $routers = array_values(array_unique(array_filter($routers)));
+            $message = 'Sync success to ' . implode(", ", $routers);
+            if (!empty($warnings)) {
+                $message .= '<br>WARN: ' . implode(' | ', $warnings);
+            }
+            if (!empty($errors) && empty($routers)) {
+                r2(getUrl('customers/view/') . $id_customer, 'e', 'Sync failed: ' . implode(' | ', $errors));
+            }
+            if (!empty($errors)) {
+                $message .= '<br>ERROR: ' . implode(' | ', $errors);
+            }
+            r2(getUrl('customers/view/') . $id_customer, empty($errors) ? 's' : 'w', $message);
         }
         r2(getUrl('customers/view/') . $id_customer, 'e', 'Cannot find active plan');
         break;
@@ -340,11 +461,17 @@ switch ($action) {
         break;
     case 'viewu':
         $customer = ORM::for_table('tbl_customers')->where('username', $routes['2'])->find_one();
+        if ($customer && !_customer_can_access($customer, $admin)) {
+            $customer = null;
+        }
     case 'view':
         $id = $routes['2'];
         run_hook('view_customer'); #HOOK
         if (!$customer) {
             $customer = ORM::for_table('tbl_customers')->find_one($id);
+        }
+        if ($customer && !_customer_can_access($customer, $admin)) {
+            $customer = null;
         }
         if ($customer) {
             // Fetch the Customers Attributes values from the tbl_customer_custom_fields table
@@ -383,6 +510,11 @@ switch ($action) {
             $ui->assign('packages', User::_billing($customer['id']));
             $ui->assign('v', $v);
             $ui->assign('d', $customer);
+            $amId = _customer_am_id($customer);
+            $amLabels = _customer_am_label_map();
+            $ui->assign('customer_am_enabled', _customer_am_column_exists());
+            $ui->assign('customer_am_id', $amId);
+            $ui->assign('customer_am_label', ($amId > 0 && isset($amLabels[$amId])) ? $amLabels[$amId] : Lang::T('All'));
             $ui->assign('customFields', $customFields);
             $ui->assign('xheader', $leafletpickerHeader);
             $ui->assign('csrf_token',  Csrf::generateAndStoreToken());
@@ -396,14 +528,16 @@ switch ($action) {
             _alert(Lang::T('You do not have permission to access this page'), 'danger', "dashboard");
         }
         $id = $routes['2'];
-        if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+        $requestMethod = strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? 'GET'));
+        if ($requestMethod === 'POST') {
+            $csrf_token = _post('csrf_token');
+            if (!Csrf::check($csrf_token)) {
+                r2(getUrl('customers/view/') . $id, 'e', Lang::T('Invalid or Expired CSRF Token') . ".");
+            }
+            Csrf::generateAndStoreToken();
+        } elseif ($requestMethod !== 'GET') {
             r2(getUrl('customers/view/') . $id, 'e', Lang::T('Invalid request method'));
         }
-        $csrf_token = _post('csrf_token');
-        if (!Csrf::check($csrf_token)) {
-            r2(getUrl('customers/view/') . $id, 'e', Lang::T('Invalid or Expired CSRF Token') . ".");
-        }
-        Csrf::generateAndStoreToken();
         run_hook('edit_customer'); #HOOK
         $d = ORM::for_table('tbl_customers')->find_one($id);
         // Fetch the Customers Attributes values from the tbl_customers_fields table
@@ -428,7 +562,19 @@ switch ($action) {
                     $ui->assign('notify', 'No photo found to delete');
                 }
             }
+            $selectedAccountManagerId = _customer_am_id($d);
+            $genieAcsFormData = $getGenieAcsFormData((int) $id);
             $ui->assign('d', $d);
+            $ui->assign('customer_am_enabled', _customer_am_column_exists());
+            $ui->assign('can_edit_customer_am', _customer_can_edit_assignment($admin));
+            $ui->assign('am_users', _customer_am_rows());
+            $ui->assign('selected_account_manager_id', $selectedAccountManagerId);
+            $ui->assign('selected_account_manager_mode', $selectedAccountManagerId > 0 ? 'list' : 'all');
+            $ui->assign('genieacs_enabled', $genieAcsFormData['enabled']);
+            $ui->assign('genieacs_devices', $genieAcsFormData['devices']);
+            $ui->assign('genieacs_error', $genieAcsFormData['error']);
+            $ui->assign('genieacs_selected_device_id', $genieAcsFormData['selected_device_id']);
+            $ui->assign('genieacs_selected_device_label', $genieAcsFormData['selected_device_label']);
             $ui->assign('statuses', ORM::for_table('tbl_customers')->getEnum("status"));
             $ui->assign('customFields', $customFields);
             $ui->assign('xheader', $leafletpickerHeader);
@@ -487,6 +633,9 @@ switch ($action) {
         break;
 
     case 'add-post':
+        if (!in_array($admin['user_type'], ['SuperAdmin', 'Admin', 'Agent', 'Sales'])) {
+            _alert(Lang::T('You do not have permission to access this page'), 'danger', "dashboard");
+        }
 
         $csrf_token = _post('csrf_token');
         if (!Csrf::check($csrf_token)) {
@@ -505,6 +654,13 @@ switch ($action) {
         $service_type = _post('service_type');
         $account_type = _post('account_type');
         $coordinates = _post('coordinates');
+        $genieacs_device_id = trim((string) _post('genieacs_device_id'));
+        $genieacs_device_label = trim((string) _post('genieacs_device_label'));
+        $service_supports_genieacs = in_array(strtoupper((string) $service_type), ['PPPOE', 'OTHERS'], true);
+        if (!$service_supports_genieacs) {
+            $genieacs_device_id = '';
+            $genieacs_device_label = '';
+        }
         //post Customers Attributes
         $custom_field_names = (array) $_POST['custom_field_name'];
         $custom_field_values = (array) $_POST['custom_field_value'];
@@ -513,6 +669,12 @@ switch ($action) {
         $district = _post('district');
         $state = _post('state');
         $zip = _post('zip');
+        $account_manager_mode = strtolower(trim((string) _post('account_manager_mode', 'all')));
+        if (!in_array($account_manager_mode, ['all', 'list'], true)) {
+            $account_manager_mode = 'all';
+        }
+        $account_manager_input = (int) _post('account_manager_id', 0);
+        $account_manager_id = 0;
 
         run_hook('add_customer'); #HOOK
         $msg = '';
@@ -536,6 +698,27 @@ switch ($action) {
         if (ORM::for_table('tbl_customers')->where('phonenumber', Lang::phoneFormat($phonenumber))->find_one()) {
             $msg .= Lang::T('Phone number already exists') . '<br>';
         }
+        if ($service_supports_genieacs && strlen($genieacs_device_id) > 190) {
+            $msg .= Lang::T('GenieACS device ID is too long') . '<br>';
+        }
+        if ($service_supports_genieacs && strlen($genieacs_device_label) > 255) {
+            $msg .= Lang::T('GenieACS device label is too long') . '<br>';
+        }
+        if (_customer_am_column_exists()) {
+            if ($account_manager_mode === 'list') {
+                if ($account_manager_input < 1) {
+                    $msg .= Lang::T('Please select account manager') . '<br>';
+                } else {
+                    $am_error = '';
+                    $account_manager_id = _customer_am_resolve($account_manager_input, $am_error);
+                    if ($am_error !== '') {
+                        $msg .= $am_error . '<br>';
+                    }
+                }
+            } else {
+                $account_manager_id = 0;
+            }
+        }
         if ($msg == '') {
             $d = ORM::for_table('tbl_customers')->create();
             $d->username = $username;
@@ -555,10 +738,28 @@ switch ($action) {
             $d->district = $district;
             $d->state = $state;
             $d->zip = $zip;
+            if (_customer_am_column_exists()) {
+                $d->account_manager_id = $account_manager_id;
+            }
             $d->save();
 
             // Retrieve the customer ID of the newly created customer
             $customerId = $d->id();
+            $genieacsSyncNotice = '';
+            if (class_exists('GenieACS')) {
+                if ($service_supports_genieacs && $genieacs_device_id !== '') {
+                    GenieACS::setAssignedDevice($customerId, $genieacs_device_id, $genieacs_device_label);
+                    $genieacsSyncNotice = $syncGenieAcsPppCredentials(
+                        $customerId,
+                        $service_supports_genieacs,
+                        $genieacs_device_id,
+                        $pppoe_username,
+                        $pppoe_password
+                    );
+                } else {
+                    GenieACS::clearAssignedDevice($customerId);
+                }
+            }
             // Save Customers Attributes details
             if (!empty($custom_field_names) && !empty($custom_field_values)) {
                 $totalFields = min(count($custom_field_names), count($custom_field_values));
@@ -578,7 +779,7 @@ switch ($action) {
 
             // Send welcome message
             if (isset($_POST['send_welcome_message']) && $_POST['send_welcome_message'] == true) {
-                $welcomeMessage = Lang::getNotifText('welcome_message');
+                $welcomeMessage = Lang::getNotifText('welcome_message', ['purpose' => 'admin_register']);
                 $welcomeMessage = str_replace('[[company]]', $config['CompanyName'], $welcomeMessage);
                 $welcomeMessage = str_replace('[[name]]', $d['fullname'], $welcomeMessage);
                 $welcomeMessage = str_replace('[[username]]', $d['username'], $welcomeMessage);
@@ -586,6 +787,10 @@ switch ($action) {
                 $welcomeMessage = str_replace('[[url]]', APP_URL . '/?_route=login', $welcomeMessage);
 
                 $subject = "Welcome to " . $config['CompanyName'];
+
+                $waOptions = Message::isWhatsappQueueEnabledForNotificationTemplate('welcome_message')
+                    ? ['queue' => true, 'queue_context' => 'notification']
+                    : [];
 
                 $channels = [
                     'sms' => [
@@ -596,7 +801,7 @@ switch ($action) {
                     'whatsapp' => [
                         'enabled' => isset($_POST['wa']),
                         'method' => 'sendWhatsapp',
-                        'args' => [$d['phonenumber'], $welcomeMessage]
+                        'args' => [$d['phonenumber'], $welcomeMessage, $waOptions]
                     ],
                     'email' => [
                         'enabled' => isset($_POST['mail']),
@@ -621,13 +826,20 @@ switch ($action) {
                     }
                 }
             }
-            r2(getUrl('customers/list'), 's', Lang::T('Account Created Successfully'));
+            $successMessage = Lang::T('Account Created Successfully');
+            if ($genieacsSyncNotice !== '') {
+                $successMessage .= '<br>' . $genieacsSyncNotice;
+            }
+            r2(getUrl('customers/list'), 's', $successMessage);
         } else {
             r2(getUrl('customers/add'), 'e', $msg);
         }
         break;
 
     case 'edit-post':
+        if (!in_array($admin['user_type'], ['SuperAdmin', 'Admin'])) {
+            _alert(Lang::T('You do not have permission to access this page'), 'danger', "dashboard");
+        }
         $id = _post('id');
         $csrf_token = _post('csrf_token');
         if (!Csrf::check($csrf_token)) {
@@ -648,11 +860,21 @@ switch ($action) {
         $service_type = _post('service_type');
         $coordinates = _post('coordinates');
         $status = _post('status');
+        $genieacs_device_id = trim((string) _post('genieacs_device_id'));
+        $genieacs_device_label = trim((string) _post('genieacs_device_label'));
+        $service_supports_genieacs = in_array(strtoupper((string) $service_type), ['PPPOE', 'OTHERS'], true);
+        if (!$service_supports_genieacs) {
+            $genieacs_device_id = '';
+            $genieacs_device_label = '';
+        }
         //additional information
         $city = _post('city');
         $district = _post('district');
         $state = _post('state');
         $zip = _post('zip');
+        $account_manager_mode_input = isset($_POST['account_manager_mode']) ? strtolower(trim((string) $_POST['account_manager_mode'])) : null;
+        $account_manager_input = isset($_POST['account_manager_id']) ? (int) $_POST['account_manager_id'] : null;
+        $account_manager_id = 0;
         run_hook('edit_customer'); #HOOK
         $msg = '';
         if (Validator::Length($username, 55, 2) == false) {
@@ -665,11 +887,45 @@ switch ($action) {
         if (!Validator::PhoneWithCountry($phonenumber_raw)) {
             $msg .= Lang::T('Invalid phone number; start with 62 or 0') . '<br>';
         }
+        if ($service_supports_genieacs && strlen($genieacs_device_id) > 190) {
+            $msg .= Lang::T('GenieACS device ID is too long') . '<br>';
+        }
+        if ($service_supports_genieacs && strlen($genieacs_device_label) > 255) {
+            $msg .= Lang::T('GenieACS device label is too long') . '<br>';
+        }
 
         $c = ORM::for_table('tbl_customers')->find_one($id);
 
         if (!$c) {
             $msg .= Lang::T('Data Not Found') . '<br>';
+        }
+        if ($c && !_customer_can_access($c, $admin)) {
+            $msg .= Lang::T('Account Not Found') . '<br>';
+        }
+
+        if ($c) {
+            $account_manager_id = _customer_am_id($c);
+        }
+        if ($c && _customer_am_column_exists() && _customer_can_edit_assignment($admin)) {
+            if ($account_manager_mode_input !== null) {
+                if (!in_array($account_manager_mode_input, ['all', 'list'], true)) {
+                    $msg .= Lang::T('Invalid account manager mode') . '<br>';
+                } elseif ($account_manager_mode_input === 'all') {
+                    $account_manager_id = 0;
+                } else {
+                    if ($account_manager_input === null || (int) $account_manager_input < 1) {
+                        $msg .= Lang::T('Please select account manager') . '<br>';
+                    } else {
+                        $am_error = '';
+                        $resolved_am = _customer_am_resolve($account_manager_input, $am_error);
+                        if ($am_error !== '') {
+                            $msg .= $am_error . '<br>';
+                        } else {
+                            $account_manager_id = $resolved_am;
+                        }
+                    }
+                }
+            }
         }
 
         if ($c && $c['phonenumber'] != $phonenumber) {
@@ -790,7 +1046,25 @@ switch ($action) {
             $c->district = $district;
             $c->state = $state;
             $c->zip = $zip;
+            if (_customer_am_column_exists() && _customer_can_edit_assignment($admin)) {
+                $c->account_manager_id = $account_manager_id;
+            }
             $c->save();
+            $genieacsSyncNotice = '';
+            if (class_exists('GenieACS')) {
+                if ($service_supports_genieacs && $genieacs_device_id !== '') {
+                    GenieACS::setAssignedDevice($c['id'], $genieacs_device_id, $genieacs_device_label);
+                    $genieacsSyncNotice = $syncGenieAcsPppCredentials(
+                        $c['id'],
+                        $service_supports_genieacs,
+                        $genieacs_device_id,
+                        $pppoe_username,
+                        $pppoe_password
+                    );
+                } else {
+                    GenieACS::clearAssignedDevice($c['id']);
+                }
+            }
 
 
             // Update Customers Attributes values in tbl_customers_fields table
@@ -873,7 +1147,11 @@ switch ($action) {
                     $tur->save();
                 }
             }
-            r2(getUrl('customers/view/') . $id, 's', 'User Updated Successfully');
+            $successMessage = 'User Updated Successfully';
+            if ($genieacsSyncNotice !== '') {
+                $successMessage .= '<br>' . $genieacsSyncNotice;
+            }
+            r2(getUrl('customers/view/') . $id, 's', $successMessage);
         } else {
             r2(getUrl('customers/edit/') . $id, 'e', $msg);
         }
@@ -911,6 +1189,7 @@ switch ($action) {
             $query = ORM::for_table('tbl_customers');
             $query->where("status", $filter);
         }
+        _customer_apply_scope($query, $admin, 'tbl_customers');
         if ($order == 'lastname') {
             $query->order_by_expr("SUBSTR(fullname, INSTR(fullname, ' ')) $orderby");
         } else {
@@ -991,6 +1270,8 @@ switch ($action) {
 
         $d = Paginator::findMany($query, ['search' => $search], $per_page, $append_url);
         $ui->assign('d', $d);
+        $ui->assign('customer_am_enabled', _customer_am_column_exists());
+        $ui->assign('customer_am_labels', _customer_am_label_map());
         $ui->assign('statuses', ORM::for_table('tbl_customers')->getEnum("status"));
         $ui->assign('filter', $filter);
         $ui->assign('search', htmlspecialchars($search, ENT_QUOTES, 'UTF-8'));

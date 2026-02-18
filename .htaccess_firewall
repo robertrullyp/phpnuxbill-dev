@@ -20,6 +20,10 @@
 
 RewriteEngine On
 RewriteBase /
+# Pass Authorization header to PHP for API-key auth (some Apache/PHP-FPM setups drop it).
+RewriteCond %{HTTP:Authorization} .
+RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
+RewriteRule ^admin(/.*)?$ index.php [QSA,L]
 RewriteCond %{REQUEST_FILENAME} !-f
 RewriteCond %{REQUEST_FILENAME} !-d
 RewriteCond %{DOCUMENT_ROOT}%{REQUEST_URI} !-f

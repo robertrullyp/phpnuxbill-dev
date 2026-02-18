@@ -92,6 +92,7 @@ switch ($action) {
         $methods = array_column(ORM::for_table('tbl_transactions')->rawQuery("SELECT DISTINCT SUBSTRING_INDEX(`method`, ' - ', 1) as method FROM tbl_transactions;")->findArray(), 'method');
         $routers = array_column(ORM::for_table('tbl_transactions')->select('routers')->distinct('routers')->find_array(), 'routers');
         $plans = array_column(ORM::for_table('tbl_transactions')->select('plan_name')->distinct('plan_name')->find_array(), 'plan_name');
+        $showInvoiceNote = isset($config['show_invoice_note']) && $config['show_invoice_note'] == 'yes';
         $reset_day = $config['reset_day'];
         if (empty($reset_day)) {
             $reset_day = 1;
@@ -148,6 +149,7 @@ switch ($action) {
         }
 
         if ($x) {
+            $noteHeader = $showInvoiceNote ? '<th>' . Lang::T('Note') . '</th>' : '';
             $html = '
 			<div id="page-wrap">
 				<div id="address">
@@ -168,6 +170,7 @@ switch ($action) {
 				<th>' . Lang::T('Created On') . '</th>
 				<th>' . Lang::T('Expires On') . '</th>
 				<th>' . Lang::T('Method') . '</th>
+                ' . $noteHeader . '
 				<th>' . Lang::T('Routers') . '</th>
 				</tr>';
             $c = true;
@@ -184,6 +187,10 @@ switch ($action) {
                 $method = $value['method'];
                 $routers = $value['routers'];
 
+                $noteCell = '';
+                if ($showInvoiceNote) {
+                    $noteCell = '<td>' . nl2br(htmlspecialchars((string) $value['note'], ENT_QUOTES, 'UTF-8')) . '</td>';
+                }
                 $html .= "<tr" . (($c = !$c) ? ' class="alt"' : ' class=""') . ">" . "
 				<td>$username</td>
                 <td>$fullname</td>
@@ -193,6 +200,7 @@ switch ($action) {
 				<td>$recharged_on</td>
 				<td>$expiration</td>
 				<td>$method</td>
+                $noteCell
 				<td>$routers</td>
 				</tr>";
             }
@@ -201,15 +209,44 @@ switch ($action) {
 			<h3 class="sum">' . $config['currency_code'] . ' ' . number_format($xy, 2, $config['dec_point'], $config['thousands_sep']) . '</h3>';
             run_hook('print_pdf_by_date'); #HOOK
 
-            $mpdf = new \Mpdf\Mpdf();
-            $mpdf->SetProtection(array('print'));
-            $mpdf->SetTitle($config['CompanyName'] . ' Reports');
-            $mpdf->SetAuthor($config['CompanyName']);
-            $mpdf->SetWatermarkText($d['price']);
-            $mpdf->showWatermarkText = true;
-            $mpdf->watermark_font = 'Helvetica';
-            $mpdf->watermarkTextAlpha = 0.1;
-            $mpdf->SetDisplayMode('fullpage');
+            $watermarkText = $config['currency_code'] . ' ' . number_format($xy, 2, $config['dec_point'], $config['thousands_sep']);
+            if (!class_exists('\\Mpdf\\Mpdf')) {
+                if (!empty($isApi)) {
+                    showResult(false, Lang::T('PDF engine is unavailable'));
+                }
+                _alert(Lang::T('PDF engine is unavailable'), 'danger', 'reports/by-date');
+            }
+            if (!extension_loaded('mbstring') || !extension_loaded('gd')) {
+                $missing = [];
+                if (!extension_loaded('mbstring')) {
+                    $missing[] = 'mbstring';
+                }
+                if (!extension_loaded('gd')) {
+                    $missing[] = 'gd';
+                }
+                $msg = Lang::T('Missing PHP extensions') . ': ' . implode(', ', $missing);
+                if (!empty($isApi)) {
+                    showResult(false, $msg);
+                }
+                _alert($msg, 'danger', 'reports/by-date');
+            }
+
+            try {
+                $mpdf = new \Mpdf\Mpdf();
+                $mpdf->SetProtection(array('print'));
+                $mpdf->SetTitle($config['CompanyName'] . ' Reports');
+                $mpdf->SetAuthor($config['CompanyName']);
+                $mpdf->SetWatermarkText($watermarkText);
+                $mpdf->showWatermarkText = true;
+                $mpdf->watermark_font = 'Helvetica';
+                $mpdf->watermarkTextAlpha = 0.1;
+                $mpdf->SetDisplayMode('fullpage');
+            } catch (Throwable $e) {
+                if (!empty($isApi)) {
+                    showResult(false, $e->getMessage());
+                }
+                _alert($e->getMessage(), 'danger', 'reports/by-date');
+            }
 
             $style = '<style>
 			#page-wrap { width: 100%; margin: 0 auto; }
@@ -250,9 +287,22 @@ switch ($action) {
 $style
 $html
 EOF;
-            $mpdf->WriteHTML($nhtml);
-            $mpdf->Output('phpnuxbill_reports_' . date('Ymd_His') . '.pdf', 'D');
+            try {
+                $mpdf->WriteHTML($nhtml);
+                if (!empty($isApi)) {
+                    $GLOBALS['api_raw_output'] = true;
+                }
+                $mpdf->Output('phpnuxbill_reports_' . date('Ymd_His') . '.pdf', 'D');
+            } catch (Throwable $e) {
+                if (!empty($isApi)) {
+                    showResult(false, $e->getMessage());
+                }
+                _alert($e->getMessage(), 'danger', 'reports/by-date');
+            }
         } else {
+            if (!empty($isApi)) {
+                $GLOBALS['api_raw_output'] = true;
+            }
             echo 'No Data';
         }
 
@@ -299,6 +349,7 @@ EOF;
         $fdate = _post('fdate');
         $tdate = _post('tdate');
         $stype = _post('stype');
+        $showInvoiceNote = isset($config['show_invoice_note']) && $config['show_invoice_note'] == 'yes';
         $d = ORM::for_table('tbl_transactions');
         $d->left_outer_join('tbl_customers', 'tbl_transactions.username = tbl_customers.username')
             ->select('tbl_transactions.*')
@@ -333,6 +384,7 @@ EOF;
         }
 
         if ($x) {
+            $noteHeader = $showInvoiceNote ? '<th>' . Lang::T('Note') . '</th>' : '';
             $html = '
 			<div id="page-wrap">
 				<div id="address">
@@ -353,6 +405,7 @@ EOF;
 				<th>' . Lang::T('Created On') . '</th>
 				<th>' . Lang::T('Expires On') . '</th>
 				<th>' . Lang::T('Method') . '</th>
+                ' . $noteHeader . '
 				<th>' . Lang::T('Routers') . '</th>
 				</tr>';
             $c = true;
@@ -369,6 +422,10 @@ EOF;
                 $method = $value['method'];
                 $routers = $value['routers'];
 
+                $noteCell = '';
+                if ($showInvoiceNote) {
+                    $noteCell = '<td>' . nl2br(htmlspecialchars((string) $value['note'], ENT_QUOTES, 'UTF-8')) . '</td>';
+                }
                 $html .= "<tr" . (($c = !$c) ? ' class="alt"' : ' class=""') . ">" . "
 				<td>$username</td>
                 <td>$fullname</td>
@@ -378,6 +435,7 @@ EOF;
 				<td>$recharged_on </td>
 				<td>$expiration $time </td>
 				<td>$method</td>
+                $noteCell
 				<td>$routers</td>
 				</tr>";
             }
@@ -386,15 +444,44 @@ EOF;
 			<h3 class="sum">' . $config['currency_code'] . ' ' . number_format($xy, 2, $config['dec_point'], $config['thousands_sep']) . '</h3>';
 
             run_hook('pdf_by_period'); #HOOK
-            $mpdf = new \Mpdf\Mpdf();
-            $mpdf->SetProtection(array('print'));
-            $mpdf->SetTitle($config['CompanyName'] . ' Reports');
-            $mpdf->SetAuthor($config['CompanyName']);
-            $mpdf->SetWatermarkText($d['price']);
-            $mpdf->showWatermarkText = true;
-            $mpdf->watermark_font = 'Helvetica';
-            $mpdf->watermarkTextAlpha = 0.1;
-            $mpdf->SetDisplayMode('fullpage');
+            $watermarkText = $config['currency_code'] . ' ' . number_format($xy, 2, $config['dec_point'], $config['thousands_sep']);
+            if (!class_exists('\\Mpdf\\Mpdf')) {
+                if (!empty($isApi)) {
+                    showResult(false, Lang::T('PDF engine is unavailable'));
+                }
+                _alert(Lang::T('PDF engine is unavailable'), 'danger', 'reports/by-period');
+            }
+            if (!extension_loaded('mbstring') || !extension_loaded('gd')) {
+                $missing = [];
+                if (!extension_loaded('mbstring')) {
+                    $missing[] = 'mbstring';
+                }
+                if (!extension_loaded('gd')) {
+                    $missing[] = 'gd';
+                }
+                $msg = Lang::T('Missing PHP extensions') . ': ' . implode(', ', $missing);
+                if (!empty($isApi)) {
+                    showResult(false, $msg);
+                }
+                _alert($msg, 'danger', 'reports/by-period');
+            }
+
+            try {
+                $mpdf = new \Mpdf\Mpdf();
+                $mpdf->SetProtection(array('print'));
+                $mpdf->SetTitle($config['CompanyName'] . ' Reports');
+                $mpdf->SetAuthor($config['CompanyName']);
+                $mpdf->SetWatermarkText($watermarkText);
+                $mpdf->showWatermarkText = true;
+                $mpdf->watermark_font = 'Helvetica';
+                $mpdf->watermarkTextAlpha = 0.1;
+                $mpdf->SetDisplayMode('fullpage');
+            } catch (Throwable $e) {
+                if (!empty($isApi)) {
+                    showResult(false, $e->getMessage());
+                }
+                _alert($e->getMessage(), 'danger', 'reports/by-period');
+            }
 
             $style = '<style>
 			#page-wrap { width: 100%; margin: 0 auto; }
@@ -435,9 +522,22 @@ EOF;
 $style
 $html
 EOF;
-            $mpdf->WriteHTML($nhtml);
-            $mpdf->Output(date('Ymd_His') . '.pdf', 'D');
+            try {
+                $mpdf->WriteHTML($nhtml);
+                if (!empty($isApi)) {
+                    $GLOBALS['api_raw_output'] = true;
+                }
+                $mpdf->Output(date('Ymd_His') . '.pdf', 'D');
+            } catch (Throwable $e) {
+                if (!empty($isApi)) {
+                    showResult(false, $e->getMessage());
+                }
+                _alert($e->getMessage(), 'danger', 'reports/by-period');
+            }
         } else {
+            if (!empty($isApi)) {
+                $GLOBALS['api_raw_output'] = true;
+            }
             echo 'No Data';
         }
 

@@ -37,7 +37,7 @@
                                 <th>{Lang::T('Email')}</th>
                                 <th>{Lang::T('Type')}</th>
                                 <th>{Lang::T('Location')}</th>
-                                <th>{Lang::T('Agent')}</th>
+                                <th>{Lang::T('Parent')}</th>
                                 <th>{Lang::T('Last Login')}</th>
                                 <th>{Lang::T('Manage')}</th>
                                 <th>ID</th>

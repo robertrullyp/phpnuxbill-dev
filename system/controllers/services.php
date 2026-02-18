@@ -42,9 +42,93 @@ if (!function_exists('ensureVisibilityEnumSupportsExclude')) {
 }
 ensureVisibilityEnumSupportsExclude();
 
+if (!function_exists('ensurePlansCustomerCanExtendColumn')) {
+    function ensurePlansCustomerCanExtendColumn()
+    {
+        static $done = false;
+        if ($done) {
+            return;
+        }
+        try {
+            $db = ORM::get_db();
+            if ($db) {
+                $stmt = $db->query("SHOW COLUMNS FROM `tbl_plans` LIKE 'customer_can_extend'");
+                if ($stmt) {
+                    $col = $stmt->fetch(PDO::FETCH_ASSOC);
+                    if (!$col) {
+                        $db->exec("ALTER TABLE `tbl_plans` ADD `customer_can_extend` TINYINT(1) NOT NULL DEFAULT '1' COMMENT '0 disable customer self extend' AFTER `invoice_notification`");
+                    }
+                }
+            }
+        } catch (Exception $e) {
+            // silently ignore; do not block UI if DB user has no alter privilege
+        }
+        $done = true;
+    }
+}
+ensurePlansCustomerCanExtendColumn();
+
+if (!function_exists('normalizePppoeServiceName')) {
+    function normalizePppoeServiceName($value)
+    {
+        $value = trim((string) $value);
+        if ($value === '') {
+            return '';
+        }
+        if (strlen($value) > 64) {
+            return '';
+        }
+        if (preg_match('/^[A-Za-z0-9 _.-]+$/', $value) !== 1) {
+            return '';
+        }
+        return $value;
+    }
+}
+
+if (!function_exists('loadPppoeServicesForRouter')) {
+    function loadPppoeServicesForRouter($routerName, &$error = '')
+    {
+        global $DEVICE_PATH;
+        $error = '';
+        $routerName = trim((string) $routerName);
+        if ($routerName === '') {
+            return [];
+        }
+
+        $driverPath = $DEVICE_PATH . DIRECTORY_SEPARATOR . 'MikrotikPppoe.php';
+        if (!file_exists($driverPath)) {
+            $error = Lang::T('PPPoE device driver not found');
+            return [];
+        }
+
+        require_once $driverPath;
+        try {
+            $driver = new MikrotikPppoe();
+            return $driver->listPppoeServerServices($routerName, $error);
+        } catch (Throwable $e) {
+            $error = $e->getMessage();
+            return [];
+        }
+    }
+}
+
 if (!in_array($admin['user_type'], ['SuperAdmin', 'Admin'])) {
     _alert(Lang::T('You do not have permission to access this page'), 'danger', "dashboard");
 }
+
+$accessibleRouterNames = _router_get_accessible_router_names($admin, false);
+$applyPlanScopeFilter = function ($query) use ($admin, $accessibleRouterNames) {
+    if (($admin['user_type'] ?? '') === 'SuperAdmin') {
+        return $query;
+    }
+    if (empty($accessibleRouterNames)) {
+        $query->where('tbl_plans.is_radius', '1');
+        return $query;
+    }
+    $placeholders = implode(',', array_fill(0, count($accessibleRouterNames), '?'));
+    $query->where_raw('(tbl_plans.is_radius = 1 OR tbl_plans.routers IN (' . $placeholders . '))', $accessibleRouterNames);
+    return $query;
+};
 
 switch ($action) {
     case 'sync':
@@ -61,10 +145,28 @@ switch ($action) {
         }
 
         list($planType, $redirectRoute) = $syncTargets[$target];
-        $plans = ORM::for_table('tbl_plans')->where('type', $planType)->find_many();
+        $planQuery = ORM::for_table('tbl_plans')->where('type', $planType);
+        $applyPlanScopeFilter($planQuery);
+        $plans = $planQuery->find_many();
         $log = '';
 
         foreach ($plans as $plan) {
+            if ($planType === 'PPPOE' && (int) $plan['is_radius'] === 0 && strtolower((string) $plan['device']) === 'mikrotikpppoe') {
+                $pppoeService = trim((string) ($plan['pppoe_service'] ?? ''));
+                if ($pppoeService === '') {
+                    $serviceError = '';
+                    $serviceNames = loadPppoeServicesForRouter((string) $plan['routers'], $serviceError);
+                    if (!empty($serviceNames)) {
+                        $plan->pppoe_service = (string) $serviceNames[0];
+                        $plan->save();
+                        $log .= "INFO : $plan[name_plan], auto-filled PPPoE service => {$serviceNames[0]}<br>";
+                    } else {
+                        $warningText = $serviceError !== '' ? $serviceError : 'No PPPoE service found on router';
+                        $log .= "WARN : $plan[name_plan], PPPoE service is empty ({$warningText})<br>";
+                    }
+                }
+            }
+
             $dvc = Package::getDevice($plan);
             if ($_app_stage != 'demo') {
                 if (!empty($dvc) && file_exists($dvc)) {
@@ -88,6 +190,9 @@ switch ($action) {
         $device = _req('device');
         $status = _req('status');
         $router = _req('router');
+        if (!empty($router) && $router !== 'radius' && !_router_can_access_router($router, $admin, ['radius'])) {
+            $router = '';
+        }
         $ui->assign('type1', $type1);
         $ui->assign('type2', $type2);
         $ui->assign('type3', $type3);
@@ -116,7 +221,11 @@ switch ($action) {
         $ui->assign('type2s', ORM::for_table('tbl_plans')->getEnum("plan_type"));
         $ui->assign('type3s', ORM::for_table('tbl_plans')->getEnum("typebp"));
         $ui->assign('valids', ORM::for_table('tbl_plans')->getEnum("validity_unit"));
-        $ui->assign('routers', array_column(ORM::for_table('tbl_plans')->distinct()->select("routers")->where('tbl_plans.type', 'Hotspot')->whereNotEqual('routers', '')->findArray(), 'routers'));
+        $ui->assign('routers', _router_filter_allowed_names(
+            array_column(ORM::for_table('tbl_plans')->distinct()->select("routers")->where('tbl_plans.type', 'Hotspot')->whereNotEqual('routers', '')->findArray(), 'routers'),
+            $admin,
+            ['radius']
+        ));
         $devices = [];
         $files = scandir($DEVICE_PATH);
         foreach ($files as $file) {
@@ -129,6 +238,7 @@ switch ($action) {
         $query = ORM::for_table('tbl_bandwidth')
             ->left_outer_join('tbl_plans', array('tbl_bandwidth.id', '=', 'tbl_plans.id_bw'))
             ->where('tbl_plans.type', 'Hotspot');
+        $applyPlanScopeFilter($query);
 
         if (!empty($type1)) {
             $query->where('tbl_plans.prepaid', $type1);
@@ -190,7 +300,7 @@ switch ($action) {
     case 'add':
         $d = ORM::for_table('tbl_bandwidth')->find_many();
         $ui->assign('d', $d);
-        $r = ORM::for_table('tbl_routers')->find_many();
+        $r = _router_get_accessible_routers($admin, false);
         $ui->assign('r', $r);
         $ui->assign('last_visibility', isset($_SESSION['last_visibility']) ? $_SESSION['last_visibility'] : 'all');
         $devices = [];
@@ -211,7 +321,7 @@ switch ($action) {
     case 'edit':
         $id = $routes['2'];
         $d = ORM::for_table('tbl_plans')->find_one($id);
-        if ($d) {
+        if ($d && ($d['is_radius'] || _router_can_access_router($d['routers'], $admin, ['radius']))) {
             if (empty($d['device'])) {
                 if ($d['is_radius']) {
                     $d->device = 'Radius';
@@ -260,7 +370,7 @@ switch ($action) {
         $id = $routes['2'];
 
         $d = ORM::for_table('tbl_plans')->find_one($id);
-        if ($d) {
+        if ($d && ($d['is_radius'] || _router_can_access_router($d['routers'], $admin, ['radius']))) {
             run_hook('delete_plan'); #HOOK
             Package::removePlanLinks($id);
             $dvc = Package::getDevice($d);
@@ -303,6 +413,7 @@ switch ($action) {
         $_SESSION['last_visibility'] = $visibility ?? 'all';
         $reminderEnabled = isset($_POST['reminder_enabled']) ? (int) $_POST['reminder_enabled'] : 0;
         $invoiceNotification = isset($_POST['invoice_notification']) ? (int) $_POST['invoice_notification'] : 0;
+        $customerCanExtend = isset($_POST['customer_can_extend']) ? (int) $_POST['customer_can_extend'] : 0;
         $linkedPlans = $_POST['linked_plans'] ?? null;
 
         $msg = '';
@@ -318,6 +429,9 @@ switch ($action) {
         if (empty($radius)) {
             if ($routers == '') {
                 $msg .= Lang::T('All field is required') . '<br>';
+            }
+            if ($routers != '' && !_router_can_access_router($routers, $admin, ['radius'])) {
+                $msg .= Lang::T('Selected router is outside your allowed scope') . '<br>';
             }
         }
         $d = ORM::for_table('tbl_plans')->where('name_plan', $name)->where('type', 'Hotspot')->find_one();
@@ -355,6 +469,7 @@ switch ($action) {
             $d->prepaid = $prepaid;
             $d->reminder_enabled = $reminderEnabled ? 1 : 0;
             $d->invoice_notification = $invoiceNotification ? 1 : 0;
+            $d->customer_can_extend = $customerCanExtend ? 1 : 0;
             // set visibility for new plan
             $d->visibility = $visibility;
             $d->device = $device;
@@ -430,6 +545,7 @@ switch ($action) {
         $_SESSION['last_visibility'] = $visibility ?? 'all';
         $reminderEnabled = isset($_POST['reminder_enabled']) ? (int) $_POST['reminder_enabled'] : 0;
         $invoiceNotification = isset($_POST['invoice_notification']) ? (int) $_POST['invoice_notification'] : 0;
+        $customerCanExtend = isset($_POST['customer_can_extend']) ? (int) $_POST['customer_can_extend'] : 0;
         $linkedPlans = $_POST['linked_plans'] ?? null;
         $msg = '';
         if (Validator::UnsignedNumber($validity) == false) {
@@ -446,6 +562,12 @@ switch ($action) {
         if ($d) {
         } else {
             $msg .= Lang::T('Data Not Found') . '<br>';
+        }
+        if ($d && !($d['is_radius'] || _router_can_access_router($d['routers'], $admin, ['radius']))) {
+            $msg .= Lang::T('Data Not Found') . '<br>';
+        }
+        if (!empty($routers) && !_router_can_access_router($routers, $admin, ['radius'])) {
+            $msg .= Lang::T('Selected router is outside your allowed scope') . '<br>';
         }
 
         if ($price_old <= $price) {
@@ -493,6 +615,7 @@ switch ($action) {
             $d->prepaid = $prepaid;
             $d->reminder_enabled = $reminderEnabled ? 1 : 0;
             $d->invoice_notification = $invoiceNotification ? 1 : 0;
+            $d->customer_can_extend = $customerCanExtend ? 1 : 0;
             $d->visibility = $visibility;
             $d->on_login = $on_login;
             $d->on_logout = $on_logout;
@@ -551,6 +674,9 @@ switch ($action) {
         $device = _req('device');
         $status = _req('status');
         $router = _req('router');
+        if (!empty($router) && $router !== 'radius' && !_router_can_access_router($router, $admin, ['radius'])) {
+            $router = '';
+        }
         $ui->assign('type1', $type1);
         $ui->assign('type2', $type2);
         $ui->assign('type3', $type3);
@@ -579,7 +705,11 @@ switch ($action) {
         $ui->assign('type2s', ORM::for_table('tbl_plans')->getEnum("plan_type"));
         $ui->assign('type3s', ORM::for_table('tbl_plans')->getEnum("typebp"));
         $ui->assign('valids', ORM::for_table('tbl_plans')->getEnum("validity_unit"));
-        $ui->assign('routers', array_column(ORM::for_table('tbl_plans')->distinct()->select("routers")->whereNotEqual('routers', '')->findArray(), 'routers'));
+        $ui->assign('routers', _router_filter_allowed_names(
+            array_column(ORM::for_table('tbl_plans')->distinct()->select("routers")->whereNotEqual('routers', '')->findArray(), 'routers'),
+            $admin,
+            ['radius']
+        ));
         $devices = [];
         $files = scandir($DEVICE_PATH);
         foreach ($files as $file) {
@@ -592,6 +722,7 @@ switch ($action) {
         $query = ORM::for_table('tbl_bandwidth')
             ->left_outer_join('tbl_plans', array('tbl_bandwidth.id', '=', 'tbl_plans.id_bw'))
             ->where('tbl_plans.type', 'PPPOE');
+        $applyPlanScopeFilter($query);
         if (!empty($type1)) {
             $query->where('tbl_plans.prepaid', $type1);
         }
@@ -654,7 +785,7 @@ switch ($action) {
         $ui->assign('_title', Lang::T('PPPOE Plans'));
         $d = ORM::for_table('tbl_bandwidth')->find_many();
         $ui->assign('d', $d);
-        $r = ORM::for_table('tbl_routers')->find_many();
+        $r = _router_get_accessible_routers($admin, false);
         $ui->assign('r', $r);
         $ui->assign('last_visibility', isset($_SESSION['last_visibility']) ? $_SESSION['last_visibility'] : 'all');
         $devices = [];
@@ -676,7 +807,7 @@ switch ($action) {
         $ui->assign('_title', Lang::T('PPPOE Plans'));
         $id = $routes['2'];
         $d = ORM::for_table('tbl_plans')->find_one($id);
-        if ($d) {
+        if ($d && ($d['is_radius'] || _router_can_access_router($d['routers'], $admin, ['radius']))) {
             if (empty($d['device'])) {
                 if ($d['is_radius']) {
                     $d->device = 'Radius';
@@ -692,7 +823,7 @@ switch ($action) {
             $ui->assign('b', $b);
             $r = [];
             if ($d['is_radius']) {
-                $r = ORM::for_table('tbl_routers')->find_many();
+                $r = _router_get_accessible_routers($admin, false);
             }
             $ui->assign('r', $r);
             $devices = [];
@@ -732,7 +863,7 @@ switch ($action) {
         $id = $routes['2'];
 
         $d = ORM::for_table('tbl_plans')->find_one($id);
-        if ($d) {
+        if ($d && ($d['is_radius'] || _router_can_access_router($d['routers'], $admin, ['radius']))) {
             run_hook('delete_ppoe'); #HOOK
             Package::removePlanLinks($id);
 
@@ -762,11 +893,15 @@ switch ($action) {
         $routers = _post('routers');
         $device = _post('device');
         $pool = _post('pool_name');
+        $rawPppoeService = trim((string) _post('pppoe_service'));
+        $pppoe_service = normalizePppoeServiceName($rawPppoeService);
+        $plan_expired = _post('plan_expired', '0');
         $enabled = _post('enabled');
         $prepaid = _post('prepaid');
         $expired_date = _post('expired_date');
         $reminderEnabled = isset($_POST['reminder_enabled']) ? (int) $_POST['reminder_enabled'] : 0;
         $invoiceNotification = isset($_POST['invoice_notification']) ? (int) $_POST['invoice_notification'] : 0;
+        $customerCanExtend = isset($_POST['customer_can_extend']) ? (int) $_POST['customer_can_extend'] : 0;
         $linkedPlans = $_POST['linked_plans'] ?? null;
         $visibilityInput = _post('visibility', null);
         $visibility = Package::normalizeVisibility($visibilityInput);
@@ -780,12 +915,18 @@ switch ($action) {
         if (Validator::UnsignedNumber($price) == false) {
             $msg .= 'The price must be a number' . '<br>';
         }
-        if ($name == '' or $id_bw == '' or $price == '' or $validity == '' or $pool == '') {
+        if (trim((string) $name) === '' || trim((string) $id_bw) === '' || trim((string) $price) === '' || trim((string) $validity) === '' || trim((string) $pool) === '') {
             $msg .= Lang::T('All field is required') . '<br>';
+        }
+        if ($rawPppoeService !== '' && $pppoe_service === '') {
+            $msg .= Lang::T('Invalid PPPoE service name format') . '<br>';
         }
         if (empty($radius)) {
             if ($routers == '') {
                 $msg .= Lang::T('All field is required') . '<br>';
+            }
+            if ($routers != '' && !_router_can_access_router($routers, $admin, ['radius'])) {
+                $msg .= Lang::T('Selected router is outside your allowed scope') . '<br>';
             }
         }
 
@@ -830,6 +971,7 @@ switch ($action) {
                 $d->routers = $routers;
             }
             $d->plan_expired = (int)$plan_expired;
+            $d->pppoe_service = $pppoe_service;
             if ($prepaid == 'no') {
                 if ($expired_date > 28 && $expired_date < 1) {
                     $expired_date = 20;
@@ -842,6 +984,7 @@ switch ($action) {
             $d->prepaid = $prepaid;
             $d->reminder_enabled = $reminderEnabled ? 1 : 0;
             $d->invoice_notification = $invoiceNotification ? 1 : 0;
+            $d->customer_can_extend = $customerCanExtend ? 1 : 0;
             $d->visibility = $visibility;
             $d->device = $device;
             $d->save();
@@ -888,6 +1031,8 @@ switch ($action) {
         $routers = _post('routers');
         $device = _post('device');
         $pool = _post('pool_name');
+        $rawPppoeService = trim((string) _post('pppoe_service'));
+        $pppoe_service = normalizePppoeServiceName($rawPppoeService);
         $plan_expired = _post('plan_expired');
         $enabled = _post('enabled');
         $prepaid = _post('prepaid');
@@ -899,6 +1044,7 @@ switch ($action) {
         $on_logout = _post('on_logout');
         $reminderEnabled = isset($_POST['reminder_enabled']) ? (int) $_POST['reminder_enabled'] : 0;
         $invoiceNotification = isset($_POST['invoice_notification']) ? (int) $_POST['invoice_notification'] : 0;
+        $customerCanExtend = isset($_POST['customer_can_extend']) ? (int) $_POST['customer_can_extend'] : 0;
         $linkedPlans = $_POST['linked_plans'] ?? null;
 
         $msg = '';
@@ -908,8 +1054,11 @@ switch ($action) {
         if (Validator::UnsignedNumber($price) == false) {
             $msg .= 'The price must be a number' . '<br>';
         }
-        if ($name == '' or $id_bw == '' or $price == '' or $validity == '' or $pool == '') {
+        if (trim((string) $name) === '' || trim((string) $id_bw) === '' || trim((string) $price) === '' || trim((string) $validity) === '' || trim((string) $pool) === '') {
             $msg .= Lang::T('All field is required') . '<br>';
+        }
+        if ($rawPppoeService !== '' && $pppoe_service === '') {
+            $msg .= Lang::T('Invalid PPPoE service name format') . '<br>';
         }
 
         if ($price_old <= $price) {
@@ -921,6 +1070,12 @@ switch ($action) {
         if ($d) {
         } else {
             $msg .= Lang::T('Data Not Found') . '<br>';
+        }
+        if ($d && !($d['is_radius'] || _router_can_access_router($d['routers'], $admin, ['radius']))) {
+            $msg .= Lang::T('Data Not Found') . '<br>';
+        }
+        if (!empty($routers) && !_router_can_access_router($routers, $admin, ['radius'])) {
+            $msg .= Lang::T('Selected router is outside your allowed scope') . '<br>';
         }
         run_hook('edit_ppoe'); #HOOK
         if ($msg == '') {
@@ -952,6 +1107,7 @@ switch ($action) {
             $d->validity_unit = $validity_unit;
             $d->routers = $routers;
             $d->pool = $pool;
+            $d->pppoe_service = $pppoe_service;
             $d->plan_expired = $plan_expired;
             $d->enabled = $enabled;
             $d->prepaid = $prepaid;
@@ -960,6 +1116,7 @@ switch ($action) {
             $d->on_logout = $on_logout;
             $d->reminder_enabled = $reminderEnabled ? 1 : 0;
             $d->invoice_notification = $invoiceNotification ? 1 : 0;
+            $d->customer_can_extend = $customerCanExtend ? 1 : 0;
             $d->visibility = $visibility;
             if ($prepaid == 'no') {
                 if ($expired_date > 28 && $expired_date < 1) {
@@ -970,6 +1127,21 @@ switch ($action) {
                 $d->expired_date = 0;
             }
             $d->save();
+
+            if ((int) $validity <= 0) {
+                // Normalize latest recharge row per user for this plan to unlimited expiry.
+                ORM::raw_execute(
+                    "UPDATE `tbl_user_recharges` `tur`
+                    INNER JOIN (
+                        SELECT MAX(`id`) AS `id`
+                        FROM `tbl_user_recharges`
+                        WHERE `plan_id` = ?
+                        GROUP BY `customer_id`, `plan_id`, `routers`, `type`, `username`
+                    ) `latest` ON `latest`.`id` = `tur`.`id`
+                    SET `tur`.`expiration` = ?, `tur`.`time` = ?, `tur`.`status` = 'on'",
+                    [(int) $id, '2099-12-31', '23:59:59']
+                );
+            }
 
             $linkedPlanIds = Package::normalizeLinkedPlanIds($linkedPlans);
             Package::syncLinkedPlans($id, $linkedPlanIds);
@@ -1085,6 +1257,7 @@ switch ($action) {
         $_SESSION['last_visibility'] = $visibility ?? 'all';
         $reminderEnabled = isset($_POST['reminder_enabled']) ? (int) $_POST['reminder_enabled'] : 0;
         $invoiceNotification = isset($_POST['invoice_notification']) ? (int) $_POST['invoice_notification'] : 0;
+        $customerCanExtend = isset($_POST['customer_can_extend']) ? (int) $_POST['customer_can_extend'] : 0;
         $linkedPlans = $_POST['linked_plans'] ?? null;
 
         $msg = '';
@@ -1112,6 +1285,7 @@ switch ($action) {
             $d->prepaid = 'yes';
             $d->reminder_enabled = $reminderEnabled ? 1 : 0;
             $d->invoice_notification = $invoiceNotification ? 1 : 0;
+            $d->customer_can_extend = $customerCanExtend ? 1 : 0;
             $d->visibility = $visibility;
             $d->save();
 
@@ -1145,6 +1319,7 @@ switch ($action) {
         $_SESSION['last_visibility'] = $visibility ?? 'all';
         $reminderEnabled = isset($_POST['reminder_enabled']) ? (int) $_POST['reminder_enabled'] : 0;
         $invoiceNotification = isset($_POST['invoice_notification']) ? (int) $_POST['invoice_notification'] : 0;
+        $customerCanExtend = isset($_POST['customer_can_extend']) ? (int) $_POST['customer_can_extend'] : 0;
         $linkedPlans = $_POST['linked_plans'] ?? null;
 
         $msg = '';
@@ -1174,6 +1349,7 @@ switch ($action) {
             $d->prepaid = 'yes';
             $d->reminder_enabled = $reminderEnabled ? 1 : 0;
             $d->invoice_notification = $invoiceNotification ? 1 : 0;
+            $d->customer_can_extend = $customerCanExtend ? 1 : 0;
             $d->visibility = $visibility;
             $d->save();
 
@@ -1209,6 +1385,9 @@ switch ($action) {
         $device = _req('device');
         $status = _req('status');
         $router = _req('router');
+        if (!empty($router) && $router !== 'radius' && !_router_can_access_router($router, $admin, ['radius'])) {
+            $router = '';
+        }
         $ui->assign('type1', $type1);
         $ui->assign('type2', $type2);
         $ui->assign('type3', $type3);
@@ -1237,7 +1416,11 @@ switch ($action) {
         $ui->assign('type2s', ORM::for_table('tbl_plans')->getEnum("plan_type"));
         $ui->assign('type3s', ORM::for_table('tbl_plans')->getEnum("typebp"));
         $ui->assign('valids', ORM::for_table('tbl_plans')->getEnum("validity_unit"));
-        $ui->assign('routers', array_column(ORM::for_table('tbl_plans')->distinct()->select("routers")->whereNotEqual('routers', '')->findArray(), 'routers'));
+        $ui->assign('routers', _router_filter_allowed_names(
+            array_column(ORM::for_table('tbl_plans')->distinct()->select("routers")->whereNotEqual('routers', '')->findArray(), 'routers'),
+            $admin,
+            ['radius']
+        ));
         $devices = [];
         $files = scandir($DEVICE_PATH);
         foreach ($files as $file) {
@@ -1250,6 +1433,7 @@ switch ($action) {
         $query = ORM::for_table('tbl_bandwidth')
             ->left_outer_join('tbl_plans', array('tbl_bandwidth.id', '=', 'tbl_plans.id_bw'))
             ->where('tbl_plans.type', 'VPN');
+        $applyPlanScopeFilter($query);
         if (!empty($type1)) {
             $query->where('tbl_plans.prepaid', $type1);
         }
@@ -1313,7 +1497,7 @@ switch ($action) {
         $ui->assign('_title', Lang::T('VPN Plans'));
         $d = ORM::for_table('tbl_bandwidth')->find_many();
         $ui->assign('d', $d);
-        $r = ORM::for_table('tbl_routers')->find_many();
+        $r = _router_get_accessible_routers($admin, false);
         $ui->assign('r', $r);
         $ui->assign('last_visibility', isset($_SESSION['last_visibility']) ? $_SESSION['last_visibility'] : 'all');
         $devices = [];
@@ -1335,7 +1519,7 @@ switch ($action) {
         $ui->assign('_title', Lang::T('VPN Plans'));
         $id = $routes['2'];
         $d = ORM::for_table('tbl_plans')->find_one($id);
-        if ($d) {
+        if ($d && ($d['is_radius'] || _router_can_access_router($d['routers'], $admin, ['radius']))) {
             if (empty($d['device'])) {
                 if ($d['is_radius']) {
                     $d->device = 'Radius';
@@ -1351,7 +1535,7 @@ switch ($action) {
             $ui->assign('b', $b);
             $r = [];
             if ($d['is_radius']) {
-                $r = ORM::for_table('tbl_routers')->find_many();
+                $r = _router_get_accessible_routers($admin, false);
             }
             $ui->assign('r', $r);
             $devices = [];
@@ -1391,7 +1575,7 @@ switch ($action) {
         $id = $routes['2'];
 
         $d = ORM::for_table('tbl_plans')->find_one($id);
-        if ($d) {
+        if ($d && ($d['is_radius'] || _router_can_access_router($d['routers'], $admin, ['radius']))) {
             run_hook('delete_vpn'); #HOOK
             Package::removePlanLinks($id);
 
@@ -1429,6 +1613,7 @@ switch ($action) {
         $_SESSION['last_visibility'] = $visibility ?? 'all';
         $reminderEnabled = isset($_POST['reminder_enabled']) ? (int) $_POST['reminder_enabled'] : 0;
         $invoiceNotification = isset($_POST['invoice_notification']) ? (int) $_POST['invoice_notification'] : 0;
+        $customerCanExtend = isset($_POST['customer_can_extend']) ? (int) $_POST['customer_can_extend'] : 0;
         $linkedPlans = $_POST['linked_plans'] ?? null;
 
 
@@ -1445,6 +1630,9 @@ switch ($action) {
         if (empty($radius)) {
             if ($routers == '') {
                 $msg .= Lang::T('All field is required') . '<br>';
+            }
+            if ($routers != '' && !_router_can_access_router($routers, $admin, ['radius'])) {
+                $msg .= Lang::T('Selected router is outside your allowed scope') . '<br>';
             }
         }
 
@@ -1501,6 +1689,7 @@ switch ($action) {
             $d->device = $device;
             $d->reminder_enabled = $reminderEnabled ? 1 : 0;
             $d->invoice_notification = $invoiceNotification ? 1 : 0;
+            $d->customer_can_extend = $customerCanExtend ? 1 : 0;
             $d->visibility = $visibility;
             $d->save();
 
@@ -1555,6 +1744,7 @@ switch ($action) {
         $visibility = Package::normalizeVisibility($visibilityInput);
         $reminderEnabled = isset($_POST['reminder_enabled']) ? (int) $_POST['reminder_enabled'] : 0;
         $invoiceNotification = isset($_POST['invoice_notification']) ? (int) $_POST['invoice_notification'] : 0;
+        $customerCanExtend = isset($_POST['customer_can_extend']) ? (int) $_POST['customer_can_extend'] : 0;
         $linkedPlans = $_POST['linked_plans'] ?? null;
 
         $msg = '';
@@ -1577,6 +1767,12 @@ switch ($action) {
         if ($d) {
         } else {
             $msg .= Lang::T('Data Not Found') . '<br>';
+        }
+        if ($d && !($d['is_radius'] || _router_can_access_router($d['routers'], $admin, ['radius']))) {
+            $msg .= Lang::T('Data Not Found') . '<br>';
+        }
+        if (!empty($routers) && !_router_can_access_router($routers, $admin, ['radius'])) {
+            $msg .= Lang::T('Selected router is outside your allowed scope') . '<br>';
         }
         run_hook('edit_vpn'); #HOOK
         if ($msg == '') {
@@ -1616,6 +1812,7 @@ switch ($action) {
             $d->on_logout = $on_logout;
             $d->reminder_enabled = $reminderEnabled ? 1 : 0;
             $d->invoice_notification = $invoiceNotification ? 1 : 0;
+            $d->customer_can_extend = $customerCanExtend ? 1 : 0;
             if ($prepaid == 'no') {
                 if ($expired_date > 28 && $expired_date < 1) {
                     $expired_date = 20;

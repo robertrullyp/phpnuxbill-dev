@@ -16,32 +16,53 @@ $fieldPath = $UPLOAD_PATH . DIRECTORY_SEPARATOR . "customer_field.json";
 
 switch ($action) {
     case 'save':
-        print_r($_POST);
-        $datas = [];
-        $count = count($_POST['name']);
-        for($n=0;$n<$count;$n++){
-            if(!empty($_POST['name'][$n])){
-                $datas[] = [
-                    'order' => $_POST['order'][$n],
-                    'name' => Text::alphanumeric(strtolower(str_replace(" ", "_", $_POST['name'][$n])), "_"),
-                    'type' => $_POST['type'][$n],
-                    'placeholder' => $_POST['placeholder'][$n],
-                    'value' => $_POST['value'][$n],
-                    'register' => $_POST['register'][$n],
-                    'required' => $_POST['required'][$n]
-                ];
-            }
+        if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST') {
+            r2(getUrl('customfield'), 'e', Lang::T('Invalid request method'));
         }
-        if(count($datas)>1){
+
+        $names = $_POST['name'] ?? null;
+        if (!is_array($names)) {
+            r2(getUrl('customfield'), 'e', Lang::T('Invalid payload'));
+        }
+
+        $orders = $_POST['order'] ?? [];
+        $types = $_POST['type'] ?? [];
+        $placeholders = $_POST['placeholder'] ?? [];
+        $values = $_POST['value'] ?? [];
+        $registers = $_POST['register'] ?? [];
+        $requireds = $_POST['required'] ?? [];
+
+        $datas = [];
+        $count = count($names);
+        for ($n = 0; $n < $count; $n++) {
+            $rawName = $names[$n] ?? '';
+            if (empty($rawName)) {
+                continue;
+            }
+
+            $datas[] = [
+                'order' => $orders[$n] ?? $n,
+                'name' => Text::alphanumeric(strtolower(str_replace(' ', '_', $rawName)), '_'),
+                'type' => $types[$n] ?? 'text',
+                'placeholder' => $placeholders[$n] ?? '',
+                'value' => $values[$n] ?? '',
+                'register' => $registers[$n] ?? 'no',
+                'required' => $requireds[$n] ?? 'no',
+            ];
+        }
+
+        if (count($datas) > 1) {
             usort($datas, function ($item1, $item2) {
                 return $item1['order'] <=> $item2['order'];
             });
         }
-        if(file_put_contents($fieldPath, json_encode($datas))){
+
+        if (file_put_contents($fieldPath, json_encode($datas), LOCK_EX) !== false) {
             r2(getUrl('customfield'), 's', 'Successfully saved custom fields!');
-        }else{
+        } else {
             r2(getUrl('customfield'), 'e', 'Failed to save custom fields!');
         }
+        break;
     default:
         $fields = [];
         if(file_exists($fieldPath)){

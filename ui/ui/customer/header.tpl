@@ -10,7 +10,7 @@
         var appUrl = '{$app_url}';
     </script>
 
-    <link rel="shortcut icon" href="{$app_url}/ui/ui/images/logo.png" type="image/x-icon" />
+    <link rel="shortcut icon" href="{$app_url}{$brand_favicon|replace:'\\':'/'}" type="image/x-icon" />
     <link rel="stylesheet" href="{$app_url}/ui/ui/styles/bootstrap.min.css">
     <link rel="stylesheet" href="{$app_url}/ui/ui/fonts/ionicons/css/ionicons.min.css">
     <link rel="stylesheet" href="{$app_url}/ui/ui/fonts/font-awesome/css/font-awesome.min.css">
@@ -74,13 +74,8 @@
                         </li>
                         <li class="dropdown user user-menu">
                             {assign var='customerPhotoPath' value=$_user['photo']}
-                            {assign var='customerAvatarFallback' value=$app_url|cat:'/'|cat:$UPLOAD_PATH|cat:'/user.default.jpg'}
-                            {if !$customerPhotoPath || strstr($customerPhotoPath, 'default')}
-                                {assign var='customerAvatarSrc' value=$customerAvatarFallback}
-                            {else}
-                                {assign var='cleanCustomerPhoto' value=$customerPhotoPath|trim:'/'}
-                                {assign var='customerAvatarSrc' value=$app_url|cat:'/'|cat:$UPLOAD_PATH|cat:'/'|cat:$cleanCustomerPhoto|cat:'.thumb.jpg'}
-                            {/if}
+                            {assign var='customerAvatarFallback' value=Text::resolveUploadPhotoUrl('', 'user.default.jpg')}
+                            {assign var='customerAvatarSrc' value=Text::resolveUploadPhotoUrl($customerPhotoPath, 'user.default.jpg')}
                             <a href="#" class="dropdown-toggle" data-toggle="dropdown">
                                 {if $_c['enable_balance'] == 'yes'}
                                     <span

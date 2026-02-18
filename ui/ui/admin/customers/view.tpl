@@ -25,6 +25,11 @@
                     <li class="list-group-item">
                         <b>{Lang::T('Username')}</b> <span class="pull-right">{$d['username']}</span>
                     </li>
+                    {if $customer_am_enabled}
+                        <li class="list-group-item">
+                            <b>{Lang::T('Account Manager')}</b> <span class="pull-right">{$customer_am_label}</span>
+                        </li>
+                    {/if}
                     <li class="list-group-item">
                         <b>{Lang::T('Phone Number')}</b> <span class="pull-right">{$d['phonenumber']}</span>
                     </li>
@@ -260,11 +265,18 @@
                                         onclick="return ask(this, '{Lang::T('This will deactivate Customer Plan, and make it expired')}')">{Lang::T('Deactivate')}</button>
                                 </form>
                             </div>
-                            <div class="col-xs-8">
+                            <div class="col-xs-4">
                                 <form method="post" action="{Text::url('customers/recharge/', $d['id'], '/', $package['plan_id'])}">
                                     <input type="hidden" name="csrf_token" value="{$csrf_token}">
                                     <button type="submit" class="btn btn-success btn-sm btn-block">{Lang::T('Recharge')}</button>
                                 </form>
+                            </div>
+                            <div class="col-xs-4">
+                                {if $package['status']=='on'}
+                                    <a href="{Text::url('plan/refund/', $d['id'])}" class="btn btn-warning btn-sm btn-block">{Lang::T('Refund')}</a>
+                                {else}
+                                    <button type="button" class="btn btn-default btn-sm btn-block" disabled>{Lang::T('Refund')}</button>
+                                {/if}
                             </div>
                         </div>
                     </div>

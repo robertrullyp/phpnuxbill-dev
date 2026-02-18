@@ -1,4 +1,99 @@
 {include file="sections/header.tpl"}
+{if $is_refund}
+<div class="row">
+    <div class="col-md-6 col-md-offset-3">
+        <div class="panel panel-danger panel-hovered panel-stacked mb30">
+            <div class="panel-heading">{Lang::T('Refund Confirmation')}</div>
+            <div class="panel-body">
+                <form class="form-horizontal" method="post" role="form" action="{Text::url('')}plan/refund-post">
+                    <input type="hidden" name="csrf_token" value="{$csrf_token}">
+                    <center><b>{Lang::T('Customer')}</b></center>
+                    <ul class="list-group list-group-unbordered">
+                        <li class="list-group-item">
+                            <b>{Lang::T('Username')}</b> <span class="pull-right">{$cust['username']}</span>
+                        </li>
+                        <li class="list-group-item">
+                            <b>{Lang::T('Name')}</b> <span class="pull-right">{$cust['fullname']}</span>
+                        </li>
+                        <li class="list-group-item">
+                            <b>{Lang::T('Balance')}</b> <span class="pull-right">{Lang::moneyFormat($cust['balance'])}</span>
+                        </li>
+                    </ul>
+
+                    <center><b>{Lang::T('Active Plan')}</b></center>
+                    <ul class="list-group list-group-unbordered">
+                        <li class="list-group-item">
+                            <b>{Lang::T('Plan Name')}</b> <span class="pull-right">{$plan['name_plan']}</span>
+                        </li>
+                        <li class="list-group-item">
+                            <b>{Lang::T('Location')}</b> <span class="pull-right">{if $plan['is_radius']}Radius{else}{$plan['routers']}{/if}</span>
+                        </li>
+                        <li class="list-group-item">
+                            <b>{Lang::T('Type')}</b> <span class="pull-right">{$plan['type']}</span>
+                        </li>
+                        <li class="list-group-item">
+                            <b>{Lang::T('Current Expiry')}</b> <span class="pull-right">{$old_expiry}</span>
+                        </li>
+                        <li class="list-group-item">
+                            <b>{Lang::T('New Expiry After Refund')}</b> <span class="pull-right">{$new_expiry}</span>
+                        </li>
+                        <li class="list-group-item">
+                            <b>{Lang::T('Outcome')}</b>
+                            <span class="pull-right">
+                                {if $will_deactivate}
+                                    <span class="label label-danger">{Lang::T('Service will be deactivated')}</span>
+                                {else}
+                                    <span class="label label-success">{Lang::T('Service remains active')}</span>
+                                {/if}
+                            </span>
+                        </li>
+                        <li class="list-group-item">
+                            <b>{Lang::T('Payment via')}</b> <span class="pull-right">
+                                <select name="using" style="background-color: white;outline: 1px;border: 1px solid #b7b7b7;">
+                                    {foreach $usings as $us}
+                                        <option value="{trim($us)}" {if $using eq trim($us)}selected{/if}>{trim(ucWords($us))}</option>
+                                    {/foreach}
+                                    {if $_c['enable_balance'] eq 'yes'}
+                                        <option value="balance" {if $using eq 'balance'}selected{/if}>{Lang::T('Customer Balance')}</option>
+                                    {/if}
+                                    {if in_array($_admin['user_type'],['SuperAdmin','Admin'])}
+                                        <option value="zero" {if $using eq 'zero'}selected{/if}>{$_c['currency_code']} 0</option>
+                                    {/if}
+                                </select>
+                            </span>
+                        </li>
+                        <li class="list-group-item">
+                            <b>{Lang::T('Note')}</b>
+                            <span class="pull-right" style="width: 70%;">
+                                <input type="text" name="note" class="form-control input-sm" value="{$note|escape}" placeholder="{Lang::T('Optional note')}">
+                            </span>
+                        </li>
+                    </ul>
+
+                    <center><b>{Lang::T('Refund Total')}</b></center>
+                    <ul class="list-group list-group-unbordered">
+                        <li class="list-group-item">
+                            <b>{Lang::T('Credit Amount')}</b>
+                            <span class="pull-right" style="font-size: large; font-weight:bolder; font-family: 'Courier New', Courier, monospace; ">
+                                {if $using eq 'zero'}{Lang::moneyFormat(0)}{else}- {Lang::moneyFormat($total_refund)}{/if}
+                            </span>
+                        </li>
+                    </ul>
+
+                    <input type="hidden" name="id_customer" value="{$cust['id']}">
+                    <input type="hidden" name="plan" value="{$plan['id']}">
+                    <input type="hidden" name="server" value="{$server}">
+                    <input type="hidden" name="stoken" value="{App::getToken()}">
+                    <center>
+                        <button class="btn btn-danger" type="submit">{Lang::T('Refund')}</button><br>
+                        <a class="btn btn-link" href="{Text::url('')}plan/refund">{Lang::T('Cancel')}</a>
+                    </center>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{else}
 
 <div class="row">
     <div class="col-md-6 col-md-offset-3">
@@ -72,6 +167,12 @@
                                         </option>
                                     {/if}
                                 </select>
+                            </span>
+                        </li>
+                        <li class="list-group-item">
+                            <b>{Lang::T('Note')}</b>
+                            <span class="pull-right" style="width: 70%;">
+                                <input type="text" name="note" class="form-control input-sm" value="{$note|escape}" placeholder="{Lang::T('Optional note')}">
                             </span>
                         </li>
                     </ul>
@@ -182,5 +283,6 @@
         </div>
     </div>
 </div>
+{/if}
 
 {include file="sections/footer.tpl"}

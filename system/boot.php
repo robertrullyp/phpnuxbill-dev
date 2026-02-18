@@ -66,6 +66,32 @@ $ui->assign('CACHE_PATH', str_replace($root_path, '',  $CACHE_PATH));
 $ui->assign('PAGES_PATH', str_replace($root_path, '',  $PAGES_PATH));
 $ui->assign('_system_menu', 'dashboard');
 
+$UPLOAD_URL_PATH = str_replace($root_path, '', $UPLOAD_PATH);
+$companyLogo = '';
+if (file_exists($UPLOAD_PATH . DIRECTORY_SEPARATOR . 'logo.png')) {
+    $companyLogo = $UPLOAD_URL_PATH . DIRECTORY_SEPARATOR . 'logo.png';
+} elseif (file_exists($UPLOAD_PATH . DIRECTORY_SEPARATOR . 'logo.default.png')) {
+    $companyLogo = $UPLOAD_URL_PATH . DIRECTORY_SEPARATOR . 'logo.default.png';
+}
+$companyLogoFavicon = '';
+if (file_exists($UPLOAD_PATH . DIRECTORY_SEPARATOR . 'logo.favicon.png')) {
+    $companyLogoFavicon = $UPLOAD_URL_PATH . DIRECTORY_SEPARATOR . 'logo.favicon.png';
+}
+$companyFavicon = '';
+if (!empty($config['login_page_favicon']) && file_exists($UPLOAD_PATH . DIRECTORY_SEPARATOR . $config['login_page_favicon'])) {
+    $companyFavicon = $UPLOAD_URL_PATH . DIRECTORY_SEPARATOR . $config['login_page_favicon'];
+} elseif (file_exists($UPLOAD_PATH . DIRECTORY_SEPARATOR . 'favicon.png')) {
+    $companyFavicon = $UPLOAD_URL_PATH . DIRECTORY_SEPARATOR . 'favicon.png';
+} elseif ($companyLogoFavicon !== '') {
+    $companyFavicon = $companyLogoFavicon;
+} elseif ($companyLogo !== '') {
+    $companyFavicon = $companyLogo;
+} else {
+    $companyFavicon = File::pathFixer('/ui/ui/images/logo.png');
+}
+$ui->assign('brand_logo', $companyLogo);
+$ui->assign('brand_favicon', $companyFavicon);
+
 // CSRF token for logout form
 $csrf_token_logout = Csrf::generateAndStoreToken();
 $ui->assign('csrf_token_logout', $csrf_token_logout);

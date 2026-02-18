@@ -19,14 +19,69 @@ $ui->assign('_admin', $admin);
 switch ($action) {
     case 'pool':
         $routers = _get('routers');
+        $d = [];
+        $allowedRouterNames = _router_get_accessible_router_names($admin, false);
+        $allowedPoolRouters = $allowedRouterNames;
+        if (!empty($config['radius_enable'])) {
+            $allowedPoolRouters[] = 'radius';
+        }
+
+        if (!empty($routers) && !_router_can_access_router($routers, $admin, ['radius'])) {
+            $routers = '';
+        }
+
         if (empty($routers)) {
-            $d = ORM::for_table('tbl_pool')->find_many();
+            if (($admin['user_type'] ?? '') === 'SuperAdmin') {
+                $d = ORM::for_table('tbl_pool')->find_many();
+            } elseif (!empty($allowedPoolRouters)) {
+                $d = ORM::for_table('tbl_pool')->where_in('routers', array_values(array_unique($allowedPoolRouters)))->find_many();
+            }
         } else {
             $d = ORM::for_table('tbl_pool')->where('routers', $routers)->find_many();
         }
         $ui->assign('routers', $routers);
         $ui->assign('d', $d);
         $ui->display('admin/autoload/pool.tpl');
+        break;
+    case 'pppoe_service':
+        $routers = trim((string) _get('routers'));
+        $selected = trim((string) _get('selected'));
+        $services = [];
+        $error = '';
+
+        if ($routers === '') {
+            $error = Lang::T('Router is required');
+        } elseif (!_router_can_access_router($routers, $admin, ['radius'])) {
+            $error = Lang::T('Selected router is outside your allowed scope');
+        } else {
+            $routerRow = ORM::for_table('tbl_routers')->where('name', $routers)->find_one();
+            if (!$routerRow) {
+                $error = Lang::T('Router not found');
+            } else {
+                $deviceFile = File::pathFixer($DEVICE_PATH . DIRECTORY_SEPARATOR . 'MikrotikPppoe.php');
+                if (!file_exists($deviceFile)) {
+                    $error = Lang::T('PPPoE device driver not found');
+                } else {
+                    require_once $deviceFile;
+                    try {
+                        $driver = new MikrotikPppoe();
+                        $driverError = '';
+                        $services = $driver->listPppoeServerServices($routers, $driverError);
+                        if ($driverError !== '') {
+                            $error = $driverError;
+                        }
+                    } catch (Throwable $e) {
+                        $error = $e->getMessage();
+                    }
+                }
+            }
+        }
+
+        $ui->assign('routers', $routers);
+        $ui->assign('selected', $selected);
+        $ui->assign('d', $services);
+        $ui->assign('error', $error);
+        $ui->display('admin/autoload/pppoe_service.tpl');
         break;
     case 'bw_name':
         $bw = ORM::for_table('tbl_bandwidth')->select("name_bw")->find_one($routes['2']);
@@ -41,7 +96,7 @@ switch ($action) {
         }
         die();
     case 'server':
-        $d = ORM::for_table('tbl_routers')->where('enabled', '1')->find_many();
+        $d = _router_get_accessible_routers($admin, true);
         $ui->assign('d', $d);
 
         $ui->display('admin/autoload/server.tpl');
@@ -75,26 +130,85 @@ switch ($action) {
     case 'plan':
         $server = _post('server');
         $jenis = _post('jenis');
+        $customerId = (int) _post('customer_id');
+        $activeOnly = (int) _post('active_only') === 1;
+        $d = [];
+        if (!empty($server) && !_router_can_access_router($server, $admin, ['radius'])) {
+            $ui->assign('d', $d);
+            $ui->display('admin/autoload/plan.tpl');
+            break;
+        }
+        if ($activeOnly && $customerId > 0) {
+            $customerRow = ORM::for_table('tbl_customers')->find_one($customerId);
+            if (!$customerRow || !_customer_can_access($customerRow, $admin)) {
+                $ui->assign('d', []);
+                $ui->display('admin/autoload/plan.tpl');
+                break;
+            }
+        }
+
+        $activePlanIds = [];
+        if ($activeOnly) {
+            if ($customerId < 1 || trim((string) $server) === '' || trim((string) $jenis) === '') {
+                $ui->assign('d', []);
+                $ui->display('admin/autoload/plan.tpl');
+                break;
+            }
+
+            $activeRows = ORM::for_table('tbl_user_recharges')
+                ->distinct()
+                ->select('plan_id')
+                ->where('customer_id', $customerId)
+                ->where('status', 'on')
+                ->where('routers', $server)
+                ->where('type', $jenis)
+                ->find_array();
+            $activePlanIds = array_map('intval', array_column($activeRows, 'plan_id'));
+            $activePlanIds = array_values(array_filter(array_unique($activePlanIds)));
+
+            if (empty($activePlanIds)) {
+                $ui->assign('d', []);
+                $ui->display('admin/autoload/plan.tpl');
+                break;
+            }
+        }
+
         if (in_array($admin['user_type'], array('SuperAdmin', 'Admin'))) {
             switch ($server) {
                 case 'radius':
-                    $d = ORM::for_table('tbl_plans')->where('is_radius', 1)->where('type', $jenis)->find_many();
+                    $query = ORM::for_table('tbl_plans')->where('is_radius', 1)->where('type', $jenis);
+                    if ($activeOnly) {
+                        $query->where_id_in($activePlanIds);
+                    }
+                    $d = $query->find_many();
                     break;
                 case '':
                     break;
                 default:
-                    $d = ORM::for_table('tbl_plans')->where('routers', $server)->where('type', $jenis)->find_many();
+                    $query = ORM::for_table('tbl_plans')->where('routers', $server)->where('type', $jenis);
+                    if ($activeOnly) {
+                        $query->where_id_in($activePlanIds);
+                    }
+                    $d = $query->find_many();
                     break;
             }
         } else {
             switch ($server) {
                 case 'radius':
-                    $d = ORM::for_table('tbl_plans')->where('is_radius', 1)->where('type', $jenis)->find_many();
+                    $query = ORM::for_table('tbl_plans')->where('is_radius', 1)->where('type', $jenis);
+                    if ($activeOnly) {
+                        $query->where_id_in($activePlanIds);
+                    }
+                    $d = $query->find_many();
                     break;
                 case '':
                     break;
                 default:
-                    $d = ORM::for_table('tbl_plans')->where('routers', $server)->where('type', $jenis)->find_many();
+                    $query = ORM::for_table('tbl_plans')->where('routers', $server)->where('type', $jenis);
+                    if ($activeOnly) {
+                        $query->where_id_in($activePlanIds);
+                    }
+                    $d = $query->find_many();
                     break;
             }
         }
@@ -126,7 +240,22 @@ switch ($action) {
         }
         break;
     case 'plan_is_active':
-        $ds = ORM::for_table('tbl_user_recharges')->where('customer_id', $routes['2'])->find_array();
+        $ds = ORM::for_table('tbl_user_recharges')
+            ->table_alias('tur')
+            ->select('tur.*')
+            ->where('tur.customer_id', $routes['2'])
+            ->where_raw(
+                "`tur`.`id` = (
+                    SELECT MAX(`t2`.`id`)
+                    FROM `tbl_user_recharges` `t2`
+                    WHERE `t2`.`customer_id` = `tur`.`customer_id`
+                      AND `t2`.`plan_id` = `tur`.`plan_id`
+                      AND `t2`.`routers` = `tur`.`routers`
+                      AND `t2`.`type` = `tur`.`type`
+                )"
+            )
+            ->order_by_desc('tur.id')
+            ->find_array();
         if ($ds) {
             $ps = [];
             $c = ORM::for_table('tbl_customers')->find_one($routes['2']);
@@ -164,14 +293,19 @@ switch ($action) {
         }
         break;
     case 'customer_select2':
-
-        $s = addslashes(_get('s'));
-        if (empty($s)) {
-            $c = ORM::for_table('tbl_customers')->limit(30)->find_many();
-        } else {
-            $c = ORM::for_table('tbl_customers')->where_raw("(`username` LIKE '%$s%' OR `fullname` LIKE '%$s%' OR `phonenumber` LIKE '%$s%' OR `email` LIKE '%$s%')")->limit(30)->find_many();
+        $s = trim((string) _get('s'));
+        $query = ORM::for_table('tbl_customers');
+        _customer_apply_scope($query, $admin, 'tbl_customers');
+        if ($s !== '') {
+            $like = '%' . $s . '%';
+            $query->where_raw(
+                "(`username` LIKE ? OR `fullname` LIKE ? OR `phonenumber` LIKE ? OR `email` LIKE ?)",
+                [$like, $like, $like, $like]
+            );
         }
+        $c = $query->limit(30)->find_many();
         header('Content-Type: application/json');
+        $json = [];
         foreach ($c as $cust) {
             $json[] = [
                 'id' => $cust['id'],

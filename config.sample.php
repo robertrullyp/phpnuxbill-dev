@@ -1,7 +1,22 @@
 <?php
 
-$protocol = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' || 
-             (isset($_SERVER['SERVER_PORT']) && $_SERVER['SERVER_PORT'] == 443)) ? "https://" : "http://";
+$isHttps = false;
+if (!empty($_SERVER['HTTPS']) && strtolower((string) $_SERVER['HTTPS']) !== 'off') {
+    $isHttps = true;
+} elseif (isset($_SERVER['SERVER_PORT']) && (int) $_SERVER['SERVER_PORT'] === 443) {
+    $isHttps = true;
+} elseif (!empty($_SERVER['HTTP_X_FORWARDED_PROTO'])) {
+    $forwardedProto = strtolower(trim((string) explode(',', $_SERVER['HTTP_X_FORWARDED_PROTO'])[0]));
+    $isHttps = ($forwardedProto === 'https');
+} elseif (!empty($_SERVER['HTTP_X_FORWARDED_SSL'])) {
+    $isHttps = (strtolower((string) $_SERVER['HTTP_X_FORWARDED_SSL']) === 'on');
+} elseif (!empty($_SERVER['HTTP_CF_VISITOR'])) {
+    $cfVisitor = json_decode((string) $_SERVER['HTTP_CF_VISITOR'], true);
+    if (is_array($cfVisitor) && isset($cfVisitor['scheme'])) {
+        $isHttps = (strtolower((string) $cfVisitor['scheme']) === 'https');
+    }
+}
+$protocol = $isHttps ? "https://" : "http://";
 
 // Check if HTTP_HOST is set, otherwise use a default value or SERVER_NAME
 $host = isset($_SERVER['HTTP_HOST']) ? $_SERVER['HTTP_HOST'] : (isset($_SERVER['SERVER_NAME']) ? $_SERVER['SERVER_NAME'] : 'localhost');

@@ -10,7 +10,14 @@
                 {Lang::T('Let\'s talk and ask your needs')}
             </div>
             <div class="box-footer">
-                <a href="https://t.me/robertrullyp" target="_blank" class="btn btn-primary btn-sm btn-block">{Lang::T('Telegram')}</a>
+                <div class="btn-group btn-group-justified" role="group" aria-label="Contact buttons">
+                    <div class="btn-group" role="group">
+                        <a href="https://t.me/robertrullyp" target="_blank" class="btn btn-primary btn-sm">{Lang::T('Telegram')}</a>
+                    </div>
+                    <div class="btn-group" role="group">
+                        <a href="https://wa.me/6285379145353" target="_blank" class="btn btn-success btn-sm">WhatsApp</a>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
@@ -54,8 +61,8 @@
                 {Lang::T('Connect your PHPNuxBill to WhatsApp efficiently using WhatsApp Gateway. Also, create Telegram bots easily and practically.')}
             </div>
             <div class="box-footer">
-                <a href="https://wa.nux.my.id/login" target="_blank"
-                    class="btn btn-primary btn-sm btn-block">wa.nux.my.id</a>
+                <a href="https://gateway.drnet.biz.id/" target="_blank"
+                    class="btn btn-primary btn-sm btn-block">DRNet Gateway</a>
             </div>
         </div>
         <div class="box box-hovered mb20 box-primary">

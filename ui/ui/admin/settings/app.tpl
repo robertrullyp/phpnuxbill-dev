@@ -6,7 +6,7 @@
     }
 </style>
 
-<form class="form-horizontal" method="post" role="form" action="{Text::url('')}settings/app-post"
+<form class="form-horizontal" id="settings_app_form" method="post" role="form" action="{Text::url('')}settings/app-post"
     enctype="multipart/form-data">
     <input type="hidden" name="csrf_token" value="{$csrf_token}">
     <div class="panel" id="accordion" role="tablist" aria-multiselectable="true">
@@ -36,7 +36,7 @@
                             class="help-block">{Lang::T('For PDF Reports | Best size 1078 x 200 | uploaded image will be autosize')}</span>
                     </div>
                     <span class="help-block col-md-4">
-                        <a href="./{$logo}" target="_blank"><img src="./{$logo}" height="48" alt="logo for PDF"></a>
+                        <a href="{$app_url}/{$logo|replace:'\\':'/'}" target="_blank"><img src="{$app_url}/{$logo|replace:'\\':'/'}" height="48" alt="logo for PDF"></a>
                     </span>
                 </div>
                 <div class="form-group">
@@ -68,6 +68,16 @@
                             rows="3">{Lang::htmlspecialchars($_c['note'])}</textarea>
                         <span class="help-block">{Lang::T('You can use html tag')}</span>
                     </div>
+                </div>
+                <div class="form-group">
+                    <label class="col-md-3 control-label">{Lang::T('Show Invoice/Transaction Note')}</label>
+                    <div class="col-md-5">
+                        <select name="show_invoice_note" class="form-control">
+                            <option value="no">{Lang::T('No')}</option>
+                            <option value="yes" {if $_c['show_invoice_note']=='yes'}selected="selected"{/if}>{Lang::T('Yes')}</option>
+                        </select>
+                    </div>
+                    <span class="help-block col-md-4">{Lang::T('Show note on invoice view and transaction reports')}</span>
                 </div>
                 <div class="form-group">
                     <label class="col-md-3 control-label"><i class="glyphicon glyphicon-print"></i>
@@ -142,11 +152,52 @@
                     </div>
                     <span class="help-block col-md-4">{Lang::T('rename .htaccess_firewall to .htaccess')}</span>
                 </div>
-                <button class="btn btn-success btn-block" name="general" type="submit">
+                <button class="btn btn-success btn-block js-settings-submit" name="general" type="button">
                     {Lang::T('Save Changes')}
                 </button>
             </div>
 
+        </div>
+    </div>
+
+    <div class="panel" id="accordion" role="tablist" aria-multiselectable="true">
+        <div class="panel-heading" role="tab" id="AcsIntegration">
+            <h3 class="panel-title">
+                <a role="button" data-toggle="collapse" data-parent="#accordion" href="#collapseAcsIntegration"
+                    aria-expanded="true" aria-controls="collapseAcsIntegration">
+                    ACS Integration
+                </a>
+            </h3>
+        </div>
+        <div id="collapseAcsIntegration" class="panel-collapse collapse" role="tabpanel"
+            aria-labelledby="headingAcsIntegration">
+            <div class="panel-body">
+                <div class="form-group">
+                    <label class="col-md-3 control-label">{Lang::T('Enable Integration')}</label>
+                    <div class="col-md-5">
+                        <select name="genieacs_enable" id="genieacs_enable" class="form-control">
+                            <option value="no" {if ($_c['genieacs_enable']|default:'no')=='no' }selected="selected" {/if}>
+                                {Lang::T('Disable')}
+                            </option>
+                            <option value="yes" {if ($_c['genieacs_enable']|default:'no')=='yes' }selected="selected" {/if}>
+                                {Lang::T('Enable')}
+                            </option>
+                        </select>
+                    </div>
+                    <span class="help-block col-md-4">GenieACS (TR-069/TR-181)</span>
+                </div>
+                <div class="form-group" id="genieacs_url_wrap">
+                    <label class="col-md-3 control-label">GenieACS URL</label>
+                    <div class="col-md-5">
+                        <input type="url" class="form-control" id="genieacs_url" name="genieacs_url"
+                            value="{($_c['genieacs_url']|default:'')|escape}" placeholder="http://localhost:7557">
+                    </div>
+                    <span class="help-block col-md-4">{Lang::T('Example')}: http://localhost:7557</span>
+                </div>
+                <button class="btn btn-success btn-block js-settings-submit" type="button">
+                    {Lang::T('Save Changes')}
+                </button>
+            </div>
         </div>
     </div>
 
@@ -228,7 +279,7 @@
                                 class="help-block"><small>{Lang::T('Best size 300 x 60 | uploaded image will be autosize')}</small></span>
                         </div>
                         <span class="help-block col-md-4">
-                            <a href="./{$login_logo}" target="_blank"><img src="./{$login_logo}" height="48"
+                            <a href="{$app_url}/{$login_logo|replace:'\\':'/'}" target="_blank"><img src="{$app_url}/{$login_logo|replace:'\\':'/'}" height="48"
                                     alt="Logo"></a>
                         </span>
                     </div>
@@ -241,7 +292,7 @@
                                 class="help-block"><small>{Lang::T('Best size 1920 x 1080 | uploaded image will be autosize')}</small></span>
                         </div>
                         <span class="help-block col-md-4">
-                            <a href="./{$wallpaper}" target="_blank"><img src="./{$wallpaper}" height="48"
+                            <a href="{$app_url}/{$wallpaper|replace:'\\':'/'}" target="_blank"><img src="{$app_url}/{$wallpaper|replace:'\\':'/'}" height="48"
                                     alt="Wallpaper"></a>
                         </span>
                     </div>
@@ -278,7 +329,7 @@
                         <small>{Lang::T('Enable or disable coupons')}</small>
                     </p>
                 </div>
-                <button class="btn btn-success btn-block" type="submit">
+                <button class="btn btn-success btn-block js-settings-submit" type="button">
                     {Lang::T('Save Changes')}
                 </button>
             </div>
@@ -419,11 +470,85 @@
                         {Lang::T('Notify Admin upon self registration')}
                     </p>
                 </div>
-                <div class="form-group">
-                    <label class="col-md-3 control-label">{Lang::T('Mandatory Fields')}:</label><br>
-                    <label class="col-md-3 control-label">
-                        <input type="checkbox" name="man_fields_email" value="yes"
-                            {if !isset($_c['man_fields_email']) || $_c['man_fields_email'] neq 'no'}checked{/if}>
+	                <div class="form-group">
+	                    <label class="col-md-3 control-label">{Lang::T('Send welcome message')}</label>
+	                    <div class="col-md-5">
+	                        <select name="reg_send_welcome_message" id="reg_send_welcome_message" class="form-control">
+	                            <option value="no">
+	                                {Lang::T('No')}
+	                            </option>
+	                            <option value="yes" {if isset($_c['reg_send_welcome_message']) && $_c['reg_send_welcome_message']=='yes' }selected="selected" {/if}>
+	                                {Lang::T('Yes')}
+	                            </option>
+	                        </select>
+	                    </div>
+	                    <p class="help-block col-md-4">
+	                        {Lang::T('Send Welcome Message template to customer after self registration')}
+	                    </p>
+	                </div>
+	                <div class="form-group" id="reg_welcome_via_group" {if !isset($_c['reg_send_welcome_message']) || $_c['reg_send_welcome_message'] neq 'yes'}style="display:none;"{/if}>
+	                    <label class="col-md-3 control-label">{Lang::T('Send via')}</label>
+	                    <div class="col-md-5">
+	                        <div class="row">
+	                            <div class="col-xs-6 col-sm-3">
+	                                <input type="hidden" name="reg_welcome_via_whatsapp" value="no">
+	                                <div class="checkbox" style="margin:0;">
+	                                    <label>
+	                                        <input type="checkbox" name="reg_welcome_via_whatsapp" value="yes"
+	                                            {if isset($_c['reg_welcome_via_whatsapp'])}
+	                                                {if $_c['reg_welcome_via_whatsapp']=='yes'}checked{/if}
+	                                            {else}
+	                                                {if isset($_c['phone_otp_type']) && ($_c['phone_otp_type']=='whatsapp' || $_c['phone_otp_type']=='both')}checked{/if}
+	                                            {/if}>
+	                                        {Lang::T('WhatsApp')}
+	                                    </label>
+	                                </div>
+	                            </div>
+	                            <div class="col-xs-6 col-sm-3">
+	                                <input type="hidden" name="reg_welcome_via_sms" value="no">
+	                                <div class="checkbox" style="margin:0;">
+	                                    <label>
+	                                        <input type="checkbox" name="reg_welcome_via_sms" value="yes"
+	                                            {if isset($_c['reg_welcome_via_sms'])}
+	                                                {if $_c['reg_welcome_via_sms']=='yes'}checked{/if}
+	                                            {else}
+	                                                {if isset($_c['phone_otp_type']) && ($_c['phone_otp_type']=='sms' || $_c['phone_otp_type']=='both')}checked{/if}
+	                                            {/if}>
+	                                        {Lang::T('SMS')}
+	                                    </label>
+	                                </div>
+	                            </div>
+	                            <div class="col-xs-6 col-sm-3">
+	                                <input type="hidden" name="reg_welcome_via_email" value="no">
+	                                <div class="checkbox" style="margin:0;">
+	                                    <label>
+	                                        <input type="checkbox" name="reg_welcome_via_email" value="yes"
+	                                            {if isset($_c['reg_welcome_via_email']) && $_c['reg_welcome_via_email']=='yes'}checked{/if}>
+	                                        {Lang::T('Email')}
+	                                    </label>
+	                                </div>
+	                            </div>
+	                            <div class="col-xs-6 col-sm-3">
+	                                <input type="hidden" name="reg_welcome_via_inbox" value="no">
+	                                <div class="checkbox" style="margin:0;">
+	                                    <label>
+	                                        <input type="checkbox" name="reg_welcome_via_inbox" value="yes"
+	                                            {if isset($_c['reg_welcome_via_inbox']) && $_c['reg_welcome_via_inbox']=='yes'}checked{/if}>
+	                                        {Lang::T('Inbox')}
+	                                    </label>
+	                                </div>
+	                            </div>
+	                        </div>
+	                    </div>
+	                    <p class="help-block col-md-4">
+	                        {Lang::T('Select channels for welcome message')}
+	                    </p>
+	                </div>
+	                <div class="form-group">
+	                    <label class="col-md-3 control-label">{Lang::T('Mandatory Fields')}:</label><br>
+	                    <label class="col-md-3 control-label">
+	                        <input type="checkbox" name="man_fields_email" value="yes"
+	                            {if !isset($_c['man_fields_email']) || $_c['man_fields_email'] neq 'no'}checked{/if}>
                         {Lang::T('Email')}
                     </label>
                     <label class="col-md-3 control-label">
@@ -437,7 +562,7 @@
                         {Lang::T('Address')}
                     </label>
                 </div>
-                <button class="btn btn-success btn-block" type="submit">
+                <button class="btn btn-success btn-block js-settings-submit" type="button">
                     {Lang::T('Save Changes')}
                 </button>
             </div>
@@ -549,32 +674,13 @@
                 <p class="help-block col-md-4">{Lang::T('Enable Turnstile for customer login page.')}</p>
                 </div>
     
-                <button class="btn btn-success btn-block" type="submit">
+                <button class="btn btn-success btn-block js-settings-submit" type="button">
                 {Lang::T('Save Changes')}
                 </button>
             </div>
         </div>
 
-        <script>
-            (function ($) {
-                function toggleTimeoutInput() {
-                var isChecked = $('#enable_session_timeout').is(':checked');
-                $('#timeout_duration_input').toggle(isChecked);
-                $('#session_timeout_duration').prop('required', isChecked);
-                }
-                function requireTurnstileSiteKey() {
-                var anyEnabled = $('#turnstile_admin_enabled').val() === '1' ||
-                                $('#turnstile_client_enabled').val() === '1';
-                $('input[name="turnstile_site_key"]').prop('required', anyEnabled);
-                }
-                $(function(){
-                toggleTimeoutInput();
-                requireTurnstileSiteKey();
-                $('#enable_session_timeout').on('change', toggleTimeoutInput);
-                $('#turnstile_admin_enabled, #turnstile_client_enabled').on('change', requireTurnstileSiteKey);
-                });
-            })(jQuery);
-        </script>
+        
     </div>
 
     <div class="panel">
@@ -634,7 +740,7 @@
                         </p>
                     </div>
                 {/if}
-                <button class="btn btn-success btn-block" type="submit">
+                <button class="btn btn-success btn-block js-settings-submit" type="button">
                     {Lang::T('Save Changes')}
                 </button>
             </div>
@@ -665,7 +771,7 @@
                             href="https://github.com/hotspotbilling/phpnuxbill/wiki/FreeRadius"
                             target="_blank">{Lang::T('Radius Instructions')}</a></p>
                 </div>
-                <button class="btn btn-success btn-block" type="submit">
+                <button class="btn btn-success btn-block js-settings-submit" type="button">
                     {Lang::T('Save Changes')}
                 </button>
             </div>
@@ -678,7 +784,7 @@
                 <a class="collapsed" role="button" data-toggle="collapse" data-parent="#accordion"
                     href="#collapseExtendPostpaidExpiration" aria-expanded="false"
                     aria-controls="collapseExtendPostpaidExpiration">
-                    {Lang::T('Extend Postpaid Expiration')}
+                    {Lang::T('Extend Expiration')}
                 </a>
             </h4>
         </div>
@@ -696,6 +802,18 @@
                     <p class="help-block col-md-4">{Lang::T('Customer can request to extend expirations')}</p>
                 </div>
                 <div class="form-group">
+                    <label class="col-md-3 control-label">{Lang::T('Allow Prepaid Extend')}</label>
+                    <div class="col-md-5">
+                        <select name="extend_allow_prepaid" id="extend_allow_prepaid" class="form-control text-muted">
+                            <option value="0">{Lang::T('No')}</option>
+                            <option value="1" {if $_c['extend_allow_prepaid']==1 || $_c['extend_allow_prepaid']=='1' || $_c['extend_allow_prepaid']=='yes'}selected="selected" {/if}>
+                                {Lang::T('Yes')}
+                            </option>
+                        </select>
+                    </div>
+                    <p class="help-block col-md-4">{Lang::T('If enabled, prepaid plans can use Extend from customer portal')}</p>
+                </div>
+                <div class="form-group">
                     <label class="col-md-3 control-label">{Lang::T('Extend Days')}</label>
                     <div class="col-md-5">
                         <input type="text" class="form-control" name="extend_days" placeholder="3"
@@ -709,7 +827,7 @@
                             placeholder="{Lang::T('i agree to extends and will paid full after this')}">{$_c['extend_confirmation']}</textarea>
                     </div>
                 </div>
-                <button class="btn btn-success btn-block" type="submit">
+                <button class="btn btn-success btn-block js-settings-submit" type="button">
                     {Lang::T('Save Changes')}
                 </button>
             </div>
@@ -779,7 +897,7 @@
                         </small>
                     </p>
                 </div>
-                <button class="btn btn-success btn-block" type="submit">
+                <button class="btn btn-success btn-block js-settings-submit" type="button">
                     {Lang::T('Save Changes')}
                 </button>
             </div>
@@ -819,7 +937,7 @@
                 <small id="emailHelp" class="form-text text-muted">
                     {Lang::T('You will get Payment and Error notification')}
                 </small>
-                <button class="btn btn-success btn-block" type="submit">
+                <button class="btn btn-success btn-block js-settings-submit" type="button">
                     {Lang::T('Save Changes')}
                 </button>
             </div>
@@ -875,10 +993,10 @@
                     </div>
                 </div>
                 <small id="emailHelp" class="form-text text-muted">{Lang::T('You can use')} WhatsApp
-                    {Lang::T('in here too.')} <a href="https://wa.nux.my.id/login" target="_blank">{Lang::T('Free
+                    {Lang::T('in here too.')} <a href="https://gateway.drnet.biz.id" target="_blank">{Lang::T('Free
                         Server')}</a></small>
 
-                <button class="btn btn-success btn-block" type="submit">
+                <button class="btn btn-success btn-block js-settings-submit" type="button">
                     {Lang::T('Save Changes')}
                 </button>
             </div>
@@ -900,19 +1018,114 @@
         </div>
         <div id="collapseWhatsappNotification" class="panel-collapse collapse" role="tabpanel">
             <div class="panel-body">
+                {assign var=wa_method value=$_c['wa_gateway_method']}
+                {if $wa_method==''}
+                    {if $_c['wa_gateway_url']!=''}
+                        {assign var=wa_method value='post'}
+                    {elseif $_c['wa_url']!=''}
+                        {assign var=wa_method value='get'}
+                    {else}
+                        {assign var=wa_method value='post'}
+                    {/if}
+                {/if}
                 <div class="form-group">
-                    <label class="col-md-3 control-label">{Lang::T('WhatsApp Server URL')}</label>
+                    <label class="col-md-3 control-label">{Lang::T('Method')}</label>
                     <div class="col-md-5">
-                        <input type="text" class="form-control" id="wa_url" name="wa_url" value="{$_c['wa_url']}"
-                            placeholder="https://domain/?param_number=[number]&param_text=[text]&secret=">
+                        <select name="wa_gateway_method" id="wa_gateway_method" class="form-control">
+                            <option value="post" {if $wa_method=='post'}selected="selected" {/if}>POST</option>
+                            <option value="get" {if $wa_method=='get'}selected="selected" {/if}>GET</option>
+                        </select>
                     </div>
-                    <p class="help-block col-md-4">{Lang::T('Must include')} <b>[text]</b> &amp; <b>[number]</b>,
-                        {Lang::T('it will be replaced.')}</p>
+                    <p class="help-block col-md-4">{Lang::T('Choose POST to use WA Gateway or GET for legacy URL')}</p>
+                </div>
+                <div id="wa_gateway_post_fields" {if $wa_method=='get'}style="display:none"{/if}>
+                    <div class="form-group">
+                        <label class="col-md-3 control-label">{Lang::T('WhatsApp Gateway URL')}</label>
+                        <div class="col-md-5">
+                            <input type="text" class="form-control" id="wa_gateway_url" name="wa_gateway_url"
+                                value="{$_c['wa_gateway_url']}" placeholder="https://your-host/ext/SECRET/wa">
+                        </div>
+                        <p class="help-block col-md-4">{Lang::T('POST will be sent to')} <b>/ext/:secret/wa</b></p>
+                    </div>
+                    <div class="form-group">
+                        <label class="col-md-3 control-label">{Lang::T('WhatsApp Auth Type')}</label>
+                        <div class="col-md-5">
+                            <select name="wa_gateway_auth_type" id="wa_gateway_auth_type" class="form-control">
+                                <option value="none" {if $_c['wa_gateway_auth_type']=='' || $_c['wa_gateway_auth_type']=='none'}selected="selected" {/if}>None</option>
+                                <option value="basic" {if $_c['wa_gateway_auth_type']=='basic'}selected="selected" {/if}>Basic</option>
+                                <option value="header" {if $_c['wa_gateway_auth_type']=='header'}selected="selected" {/if}>Header</option>
+                                <option value="jwt" {if $_c['wa_gateway_auth_type']=='jwt'}selected="selected" {/if}>JWT</option>
+                            </select>
+                        </div>
+                        <p class="help-block col-md-4">{Lang::T('Authentication method for POST')}</p>
+                    </div>
+                    <div class="form-group wa-auth-field" data-auth="basic">
+                        <label class="col-md-3 control-label">{Lang::T('Auth Username')}</label>
+                        <div class="col-md-5">
+                            <input type="text" class="form-control" id="wa_gateway_auth_username" name="wa_gateway_auth_username"
+                                value="{$_c['wa_gateway_auth_username']}" placeholder="username">
+                        </div>
+                        <p class="help-block col-md-4">{Lang::T('Required for Basic auth')}</p>
+                    </div>
+                    <div class="form-group wa-auth-field" data-auth="basic">
+                        <label class="col-md-3 control-label">{Lang::T('Auth Password')}</label>
+                        <div class="col-md-5">
+                            <input type="password" class="form-control" id="wa_gateway_auth_password" name="wa_gateway_auth_password"
+                                value="{$_c['wa_gateway_auth_password']}" onmouseleave="this.type = 'password'"
+                                onmouseenter="this.type = 'text'" placeholder="password">
+                        </div>
+                        <p class="help-block col-md-4">{Lang::T('Required for Basic auth')}</p>
+                    </div>
+                    <div class="form-group wa-auth-field" data-auth="header">
+                        <label class="col-md-3 control-label">{Lang::T('Auth Header Name')}</label>
+                        <div class="col-md-5">
+                            <input type="text" class="form-control" id="wa_gateway_auth_header_name" name="wa_gateway_auth_header_name"
+                                value="{$_c['wa_gateway_auth_header_name']}" placeholder="X-Api-Key">
+                        </div>
+                        <p class="help-block col-md-4">{Lang::T('Required for Header auth')}</p>
+                    </div>
+                    <div class="form-group wa-auth-field" data-auth="header jwt">
+                        <label class="col-md-3 control-label">{Lang::T('Auth Token')}</label>
+                        <div class="col-md-5">
+                            <input type="password" class="form-control" id="wa_gateway_auth_token" name="wa_gateway_auth_token"
+                                value="{$_c['wa_gateway_auth_token']}" onmouseleave="this.type = 'password'"
+                                onmouseenter="this.type = 'text'" placeholder="token">
+                        </div>
+                        <p class="help-block col-md-4">{Lang::T('Required for Header or JWT auth')}</p>
+                    </div>
+                </div>
+                <div id="wa_gateway_get_fields" {if $wa_method!='get'}style="display:none"{/if}>
+                    <div class="form-group">
+                        <label class="col-md-3 control-label">{Lang::T('WhatsApp Gateway URL')}</label>
+                        <div class="col-md-5">
+                            <input type="text" class="form-control" id="wa_url" name="wa_url" value="{$_c['wa_url']}"
+                                placeholder="https://domain/?param_number=[number]&param_text=[text]&secret=">
+                        </div>
+                        <p class="help-block col-md-4">{Lang::T('Must include')} <b>[text]</b> &amp; <b>[number]</b>,
+                            {Lang::T('it will be replaced.')}</p>
+                    </div>
+                </div>
+                <hr>
+                <div class="form-group">
+                    <label class="col-md-3 control-label">{Lang::T('WA Queue Max Retries')}</label>
+                    <div class="col-md-5">
+                        <input type="number" class="form-control" id="wa_queue_max_retries" name="wa_queue_max_retries"
+                            value="{if $_c['wa_queue_max_retries']!=''}{$_c['wa_queue_max_retries']}{else}3{/if}" min="1" max="20">
+                    </div>
+                    <p class="help-block col-md-4">Jumlah retry otomatis saat queue aktif.</p>
+                </div>
+                <div class="form-group">
+                    <label class="col-md-3 control-label">{Lang::T('WA Queue Retry Interval (seconds)')}</label>
+                    <div class="col-md-5">
+                        <input type="number" class="form-control" id="wa_queue_retry_interval" name="wa_queue_retry_interval"
+                            value="{if $_c['wa_queue_retry_interval']!=''}{$_c['wa_queue_retry_interval']}{else}60{/if}" min="10" max="86400">
+                    </div>
+                    <p class="help-block col-md-4">Jeda waktu antar retry (detik). Diproses via cron.</p>
                 </div>
                 <small id="emailHelp" class="form-text text-muted">{Lang::T('You can use')} WhatsApp
-                    {Lang::T('in here too.')} <a href="https://wa.nux.my.id/login" target="_blank">{Lang::T('Free
+                    {Lang::T('in here too.')} <a href="https://gateway.drnet.biz.id" target="_blank">{Lang::T('Free
                         Server')}</a></small>
-                <button class="btn btn-success btn-block" type="submit">
+                <button class="btn btn-success btn-block js-settings-submit" type="button">
                     {Lang::T('Save Changes')}
                 </button>
             </div>
@@ -994,7 +1207,7 @@
                     </p>
                 </div>
 
-                <button class="btn btn-success btn-block" type="submit">
+                <button class="btn btn-success btn-block js-settings-submit" type="button">
                     {Lang::T('Save Changes')}
                 </button>
             </div>
@@ -1075,7 +1288,17 @@
                         {Lang::T('7 Days')}
                     </label>
                 </div>
-                <button class="btn btn-success btn-block" type="submit">
+                <div class="form-group">
+                    <label class="col-md-3 control-label">{Lang::T('Expiry Edit Notification')}</label>
+                    <div class="col-md-5">
+                        <select name="notification_expiry_edit" id="notification_expiry_edit" class="form-control">
+                            <option value="no" {if isset($_c['notification_expiry_edit']) && $_c['notification_expiry_edit']=='no'}selected="selected"{/if}>{Lang::T('No')}</option>
+                            <option value="yes" {if !isset($_c['notification_expiry_edit']) || $_c['notification_expiry_edit']!='no'}selected="selected"{/if}>{Lang::T('Yes')}</option>
+                        </select>
+                    </div>
+                    <p class="help-block col-md-4">{Lang::T('Send Expiry Edit Notification template when extend action succeeds')}</p>
+                </div>
+                <button class="btn btn-success btn-block js-settings-submit" type="button">
                     {Lang::T('Save Changes')}
                 </button>
             </div>
@@ -1112,7 +1335,7 @@
                 <p class="col-md-5 help-block">/ip hotspot walled-garden<br>
                     add dst-host=tawk.to<br>
                     add dst-host=*.tawk.to</p>
-                <button class="btn btn-success btn-block" type="submit">
+                <button class="btn btn-success btn-block js-settings-submit" type="button">
                     {Lang::T('Save Changes')}
                 </button>
             </div>
@@ -1139,7 +1362,183 @@
                     </div>
                     <p class="col-md-4 help-block">{Lang::T('This Token will act as SuperAdmin/Admin')}</p>
                 </div>
-                <button class="btn btn-success btn-block" type="submit">
+                <hr>
+                <div class="form-group">
+                    <label class="col-md-3 control-label">{Lang::T('API Rate Limit')}</label>
+                    <div class="col-md-5">
+                        <label class="checkbox-inline">
+                            <input type="checkbox" name="api_rate_limit_enabled" value="1"
+                                {if !isset($_c['api_rate_limit_enabled']) || $_c['api_rate_limit_enabled'] neq 'no'}checked{/if}>
+                            {Lang::T('Enabled')}
+                        </label>
+                    </div>
+                    <p class="col-md-4 help-block">{Lang::T('Applies to all API requests')}</p>
+                </div>
+                <div class="form-group">
+                    <label class="col-md-3 control-label">{Lang::T('Rate Limit Max')}</label>
+                    <div class="col-md-5">
+                        <input type="number" class="form-control" id="api_rate_limit_max" name="api_rate_limit_max"
+                            value="{$_c['api_rate_limit_max']|default:120}" min="0" step="1">
+                    </div>
+                    <p class="col-md-4 help-block">{Lang::T('Requests per window (0 = unlimited)')}</p>
+                </div>
+                <div class="form-group">
+                    <label class="col-md-3 control-label">{Lang::T('Rate Limit Window')}</label>
+                    <div class="col-md-5">
+                        <input type="number" class="form-control" id="api_rate_limit_window" name="api_rate_limit_window"
+                            value="{$_c['api_rate_limit_window']|default:60}" min="0" step="1">
+                    </div>
+                    <p class="col-md-4 help-block">{Lang::T('Window in seconds')}</p>
+                </div>
+                <div class="form-group">
+                    <label class="col-md-3 control-label">{Lang::T('API Key Attempts Max')}</label>
+                    <div class="col-md-5">
+                        <input type="number" class="form-control" id="admin_api_key_attempts_max" name="admin_api_key_attempts_max"
+                            value="{$_c['admin_api_key_attempts_max']|default:5}" min="1" step="1">
+                    </div>
+                    <p class="col-md-4 help-block">{Lang::T('Allowed failures before backoff')}</p>
+                </div>
+                <div class="form-group">
+                    <label class="col-md-3 control-label">{Lang::T('Attempts Window')}</label>
+                    <div class="col-md-5">
+                        <input type="number" class="form-control" id="admin_api_key_attempts_window" name="admin_api_key_attempts_window"
+                            value="{$_c['admin_api_key_attempts_window']|default:300}" min="60" step="1">
+                    </div>
+                    <p class="col-md-4 help-block">{Lang::T('Seconds to count failures')}</p>
+                </div>
+                <div class="form-group">
+                    <label class="col-md-3 control-label">{Lang::T('API Key Backoff')}</label>
+                    <div class="col-md-5">
+                        <label class="checkbox-inline">
+                            <input type="checkbox" name="admin_api_key_backoff_enabled" value="1"
+                                {if !isset($_c['admin_api_key_backoff_enabled']) || $_c['admin_api_key_backoff_enabled'] neq 'no'}checked{/if}>
+                            {Lang::T('Enabled')}
+                        </label>
+                    </div>
+                    <p class="col-md-4 help-block">{Lang::T('Throttle invalid API key attempts')}</p>
+                </div>
+                <div class="form-group">
+                    <label class="col-md-3 control-label">{Lang::T('Backoff Base Delay')}</label>
+                    <div class="col-md-5">
+                        <input type="number" class="form-control" id="admin_api_key_backoff_base_delay"
+                            name="admin_api_key_backoff_base_delay" value="{$_c['admin_api_key_backoff_base_delay']|default:5}" min="0" step="1">
+                    </div>
+                    <p class="col-md-4 help-block">{Lang::T('Seconds (first wait)')}</p>
+                </div>
+                <div class="form-group">
+                    <label class="col-md-3 control-label">{Lang::T('Backoff Max Delay')}</label>
+                    <div class="col-md-5">
+                        <input type="number" class="form-control" id="admin_api_key_backoff_max_delay"
+                            name="admin_api_key_backoff_max_delay" value="{$_c['admin_api_key_backoff_max_delay']|default:3600}" min="0" step="1">
+                    </div>
+                    <p class="col-md-4 help-block">{Lang::T('Seconds (maximum wait)')}</p>
+                </div>
+                <div class="form-group">
+                    <label class="col-md-3 control-label">{Lang::T('Backoff Reset Window')}</label>
+                    <div class="col-md-5">
+                        <input type="number" class="form-control" id="admin_api_key_backoff_reset_window"
+                            name="admin_api_key_backoff_reset_window" value="{$_c['admin_api_key_backoff_reset_window']|default:900}" min="0" step="1">
+                    </div>
+                    <p class="col-md-4 help-block">{Lang::T('Seconds without attempts to reset')}</p>
+                </div>
+                <div class="form-group">
+                    <label class="col-md-3 control-label">{Lang::T('API Key Allowlist')}</label>
+                    <div class="col-md-5">
+                        <textarea class="form-control" id="admin_api_key_allowlist" name="admin_api_key_allowlist"
+                            rows="3" placeholder="127.0.0.1&#10;192.168.1.0/24">{$_c['admin_api_key_allowlist']|escape}</textarea>
+                    </div>
+                    <p class="col-md-4 help-block">{Lang::T('One IP/CIDR per line')}</p>
+                </div>
+                <div class="form-group" id="api-key-blocks">
+                    <label class="col-md-3 control-label">{Lang::T('Blocked IPs')}</label>
+                    <div class="col-md-9">
+                        <div class="row" style="margin-bottom: 10px;">
+                            <div class="col-sm-4">
+                                <input type="text" class="form-control input-sm" name="api_block_add_ip"
+                                    placeholder="{Lang::T('IP')}" autocomplete="off">
+                            </div>
+                            <div class="col-sm-5">
+                                <input type="datetime-local" class="form-control input-sm" name="api_block_add_blocked_until"
+                                    value="{$api_block_default_until|escape}">
+                            </div>
+                            <div class="col-sm-3">
+                                <button type="submit" class="btn btn-xs btn-success" formnovalidate
+                                    formaction="{Text::url('')}settings/api-block-add"
+                                    data-toggle="tooltip" title="{Lang::T('Add')}">
+                                    <span class="fa fa-plus"></span>
+                                </button>
+                            </div>
+                        </div>
+
+                        {if isset($api_key_blocks) && $api_key_blocks|@count > 0}
+                            <div class="table-responsive">
+                                <table class="table table-bordered">
+                                    <thead>
+                                        <tr>
+                                            <th>{Lang::T('IP')}</th>
+                                            <th>{Lang::T('Blocked Until')}</th>
+                                            <th>{Lang::T('Failures')}</th>
+                                            <th>{Lang::T('Action')}</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {foreach $api_key_blocks as $block}
+                                            <tr>
+                                                <td>{$block.ip|escape}</td>
+                                                <td>
+                                                    {if isset($api_block_edit_ip) && $api_block_edit_ip eq $block.ip}
+                                                        <input type="datetime-local" class="form-control input-sm" name="api_block_edit_blocked_until"
+                                                            value="{$block.blocked_until_input|escape}">
+                                                    {else}
+                                                        {$block.blocked_until_human|escape}
+                                                    {/if}
+                                                </td>
+                                                <td>
+                                                    {if isset($api_block_edit_ip) && $api_block_edit_ip eq $block.ip}
+                                                        <input type="number" class="form-control input-sm" name="api_block_edit_fail_count"
+                                                            value="{$block.fail_count|escape}" min="0" step="1">
+                                                    {else}
+                                                        {$block.fail_count|escape}
+                                                    {/if}
+                                                </td>
+                                                <td>
+                                                    {if isset($api_block_edit_ip) && $api_block_edit_ip eq $block.ip}
+                                                        <input type="hidden" name="api_block_edit_ip" value="{$block.ip|escape}">
+                                                        <button type="submit" class="btn btn-xs btn-primary" formnovalidate
+                                                            formaction="{Text::url('')}settings/api-block-edit"
+                                                            data-toggle="tooltip" title="{Lang::T('Save')}">
+                                                            <span class="fa fa-check"></span>
+                                                        </button>
+                                                        <a class="btn btn-xs btn-default"
+                                                            href="{Text::url('settings/app')}#api-key-blocks"
+                                                            data-toggle="tooltip" title="{Lang::T('Cancel')}">
+                                                            <span class="fa fa-times"></span>
+                                                        </a>
+                                                    {else}
+                                                        <a class="btn btn-xs btn-default"
+                                                            href="{Text::url('settings/app&api_block_edit=')}{ $block.ip|escape:'url' }#api-key-blocks"
+                                                            data-toggle="tooltip" title="{Lang::T('Edit')}">
+                                                            <span class="fa fa-pencil"></span>
+                                                        </a>
+                                                        <a class="btn btn-xs btn-danger"
+                                                            href="{Text::url('settings/api-unblock&ip=')}{ $block.ip|escape:'url' }&csrf_token={$csrf_token}#api-key-blocks"
+                                                            onclick="return ask(this, '{Lang::T('Unblock this IP?')}');"
+                                                            data-toggle="tooltip" title="{Lang::T('Unblock')}">
+                                                            <span class="fa fa-unlock"></span>
+                                                        </a>
+                                                    {/if}
+                                                </td>
+                                            </tr>
+                                        {/foreach}
+                                    </tbody>
+                                </table>
+                            </div>
+                        {else}
+                            <p class="help-block">{Lang::T('No blocked IPs')}</p>
+                        {/if}
+                    </div>
+                </div>
+                <button class="btn btn-success btn-block js-settings-submit" type="button">
                     {Lang::T('Save Changes')}
                 </button>
             </div>
@@ -1172,7 +1571,7 @@
                             onmouseleave="this.type = 'password'" onmouseenter="this.type = 'text'">
                     </div>
                 </div>
-                <button class="btn btn-success btn-block" type="submit">
+                <button class="btn btn-success btn-block js-settings-submit" type="button">
                     {Lang::T('Save Changes')}
                 </button>
             </div>
@@ -1243,7 +1642,7 @@
                     <p class="help-block col-md-4">{Lang::T('Enter the custom tax rate (e.g., 3.75 for 3.75%)')}</p>
                 </div>
 
-                <button class="btn btn-success btn-block" type="submit">
+                <button class="btn btn-success btn-block js-settings-submit" type="button">
                     {Lang::T('Save Changes')}
                 </button>
             </div>
@@ -1288,7 +1687,7 @@
                         will allow
                         you to download plugin from private/paid repository')}</label>
                 </div>
-                <button class="btn btn-success btn-block" type="submit">
+                <button class="btn btn-success btn-block js-settings-submit" type="button">
                     {Lang::T('Save Changes')}
                 </button>
             </div>
@@ -1344,40 +1743,162 @@
     function testTg() {
         window.location.href = '{Text::url('settings/app&testTg=test')}';
     }
+
+    function toggleWhatsappAuthFields() {
+        var authSelect = document.getElementById('wa_gateway_auth_type');
+        if (!authSelect) {
+            return;
+        }
+        var authType = (authSelect.value || 'none').toLowerCase();
+        var authFields = document.querySelectorAll('#wa_gateway_post_fields .wa-auth-field');
+        authFields.forEach(function(field) {
+            var allowed = (field.getAttribute('data-auth') || '').toLowerCase().split(' ');
+            var show = authType !== 'none' && allowed.indexOf(authType) !== -1;
+            field.style.display = show ? '' : 'none';
+            field.querySelectorAll('input,select,textarea').forEach(function(input) {
+                input.disabled = !show;
+            });
+        });
+    }
+
+    function toggleWhatsappGatewayFields() {
+        var methodSelect = document.getElementById('wa_gateway_method');
+        var postFields = document.getElementById('wa_gateway_post_fields');
+        var getFields = document.getElementById('wa_gateway_get_fields');
+        if (!methodSelect || !postFields || !getFields) {
+            return;
+        }
+        var method = (methodSelect.value || 'post').toLowerCase();
+        var showPost = method !== 'get';
+        postFields.style.display = showPost ? '' : 'none';
+        getFields.style.display = showPost ? 'none' : '';
+
+        postFields.querySelectorAll('input,select,textarea').forEach(function(input) {
+            input.disabled = !showPost;
+        });
+        getFields.querySelectorAll('input,select,textarea').forEach(function(input) {
+            input.disabled = showPost;
+        });
+
+        if (showPost) {
+            toggleWhatsappAuthFields();
+        }
+    }
 </script>
 
 
 <script>
     document.addEventListener('DOMContentLoaded', function() {
+        var methodSelect = document.getElementById('wa_gateway_method');
+        var authSelect = document.getElementById('wa_gateway_auth_type');
+        if (methodSelect) {
+            methodSelect.addEventListener('change', toggleWhatsappGatewayFields);
+        }
+        if (authSelect) {
+            authSelect.addEventListener('change', toggleWhatsappAuthFields);
+        }
+        toggleWhatsappGatewayFields();
+
         var sectionTimeoutCheckbox = document.getElementById('enable_session_timeout');
         var timeoutDurationInput = document.getElementById('timeout_duration_input');
         var timeoutDurationField = document.getElementById('session_timeout_duration');
+        var turnstileAdmin = document.getElementById('turnstile_admin_enabled');
+        var turnstileClient = document.getElementById('turnstile_client_enabled');
+        var turnstileSiteKey = document.querySelector('input[name="turnstile_site_key"]');
+        var genieAcsEnable = document.getElementById('genieacs_enable');
+        var genieAcsUrlWrap = document.getElementById('genieacs_url_wrap');
+        var genieAcsUrl = document.getElementById('genieacs_url');
 
-        if (sectionTimeoutCheckbox.checked) {
-            timeoutDurationInput.style.display = 'block';
-            timeoutDurationField.required = true;
+        function toggleGenieAcsUrlRequirement() {
+            if (!genieAcsEnable || !genieAcsUrlWrap || !genieAcsUrl) {
+                return;
+            }
+            var enabled = genieAcsEnable.value === 'yes';
+            genieAcsUrlWrap.style.display = enabled ? '' : 'none';
+            genieAcsUrl.required = enabled;
+            if (!enabled) {
+                genieAcsUrl.value = genieAcsUrl.value.trim();
+            }
         }
 
-        sectionTimeoutCheckbox.addEventListener('change', function() {
-            if (this.checked) {
-                timeoutDurationInput.style.display = 'block';
-                timeoutDurationField.required = true;
-            } else {
-                timeoutDurationInput.style.display = 'none';
-                timeoutDurationField.required = false;
+        function requireTurnstileSiteKey() {
+            if (!turnstileSiteKey || !turnstileAdmin || !turnstileClient) {
+                return;
             }
-        });
+            var anyEnabled = turnstileAdmin.value === '1' || turnstileClient.value === '1';
+            turnstileSiteKey.required = anyEnabled;
+        }
 
-        document.querySelector('form').addEventListener('submit', function(event) {
-            if (sectionTimeoutCheckbox.checked && (!timeoutDurationField.value || isNaN(
-                    timeoutDurationField.value))) {
-                event.preventDefault();
-                alert('Please enter a valid session timeout duration.');
-                timeoutDurationField.focus();
-            }
-        });
-    });
-</script>
+        requireTurnstileSiteKey();
+        if (turnstileAdmin) {
+            turnstileAdmin.addEventListener('change', requireTurnstileSiteKey);
+        }
+        if (turnstileClient) {
+            turnstileClient.addEventListener('change', requireTurnstileSiteKey);
+        }
+        toggleGenieAcsUrlRequirement();
+        if (genieAcsEnable) {
+            genieAcsEnable.addEventListener('change', toggleGenieAcsUrlRequirement);
+        }
+
+	        if (sectionTimeoutCheckbox && timeoutDurationInput && timeoutDurationField) {
+	            if (sectionTimeoutCheckbox.checked) {
+	                timeoutDurationInput.style.display = 'block';
+	                timeoutDurationField.required = true;
+	            }
+
+            sectionTimeoutCheckbox.addEventListener('change', function() {
+                if (this.checked) {
+                    timeoutDurationInput.style.display = 'block';
+                    timeoutDurationField.required = true;
+                } else {
+                    timeoutDurationInput.style.display = 'none';
+                    timeoutDurationField.required = false;
+                }
+            });
+
+	            var form = document.querySelector('form');
+	            if (form) {
+	                form.addEventListener('submit', function(event) {
+	                    // This page has multiple submit buttons that override the action via
+	                    // `formaction` (e.g. Blocked IPs CRUD). Only validate when saving the
+	                    // main settings form (settings/app-post).
+	                    var submitter = event.submitter || document.activeElement;
+	                    var targetAction = form.getAttribute('action') || '';
+	                    if (submitter && submitter.getAttribute) {
+	                        var fa = submitter.getAttribute('formaction');
+	                        if (fa) {
+	                            targetAction = fa;
+	                        }
+	                    }
+	                    if (targetAction.indexOf('settings/app-post') === -1) {
+	                        return;
+	                    }
+	                    if (sectionTimeoutCheckbox.checked && (!timeoutDurationField.value || isNaN(
+	                            timeoutDurationField.value))) {
+	                        event.preventDefault();
+	                        alert('Please enter a valid session timeout duration.');
+	                        timeoutDurationField.focus();
+	                    }
+	                });
+		            }
+		        }
+
+	        var regWelcomeSelect = document.getElementById('reg_send_welcome_message');
+	        var regWelcomeViaGroup = document.getElementById('reg_welcome_via_group');
+	        function toggleRegWelcomeVia() {
+	            if (!regWelcomeSelect || !regWelcomeViaGroup) {
+	                return;
+	            }
+	            var enabled = (regWelcomeSelect.value === 'yes');
+	            regWelcomeViaGroup.style.display = enabled ? '' : 'none';
+	        }
+	        if (regWelcomeSelect) {
+	            regWelcomeSelect.addEventListener('change', toggleRegWelcomeVia);
+	        }
+	        toggleRegWelcomeVia();
+	    });
+	</script>
 
 <script>
     document.addEventListener("DOMContentLoaded", function() {
@@ -1412,5 +1933,18 @@
         }
     });
     document.getElementById('login_page_type').dispatchEvent(new Event('change'));
+</script>
+<script>
+    document.addEventListener("DOMContentLoaded", function() {
+        var form = document.getElementById('settings_app_form');
+        if (!form) return;
+        var buttons = document.querySelectorAll('.js-settings-submit');
+        buttons.forEach(function(button) {
+            button.addEventListener('click', function(e) {
+                e.preventDefault();
+                form.submit();
+            });
+        });
+    });
 </script>
 {include file="sections/footer.tpl"}

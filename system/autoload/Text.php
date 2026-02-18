@@ -9,6 +9,42 @@
 
 class Text
 {
+    public static function resolveUploadPhotoUrl($photoPath, $defaultFile = 'user.default.jpg', $preferThumb = true)
+    {
+        $defaultFile = str_replace("\\", '/', trim((string) $defaultFile));
+        if ($defaultFile === '' || strpos($defaultFile, '..') !== false) {
+            $defaultFile = 'user.default.jpg';
+        }
+        $defaultRel = '/' . ltrim($defaultFile, '/');
+
+        $appBase = defined('APP_URL') ? rtrim((string) APP_URL, '/') : '';
+        $uploadsWebBase = '/system/uploads';
+        $fallbackUrl = $appBase . $uploadsWebBase . $defaultRel;
+
+        $photoPath = str_replace("\\", '/', trim((string) $photoPath));
+        if ($photoPath === '' || strpos($photoPath, '..') !== false || stripos($photoPath, 'default') !== false) {
+            return $fallbackUrl;
+        }
+
+        $photoRel = '/' . ltrim($photoPath, '/');
+        $uploadsFsBase = dirname(__DIR__) . DIRECTORY_SEPARATOR . 'uploads';
+        $sourceFs = $uploadsFsBase . str_replace('/', DIRECTORY_SEPARATOR, $photoRel);
+
+        $preferThumb = (bool) $preferThumb;
+        if ($preferThumb) {
+            $thumbRel = $photoRel . '.thumb.jpg';
+            $thumbFs = $uploadsFsBase . str_replace('/', DIRECTORY_SEPARATOR, $thumbRel);
+            if (is_file($thumbFs)) {
+                return $appBase . $uploadsWebBase . $thumbRel;
+            }
+        }
+
+        if (is_file($sourceFs)) {
+            return $appBase . $uploadsWebBase . $photoRel;
+        }
+
+        return $fallbackUrl;
+    }
 
     public static function toHex($string)
     {

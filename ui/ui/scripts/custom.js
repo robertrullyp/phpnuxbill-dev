@@ -55,6 +55,28 @@ function checkUsername(f, id) {
 
 //auto load pool - pppoe plan
 var htmlobjek;
+function loadPppoeServiceOptions(routers, selectedValue) {
+	if (!$('#pppoe_service').length) {
+		return;
+	}
+	if (!routers) {
+		$('#pppoe_service').html('<option value=\"\">Select PPPoE Service</option>');
+		return;
+	}
+	var query = "routers=" + encodeURIComponent(routers);
+	if (selectedValue) {
+		query += "&selected=" + encodeURIComponent(selectedValue);
+	}
+	$.ajax({
+		url: appUrl + "/?_route=autoload/pppoe_service",
+		data: query,
+		cache: false,
+		success: function (msg) {
+			$("#pppoe_service").html(msg);
+		}
+	});
+}
+
 $(document).ready(function () {
 	$("#routers").change(function () {
 		var routers = $("#routers").val();
@@ -66,7 +88,14 @@ $(document).ready(function () {
 				$("#pool_name").html(msg);
 			}
 		});
+		loadPppoeServiceOptions(routers, '');
 	});
+
+	if ($('#pppoe_service').length) {
+		var initialRouter = $('#routers').val();
+		var selectedService = $('#pppoe_service').data('selected') || $('#pppoe_service').val() || '';
+		loadPppoeServiceOptions(initialRouter, selectedService);
+	}
 });
 
 //auto load plans data - recharge user
@@ -140,6 +169,61 @@ $(function () {
 			});
 		}
 	});
+});
+
+// auto load plan data - refund user (active plan only)
+$(function () {
+	if (!$('#refund-form').length) {
+		return;
+	}
+
+	function loadRefundServers() {
+		$.ajax({
+			type: "POST",
+			dataType: "html",
+			url: appUrl + "/?_route=autoload/server",
+			success: function (msg) {
+				$("#refund_server").html(msg);
+			}
+		});
+	}
+
+	function loadRefundPlans() {
+		var server = $("#refund_server").val();
+		var customerId = $("#refund_customer").val() || $("#personSelect").val();
+		var type = $('input[name=refund_type]:checked').val() || '';
+		if (!server || !customerId || !type) {
+			$("#refund_plan").html('<option value="">Select Plans</option>');
+			return;
+		}
+
+		$.ajax({
+			type: "POST",
+			dataType: "html",
+			url: appUrl + "/?_route=autoload/plan",
+			data: "jenis=" + encodeURIComponent(type) +
+				"&server=" + encodeURIComponent(server) +
+				"&customer_id=" + encodeURIComponent(customerId) +
+				"&active_only=1",
+			success: function (msg) {
+				$("#refund_plan").html(msg);
+			}
+		});
+	}
+
+	$('input[name=refund_type]').change(function () {
+		loadRefundServers();
+		$("#refund_plan").html('<option value="">Select Plans</option>');
+	});
+	$("#refund_server").change(loadRefundPlans);
+	$("#refund_customer, #personSelect").change(loadRefundPlans);
+
+	// default to PPPoE in refund form if available, otherwise first checked radio.
+	if ($('input[name=refund_type][value="PPPOE"]').length) {
+		$('input[name=refund_type][value="PPPOE"]').prop('checked', true).trigger('change');
+	} else {
+		$('input[name=refund_type]').first().prop('checked', true).trigger('change');
+	}
 });
 
 

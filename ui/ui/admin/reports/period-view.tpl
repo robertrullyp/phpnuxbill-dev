@@ -44,6 +44,9 @@
                             <th>{Lang::T('Created On')}</th>
                             <th>{Lang::T('Expires On')}</th>
                             <th>{Lang::T('Method')}</th>
+                            {if $_c['show_invoice_note']=='yes'}
+                                <th>{Lang::T('Note')}</th>
+                            {/if}
                             <th>{Lang::T('Routers')}</th>
                         </tr>
                     </thead>
@@ -58,6 +61,9 @@
                                 <td>{Lang::dateAndTimeFormat($ds['recharged_on'],$ds['recharged_time'])}</td>
                                 <td>{Lang::dateAndTimeFormat($ds['expiration'],$ds['time'])}</td>
                                 <td>{$ds['method']}</td>
+                                {if $_c['show_invoice_note']=='yes'}
+                                    <td>{$ds['note']|escape}</td>
+                                {/if}
                                 <td>{$ds['routers']}</td>
                             </tr>
                         {/foreach}

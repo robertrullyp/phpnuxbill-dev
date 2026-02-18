@@ -82,6 +82,8 @@
                                 <th>{Lang::T("Created On")}</th>
                                 <th>{Lang::T("Expires On")}</th>
                                 <th>{Lang::T("Method")}</th>
+                                <th>{Lang::T("DL")} (GB)</th>
+                                <th>{Lang::T("UL")} (GB)</th>
                                 <th><a href="{Text::url('')}routers/list">{Lang::T("Location")}</a></th>
                                 <th>{Lang::T("Manage")}</th>
                             </tr>
@@ -116,10 +118,15 @@
                                     <td>{Lang::dateAndTimeFormat($ds['recharged_on'],$ds['recharged_time'])}</td>
                                     <td>{Lang::dateAndTimeFormat($ds['expiration'],$ds['time'])}</td>
                                     <td>{$ds['method']}</td>
+                                    <td>{(($ds['usage_tx_bytes']|default:0)/1073741824)|number_format:2:'.':','} GB</td>
+                                    <td>{(($ds['usage_rx_bytes']|default:0)/1073741824)|number_format:2:'.':','} GB</td>
                                     <td>{$ds['routers']}</td>
                                     <td>
                                         <a href="{Text::url('')}plan/edit/{$ds['id']}" class="btn btn-warning btn-xs"
                                             style="color: black;">{Lang::T("Edit")}</a>
+                                        {if $ds['status']=='on' && $ds['customer_id'] > 0}
+                                            <a href="{Text::url('')}plan/refund/{$ds['customer_id']}" class="btn btn-danger btn-xs">{Lang::T("Refund")}</a>
+                                        {/if}
                                         {if in_array($_admin['user_type'],['SuperAdmin','Admin'])}
                                             <a href="{Text::url('')}plan/delete/{$ds['id']}" id="{$ds['id']}"
                                                 onclick="return ask(this, '{Lang::T("Delete")}?')"

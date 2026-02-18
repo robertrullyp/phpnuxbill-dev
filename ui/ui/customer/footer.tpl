@@ -97,28 +97,21 @@
 
     if (savedMode === 'dark') {
         body.classList.add('dark-mode');
-        if (toggleIcon) {
-            toggleIcon.textContent = '🌞';
-        }
-    } else if (toggleIcon) {
-        toggleIcon.textContent = '🌜';
-    }
-
-    function setMode(mode) {
-        if (mode === 'dark') {
-            body.classList.add('dark-mode');
-            if (toggleIcon) {
-                toggleIcon.textContent = '🌞';
-            }
-        } else {
-            body.classList.remove('dark-mode');
-            if (toggleIcon) {
-                toggleIcon.textContent = '🌜';
-            }
-        }
     }
 
     if (toggleIcon) {
+        toggleIcon.textContent = savedMode === 'dark' ? '🌞' : '🌜';
+
+        function setMode(mode) {
+            if (mode === 'dark') {
+                body.classList.add('dark-mode');
+                toggleIcon.textContent = '🌞';
+            } else {
+                body.classList.remove('dark-mode');
+                toggleIcon.textContent = '🌜';
+            }
+        }
+
         toggleIcon.addEventListener('click', () => {
             if (body.classList.contains('dark-mode')) {
                 setMode('light');
@@ -237,6 +230,12 @@
 
 
 
+
+
+
+<!-- AI_CHATBOT_PLUGIN_START -->
+{include file="[plugin]ai_chatbot.tpl"}
+<!-- AI_CHATBOT_PLUGIN_END -->
 </body>
 
 </html>

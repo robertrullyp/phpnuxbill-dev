@@ -11,8 +11,583 @@ $ui->assign('_system_menu', 'settings');
 $action = $routes['1'];
 $ui->assign('_admin', $admin);
 
+function settings_parse_user_data($raw)
+{
+    if (is_array($raw)) {
+        return $raw;
+    }
+    if (!is_string($raw)) {
+        return [];
+    }
+
+    $raw = trim($raw);
+    if ($raw === '') {
+        return [];
+    }
+
+    $decoded = json_decode($raw, true);
+
+    return is_array($decoded) ? $decoded : [];
+}
+
+function settings_api_key_backoff_check($actor_id, $target_id)
+{
+    $actor_id = (int) $actor_id;
+    $target_id = (int) $target_id;
+
+    $config = $GLOBALS['config'] ?? [];
+    $enabled = ($config['admin_api_key_backoff_enabled'] ?? 'yes') !== 'no';
+    if (!$enabled) {
+        return ['allowed' => true];
+    }
+
+    $base_delay = (int) ($config['admin_api_key_backoff_base_delay'] ?? 5);
+    $max_delay = (int) ($config['admin_api_key_backoff_max_delay'] ?? 3600);
+    $reset_window = (int) ($config['admin_api_key_backoff_reset_window'] ?? 900);
+
+    if ($base_delay < 1) {
+        $base_delay = 1;
+    }
+    if ($max_delay < $base_delay) {
+        $max_delay = $base_delay;
+    }
+    if ($reset_window < 60) {
+        $reset_window = 60;
+    }
+
+    $cache_base = $GLOBALS['CACHE_PATH'] ?? null;
+    if (!$cache_base) {
+        return ['allowed' => true];
+    }
+
+    $dir = rtrim($cache_base, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . 'admin_api_key_throttle';
+    if (!is_dir($dir)) {
+        @mkdir($dir, 0775, true);
+    }
+    if (!is_dir($dir)) {
+        return ['allowed' => true];
+    }
+
+    $key = 'actor:' . $actor_id . '|target:' . $target_id;
+    $path = $dir . DIRECTORY_SEPARATOR . hash('sha256', $key) . '.json';
+    $now = time();
+
+    $state = [
+        'attempts' => 0,
+        'last_at' => 0,
+        'next_allowed_at' => 0,
+    ];
+
+    if (is_file($path)) {
+        $raw = @file_get_contents($path);
+        if ($raw !== false) {
+            $decoded = json_decode($raw, true);
+            if (is_array($decoded)) {
+                $state['attempts'] = (int) ($decoded['attempts'] ?? 0);
+                $state['last_at'] = (int) ($decoded['last_at'] ?? 0);
+                $state['next_allowed_at'] = (int) ($decoded['next_allowed_at'] ?? 0);
+            }
+        }
+    }
+
+    if ($state['next_allowed_at'] > $now) {
+        return [
+            'allowed' => false,
+            'wait' => $state['next_allowed_at'] - $now,
+        ];
+    }
+
+    if ($state['last_at'] === 0 || ($now - $state['last_at']) > $reset_window) {
+        $state['attempts'] = 0;
+    }
+
+    $state['attempts']++;
+    $delay = $base_delay * (2 ** max(0, $state['attempts'] - 1));
+    if ($delay > $max_delay) {
+        $delay = $max_delay;
+    }
+
+    $state['last_at'] = $now;
+    $state['next_allowed_at'] = $now + $delay;
+
+    @file_put_contents($path, json_encode($state), LOCK_EX);
+
+    return [
+        'allowed' => true,
+        'delay' => $delay,
+        'next_allowed_at' => $state['next_allowed_at'],
+    ];
+}
+
+function settings_user_row($user)
+{
+    if ($user instanceof ORM) {
+        return $user->as_array();
+    }
+    if (is_array($user)) {
+        return $user;
+    }
+    return [];
+}
+
+function settings_json_encode_or_null(array $data)
+{
+    if (empty($data)) {
+        return null;
+    }
+    $encoded = json_encode($data, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+    if ($encoded === false) {
+        return null;
+    }
+    return $encoded;
+}
+
+function settings_get_manageable_user_ids($actor)
+{
+    $actor = settings_user_row($actor);
+    $aid = (int) ($actor['id'] ?? 0);
+    $role = trim((string) ($actor['user_type'] ?? ''));
+    if ($aid < 1 || $role === '') {
+        return [];
+    }
+
+    if ($role === 'SuperAdmin') {
+        return array_values(array_map('intval', array_column(ORM::for_table('tbl_users')->select('id')->find_array(), 'id')));
+    }
+
+    $ids = [$aid => $aid];
+    if ($role === 'Admin') {
+        $agents = [];
+        $direct = ORM::for_table('tbl_users')
+            ->select_many('id', 'user_type')
+            ->where('root', $aid)
+            ->find_array();
+        foreach ($direct as $row) {
+            $uid = (int) ($row['id'] ?? 0);
+            $ut = (string) ($row['user_type'] ?? '');
+            if ($uid < 1) {
+                continue;
+            }
+            if (in_array($ut, ['Agent', 'Report'], true)) {
+                $ids[$uid] = $uid;
+            }
+            if ($ut === 'Agent') {
+                $agents[] = $uid;
+            }
+        }
+        if (!empty($agents)) {
+            $sales = ORM::for_table('tbl_users')
+                ->select('id')
+                ->where('user_type', 'Sales')
+                ->where_in('root', $agents)
+                ->find_array();
+            foreach ($sales as $row) {
+                $uid = (int) ($row['id'] ?? 0);
+                if ($uid > 0) {
+                    $ids[$uid] = $uid;
+                }
+            }
+        }
+    } elseif ($role === 'Agent') {
+        $sales = ORM::for_table('tbl_users')
+            ->select('id')
+            ->where('user_type', 'Sales')
+            ->where('root', $aid)
+            ->find_array();
+        foreach ($sales as $row) {
+            $uid = (int) ($row['id'] ?? 0);
+            if ($uid > 0) {
+                $ids[$uid] = $uid;
+            }
+        }
+    }
+
+    return array_values($ids);
+}
+
+function settings_can_manage_user($actor, $target, $allowSelf = true)
+{
+    $actor = settings_user_row($actor);
+    $target = settings_user_row($target);
+    $aid = (int) ($actor['id'] ?? 0);
+    $tid = (int) ($target['id'] ?? 0);
+    if ($aid < 1 || $tid < 1) {
+        return false;
+    }
+    if (($actor['user_type'] ?? '') === 'SuperAdmin') {
+        return true;
+    }
+    if ($allowSelf && $aid === $tid) {
+        return true;
+    }
+    $ids = settings_get_manageable_user_ids($actor);
+    return in_array($tid, $ids, true);
+}
+
+function settings_allowed_roles_for_create($actorRole)
+{
+    $actorRole = trim((string) $actorRole);
+    if ($actorRole === 'SuperAdmin') {
+        return ['SuperAdmin', 'Admin', 'Report', 'Agent', 'Sales'];
+    }
+    if ($actorRole === 'Admin') {
+        return ['Report', 'Agent'];
+    }
+    if ($actorRole === 'Agent') {
+        return ['Sales'];
+    }
+    return [];
+}
+
+function settings_allowed_roles_for_edit($actor, $target)
+{
+    $actor = settings_user_row($actor);
+    $target = settings_user_row($target);
+    $actorRole = trim((string) ($actor['user_type'] ?? ''));
+    $targetRole = trim((string) ($target['user_type'] ?? ''));
+    $isSelf = ((int) ($actor['id'] ?? 0) === (int) ($target['id'] ?? 0));
+
+    if ($actorRole === 'SuperAdmin') {
+        return ['SuperAdmin', 'Admin', 'Report', 'Agent', 'Sales'];
+    }
+    if ($isSelf) {
+        return [$targetRole];
+    }
+    if ($actorRole === 'Admin') {
+        if ($targetRole === 'Sales') {
+            return ['Sales'];
+        }
+        return ['Report', 'Agent'];
+    }
+    if ($actorRole === 'Agent') {
+        return ['Sales'];
+    }
+    return [];
+}
+
+function settings_get_assignable_admin_rows($actor)
+{
+    $actor = settings_user_row($actor);
+    $role = trim((string) ($actor['user_type'] ?? ''));
+    if ($role === 'SuperAdmin') {
+        return ORM::for_table('tbl_users')
+            ->select_many('id', 'username', 'fullname', 'user_type', 'root')
+            ->where('user_type', 'Admin')
+            ->order_by_asc('username')
+            ->find_array();
+    }
+    if ($role === 'Admin') {
+        return [[
+            'id' => (int) ($actor['id'] ?? 0),
+            'username' => $actor['username'] ?? '',
+            'fullname' => $actor['fullname'] ?? '',
+            'user_type' => 'Admin',
+            'root' => (int) ($actor['root'] ?? 0),
+        ]];
+    }
+    return [];
+}
+
+function settings_get_assignable_superadmin_rows($actor)
+{
+    $actor = settings_user_row($actor);
+    $role = trim((string) ($actor['user_type'] ?? ''));
+    if ($role !== 'SuperAdmin') {
+        return [];
+    }
+
+    $rows = ORM::for_table('tbl_users')
+        ->select_many('id', 'username', 'fullname', 'user_type', 'root')
+        ->where('user_type', 'SuperAdmin')
+        ->order_by_asc('username')
+        ->find_array();
+
+    if (empty($rows) && (int) ($actor['id'] ?? 0) > 0) {
+        return [[
+            'id' => (int) ($actor['id'] ?? 0),
+            'username' => $actor['username'] ?? '',
+            'fullname' => $actor['fullname'] ?? '',
+            'user_type' => 'SuperAdmin',
+            'root' => 0,
+        ]];
+    }
+
+    return $rows;
+}
+
+function settings_get_assignable_agent_rows($actor, $adminId = 0)
+{
+    $actor = settings_user_row($actor);
+    $role = trim((string) ($actor['user_type'] ?? ''));
+    $query = ORM::for_table('tbl_users')
+        ->select_many('id', 'username', 'fullname', 'phone', 'user_type', 'root')
+        ->where('user_type', 'Agent');
+
+    if ($role === 'SuperAdmin') {
+        if ((int) $adminId > 0) {
+            $query->where('root', (int) $adminId);
+        }
+    } elseif ($role === 'Admin') {
+        $query->where('root', (int) ($actor['id'] ?? 0));
+    } elseif ($role === 'Agent') {
+        return [[
+            'id' => (int) ($actor['id'] ?? 0),
+            'username' => $actor['username'] ?? '',
+            'fullname' => $actor['fullname'] ?? '',
+            'phone' => $actor['phone'] ?? '',
+            'user_type' => 'Agent',
+            'root' => (int) ($actor['root'] ?? 0),
+        ]];
+    } else {
+        return [];
+    }
+
+    return $query->order_by_asc('username')->find_array();
+}
+
+function settings_resolve_root_for_role($actor, $targetRole, $rootInput, $target, &$error = '')
+{
+    $actor = settings_user_row($actor);
+    $target = settings_user_row($target);
+    $actorRole = trim((string) ($actor['user_type'] ?? ''));
+    $targetCurrentRole = trim((string) ($target['user_type'] ?? ''));
+    $isSelf = ((int) ($actor['id'] ?? 0) > 0 && (int) ($actor['id'] ?? 0) === (int) ($target['id'] ?? 0));
+    $targetRole = trim((string) $targetRole);
+    $rootInput = (int) $rootInput;
+    $error = '';
+
+    if ($targetRole === 'SuperAdmin') {
+        return 0;
+    }
+    if ($targetRole === 'Admin') {
+        if ($isSelf && $targetCurrentRole === 'Admin') {
+            return (int) ($target['root'] ?? 0);
+        }
+        if ($actorRole !== 'SuperAdmin') {
+            $error = Lang::T('You do not have permission to assign this role');
+            return 0;
+        }
+        $resolved = $rootInput;
+        if ($resolved < 1 && !empty($target)) {
+            $resolved = (int) ($target['root'] ?? 0);
+        }
+        if ($resolved < 1) {
+            $resolved = (int) ($actor['id'] ?? 0);
+        }
+        if ($resolved < 1) {
+            $error = Lang::T('Please select parent superadmin');
+            return 0;
+        }
+        $parent = _router_access_user_by_id($resolved);
+        if (empty($parent) || ($parent['user_type'] ?? '') !== 'SuperAdmin') {
+            $error = Lang::T('Invalid parent superadmin');
+            return 0;
+        }
+        return $resolved;
+    }
+    if ($targetRole === 'Report' || $targetRole === 'Agent') {
+        if ($isSelf && $targetCurrentRole === $targetRole) {
+            return (int) ($target['root'] ?? 0);
+        }
+        if ($actorRole === 'Admin') {
+            return (int) ($actor['id'] ?? 0);
+        }
+        if ($actorRole === 'SuperAdmin') {
+            if ($rootInput < 1) {
+                $error = Lang::T('Please select parent admin');
+                return 0;
+            }
+            $parent = _router_access_user_by_id($rootInput);
+            if (empty($parent) || ($parent['user_type'] ?? '') !== 'Admin') {
+                $error = Lang::T('Invalid parent admin');
+                return 0;
+            }
+            return $rootInput;
+        }
+        $error = Lang::T('You do not have permission to assign this role');
+        return 0;
+    }
+    if ($targetRole === 'Sales') {
+        if ($isSelf && $targetCurrentRole === 'Sales') {
+            return (int) ($target['root'] ?? 0);
+        }
+        if ($actorRole === 'Agent') {
+            return (int) ($actor['id'] ?? 0);
+        }
+        if ($actorRole === 'Admin') {
+            // Admin can manage sales profile, but sales must stay under one of admin's agents.
+            $resolved = $rootInput;
+            if ($resolved < 1 && !empty($target)) {
+                $resolved = (int) ($target['root'] ?? 0);
+            }
+            if ($resolved < 1) {
+                $error = Lang::T('Please select parent agent');
+                return 0;
+            }
+            $parent = _router_access_user_by_id($resolved);
+            if (empty($parent) || ($parent['user_type'] ?? '') !== 'Agent' || (int) ($parent['root'] ?? 0) !== (int) ($actor['id'] ?? 0)) {
+                $error = Lang::T('Invalid parent agent');
+                return 0;
+            }
+            return $resolved;
+        }
+        if ($actorRole === 'SuperAdmin') {
+            if ($rootInput < 1) {
+                $error = Lang::T('Please select parent agent');
+                return 0;
+            }
+            $parent = _router_access_user_by_id($rootInput);
+            if (empty($parent) || ($parent['user_type'] ?? '') !== 'Agent') {
+                $error = Lang::T('Invalid parent agent');
+                return 0;
+            }
+            return $rootInput;
+        }
+        $error = Lang::T('You do not have permission to assign this role');
+        return 0;
+    }
+
+    return 0;
+}
+
+function settings_get_assignable_router_ids($actor, $targetRole, $root)
+{
+    $actor = settings_user_row($actor);
+    $actorRole = trim((string) ($actor['user_type'] ?? ''));
+    $targetRole = trim((string) $targetRole);
+    $root = (int) $root;
+    $all = _router_access_all_router_ids(false);
+
+    if ($actorRole === 'SuperAdmin') {
+        return $all;
+    }
+
+    if ($targetRole === 'SuperAdmin') {
+        return $all;
+    }
+    if ($targetRole === 'Admin') {
+        return $actorRole === 'SuperAdmin' ? $all : [];
+    }
+    if (in_array($targetRole, ['Report', 'Agent'], true)) {
+        if ($actorRole === 'SuperAdmin') {
+            $parent = _router_access_user_by_id($root);
+            if (empty($parent)) {
+                return [];
+            }
+            $stack = [];
+            return _router_access_allowed_ids_for_user($parent, false, 0, $stack);
+        }
+        if ($actorRole === 'Admin') {
+            return _router_get_accessible_router_ids($actor, false);
+        }
+        return [];
+    }
+    if ($targetRole === 'Sales') {
+        if ($actorRole === 'Agent') {
+            return _router_get_accessible_router_ids($actor, false);
+        }
+        $parent = _router_access_user_by_id($root);
+        if (empty($parent)) {
+            return [];
+        }
+        $stack = [];
+        return _router_access_allowed_ids_for_user($parent, false, 0, $stack);
+    }
+    return [];
+}
+
+function settings_sanitize_router_assignment($modeRaw, $idsRaw, array $allowedIds, &$error = '')
+{
+    $mode = strtolower(trim((string) $modeRaw));
+    if (!in_array($mode, ['all', 'list'], true)) {
+        $mode = 'all';
+    }
+    $selected = _router_access_normalize_ids($idsRaw);
+    $allowMap = [];
+    foreach ($allowedIds as $id) {
+        $id = (int) $id;
+        if ($id > 0) {
+            $allowMap[$id] = true;
+        }
+    }
+
+    $filtered = [];
+    foreach ($selected as $id) {
+        if (isset($allowMap[$id])) {
+            $filtered[$id] = $id;
+        }
+    }
+
+    if (count($selected) !== count($filtered)) {
+        $error = Lang::T('Selected router is outside your allowed scope');
+    }
+    if ($mode === 'list' && empty($filtered)) {
+        $error = Lang::T('Please select at least one router');
+    }
+
+    return [$mode, array_values($filtered)];
+}
+
+function settings_get_router_assignment_from_user($user)
+{
+    $assignment = _router_access_assignment(settings_user_row($user));
+    return [
+        'mode' => $assignment['mode'] ?? 'all',
+        'ids' => _router_access_normalize_ids($assignment['ids'] ?? []),
+    ];
+}
+
+function settings_apply_router_assignment(array &$userData, $targetRole, $mode, array $ids)
+{
+    $targetRole = trim((string) $targetRole);
+    if ($targetRole === 'SuperAdmin') {
+        unset($userData['router_assignment_mode'], $userData['router_assignment_ids'], $userData['router_access_mode'], $userData['router_access_ids']);
+        return;
+    }
+    $mode = strtolower(trim((string) $mode));
+    if (!in_array($mode, ['all', 'list'], true)) {
+        $mode = 'all';
+    }
+    $userData['router_assignment_mode'] = $mode;
+    $userData['router_assignment_ids'] = _router_access_normalize_ids($ids);
+    unset($userData['router_access_mode'], $userData['router_access_ids']);
+}
+
+function settings_router_rows_for_ids(array $ids)
+{
+    $ids = _router_access_normalize_ids($ids);
+    if (empty($ids)) {
+        return [];
+    }
+    $rows = _router_access_all_router_rows(false);
+    $map = [];
+    foreach ($rows as $row) {
+        $map[(int) ($row['id'] ?? 0)] = $row;
+    }
+    $result = [];
+    foreach ($ids as $id) {
+        if (isset($map[$id])) {
+            $result[] = $map[$id];
+        }
+    }
+    return $result;
+}
+
+function settings_list_router_rows_for_actor($actor)
+{
+    $actor = settings_user_row($actor);
+    if (($actor['user_type'] ?? '') === 'SuperAdmin') {
+        return _router_access_all_router_rows(false);
+    }
+    $ids = _router_get_accessible_router_ids($actor, false);
+    return settings_router_rows_for_ids($ids);
+}
+
 switch ($action) {
     case 'docs':
+        if (!in_array($admin['user_type'], ['SuperAdmin', 'Admin'])) {
+            _alert(Lang::T('You do not have permission to access this page'), 'danger', "dashboard");
+        }
         $d = ORM::for_table('tbl_appconfig')->where('setting', 'docs_clicked')->find_one();
         if ($d) {
             $d->value = 'yes';
@@ -22,6 +597,9 @@ switch ($action) {
             $d->setting = 'docs_clicked';
             $d->value = 'yes';
             $d->save();
+        }
+        if (!empty($isApi)) {
+            showResult(true, 'ok', ['url' => APP_URL . '/docs']);
         }
         r2(APP_URL . '/docs');
         break;
@@ -94,10 +672,20 @@ switch ($action) {
         }
         $ui->assign('logo', $logo);
 
-        if (!empty($config['login_page_logo']) && file_exists($UPLOAD_URL_PATH . DIRECTORY_SEPARATOR . $config['login_page_logo'])) {
+        $company_logo_path = $UPLOAD_PATH . DIRECTORY_SEPARATOR . 'logo.png';
+        $company_logo_url = $UPLOAD_URL_PATH . DIRECTORY_SEPARATOR . 'logo.png';
+        $company_logo_login_path = $UPLOAD_PATH . DIRECTORY_SEPARATOR . 'logo.login.png';
+        $company_logo_login_url = $UPLOAD_URL_PATH . DIRECTORY_SEPARATOR . 'logo.login.png';
+        $company_logo_favicon_path = $UPLOAD_PATH . DIRECTORY_SEPARATOR . 'logo.favicon.png';
+        $company_logo_favicon_url = $UPLOAD_URL_PATH . DIRECTORY_SEPARATOR . 'logo.favicon.png';
+        if (!empty($config['login_page_logo']) && file_exists($UPLOAD_PATH . DIRECTORY_SEPARATOR . $config['login_page_logo'])) {
             $login_logo = $UPLOAD_URL_PATH . DIRECTORY_SEPARATOR . $config['login_page_logo'];
-        } elseif (file_exists($UPLOAD_URL_PATH . DIRECTORY_SEPARATOR . 'login-logo.png')) {
+        } elseif (file_exists($UPLOAD_PATH . DIRECTORY_SEPARATOR . 'login-logo.png')) {
             $login_logo = $UPLOAD_URL_PATH . DIRECTORY_SEPARATOR . 'login-logo.png';
+        } elseif (file_exists($company_logo_login_path)) {
+            $login_logo = $company_logo_login_url;
+        } elseif (file_exists($company_logo_path)) {
+            $login_logo = $company_logo_url;
         } else {
             $login_logo = $UPLOAD_URL_PATH . DIRECTORY_SEPARATOR . 'login-logo.default.png';
         }
@@ -110,10 +698,14 @@ switch ($action) {
             $wallpaper = $UPLOAD_URL_PATH . DIRECTORY_SEPARATOR . 'wallpaper.default.png';
         }
 
-        if (!empty($config['login_page_favicon']) && file_exists($UPLOAD_URL_PATH . DIRECTORY_SEPARATOR . $config['login_page_favicon'])) {
+        if (!empty($config['login_page_favicon']) && file_exists($UPLOAD_PATH . DIRECTORY_SEPARATOR . $config['login_page_favicon'])) {
             $favicon = $UPLOAD_URL_PATH . DIRECTORY_SEPARATOR . $config['login_page_favicon'];
-        } elseif (file_exists($UPLOAD_URL_PATH . DIRECTORY_SEPARATOR . 'favicon.png')) {
+        } elseif (file_exists($UPLOAD_PATH . DIRECTORY_SEPARATOR . 'favicon.png')) {
             $favicon = $UPLOAD_URL_PATH . DIRECTORY_SEPARATOR . 'favicon.png';
+        } elseif (file_exists($company_logo_favicon_path)) {
+            $favicon = $company_logo_favicon_url;
+        } elseif (file_exists($company_logo_path)) {
+            $favicon = $company_logo_url;
         } else {
             $favicon = $UPLOAD_URL_PATH . DIRECTORY_SEPARATOR . 'favicon.default.png';
         }
@@ -173,6 +765,48 @@ switch ($action) {
             $config['mikrotik_sms_command'] = "/tool sms send";
         }
         $ui->assign('template_files', $templates);
+        $api_block_edit_ip = trim((string) _get('api_block_edit'));
+        if ($api_block_edit_ip !== '' && !filter_var($api_block_edit_ip, FILTER_VALIDATE_IP)) {
+            $api_block_edit_ip = '';
+        }
+        $ui->assign('api_block_edit_ip', $api_block_edit_ip);
+        $ui->assign('api_block_default_until', date('Y-m-d\\TH:i', time() + 3600));
+        $api_key_blocks = [];
+        $block_dir = $CACHE_PATH . DIRECTORY_SEPARATOR . 'admin_api_key_backoff';
+        if (is_dir($block_dir)) {
+            $files = glob($block_dir . DIRECTORY_SEPARATOR . '*.json') ?: [];
+            $now = time();
+            foreach ($files as $file) {
+                $raw = @file_get_contents($file);
+                if ($raw === false) {
+                    continue;
+                }
+                $decoded = json_decode($raw, true);
+                if (!is_array($decoded)) {
+                    continue;
+                }
+                $blocked_until = (int) ($decoded['blocked_until'] ?? 0);
+                if ($blocked_until <= $now && isset($decoded['next_allowed_at'])) {
+                    $blocked_until = (int) $decoded['next_allowed_at'];
+                }
+                if ($blocked_until <= $now) {
+                    continue;
+                }
+                $ip = trim((string) ($decoded['ip'] ?? ''));
+                if ($ip === '') {
+                    continue;
+                }
+                $api_key_blocks[] = [
+                    'ip' => $ip,
+                    'blocked_until' => $blocked_until,
+                    'blocked_until_human' => date('Y-m-d H:i:s', $blocked_until),
+                    'blocked_until_input' => date('Y-m-d\\TH:i', $blocked_until),
+                    'fail_count' => (int) ($decoded['fail_count'] ?? 0),
+                    'backoff_attempts' => (int) ($decoded['backoff_attempts'] ?? ($decoded['attempts'] ?? 0)),
+                ];
+            }
+        }
+        $ui->assign('api_key_blocks', $api_key_blocks);
         $ui->assign('_c', $config);
         $ui->assign('php', $php);
         $ui->assign('dir', str_replace('controllers', '', __DIR__));
@@ -198,6 +832,11 @@ switch ($action) {
             r2(getUrl('settings/app'), 'e', Lang::T('Invalid or Expired CSRF Token') . ".");
         }
         Csrf::generateAndStoreToken();
+
+        // Ensure posted radius setting is available for validation below.
+        // When enabling RADIUS, we need to verify required tables/connection exist.
+        $radius_enable = ((int) _post('radius_enable', 0)) === 1;
+
         $company = _post('CompanyName');
         $custom_tax_rate = filter_var(_post('custom_tax_rate'), FILTER_SANITIZE_SPECIAL_CHARS);
         if (preg_match('/[^0-9.]/', $custom_tax_rate)) {
@@ -207,9 +846,16 @@ switch ($action) {
         run_hook('save_settings'); #HOOK
         if (!empty($_FILES['logo']['name'])) {
             if (function_exists('imagecreatetruecolor')) {
-                if (file_exists($UPLOAD_PATH . DIRECTORY_SEPARATOR . 'logo.png'))
-                    unlink($UPLOAD_PATH . DIRECTORY_SEPARATOR . 'logo.png');
-                File::resizeCropImage($_FILES['logo']['tmp_name'], $UPLOAD_PATH . DIRECTORY_SEPARATOR . 'logo.png', 1078, 200, 100);
+                $logoTmp = $_FILES['logo']['tmp_name'];
+                $logoPath = $UPLOAD_PATH . DIRECTORY_SEPARATOR . 'logo.png';
+                $logoLoginPath = $UPLOAD_PATH . DIRECTORY_SEPARATOR . 'logo.login.png';
+                $logoFaviconPath = $UPLOAD_PATH . DIRECTORY_SEPARATOR . 'logo.favicon.png';
+                if (file_exists($logoPath)) {
+                    unlink($logoPath);
+                }
+                File::resizeCropImage($logoTmp, $logoPath, 1078, 200, 100);
+                File::resizeCropImage($logoTmp, $logoLoginPath, 300, 60, 100);
+                File::resizeCropImage($logoTmp, $logoFaviconPath, 64, 64, 100);
                 if (file_exists($_FILES['logo']['tmp_name']))
                     unlink($_FILES['logo']['tmp_name']);
             } else {
@@ -237,11 +883,76 @@ switch ($action) {
             $_POST['man_fields_fname'] = isset($_POST['man_fields_fname']) ? 'yes' : 'no';
             $_POST['man_fields_address'] = isset($_POST['man_fields_address']) ? 'yes' : 'no';
             $_POST['man_fields_custom'] = isset($_POST['man_fields_custom']) ? 'yes' : 'no';
+            $_POST['show_invoice_note'] = _post('show_invoice_note', 'no');
             $enable_session_timeout = isset($_POST['enable_session_timeout']) ? 1 : 0;
             $_POST['enable_session_timeout'] = $enable_session_timeout;
             $_POST['notification_reminder_1day'] = isset($_POST['notification_reminder_1day']) ? 'yes' : 'no';
             $_POST['notification_reminder_3days'] = isset($_POST['notification_reminder_3days']) ? 'yes' : 'no';
             $_POST['notification_reminder_7days'] = isset($_POST['notification_reminder_7days']) ? 'yes' : 'no';
+            $_POST['notification_expiry_edit'] = _post('notification_expiry_edit', 'yes') === 'no' ? 'no' : 'yes';
+            $_POST['api_rate_limit_enabled'] = isset($_POST['api_rate_limit_enabled']) ? 'yes' : 'no';
+            $_POST['admin_api_key_backoff_enabled'] = isset($_POST['admin_api_key_backoff_enabled']) ? 'yes' : 'no';
+
+            $api_rate_limit_max = (int) _post('api_rate_limit_max', 120);
+            if ($api_rate_limit_max < 0) {
+                $api_rate_limit_max = 0;
+            }
+            $_POST['api_rate_limit_max'] = $api_rate_limit_max;
+
+            $api_rate_limit_window = (int) _post('api_rate_limit_window', 60);
+            if ($api_rate_limit_window < 0) {
+                $api_rate_limit_window = 0;
+            }
+            $_POST['api_rate_limit_window'] = $api_rate_limit_window;
+
+            $attempts_max = (int) _post('admin_api_key_attempts_max', 5);
+            if ($attempts_max < 1) {
+                $attempts_max = 1;
+            }
+            $_POST['admin_api_key_attempts_max'] = $attempts_max;
+
+            $attempts_window = (int) _post('admin_api_key_attempts_window', 300);
+            if ($attempts_window < 60) {
+                $attempts_window = 60;
+            }
+            $_POST['admin_api_key_attempts_window'] = $attempts_window;
+
+            $backoff_base = (int) _post('admin_api_key_backoff_base_delay', 5);
+            if ($backoff_base < 0) {
+                $backoff_base = 0;
+            }
+            $backoff_max = (int) _post('admin_api_key_backoff_max_delay', 3600);
+            if ($backoff_max < 0) {
+                $backoff_max = 0;
+            }
+            if ($backoff_max > 0 && $backoff_base > 0 && $backoff_max < $backoff_base) {
+                $backoff_max = $backoff_base;
+            }
+            $backoff_reset = (int) _post('admin_api_key_backoff_reset_window', 900);
+            if ($backoff_reset < 0) {
+                $backoff_reset = 0;
+            }
+            $_POST['admin_api_key_backoff_base_delay'] = $backoff_base;
+            $_POST['admin_api_key_backoff_max_delay'] = $backoff_max;
+            $_POST['admin_api_key_backoff_reset_window'] = $backoff_reset;
+            $_POST['admin_api_key_allowlist'] = trim((string) _post('admin_api_key_allowlist', ''));
+
+            $_POST['genieacs_enable'] = _post('genieacs_enable', 'no') === 'yes' ? 'yes' : 'no';
+            $genieacs_url = trim((string) _post('genieacs_url', ''));
+            if ($genieacs_url !== '' && !preg_match('/^https?:\/\//i', $genieacs_url)) {
+                r2(getUrl('settings/app'), 'e', 'GenieACS URL must start with http:// or https://');
+            }
+            if ($genieacs_url !== '') {
+                $parsed_genieacs = parse_url($genieacs_url);
+                if (empty($parsed_genieacs['scheme']) || empty($parsed_genieacs['host'])) {
+                    r2(getUrl('settings/app'), 'e', 'Invalid GenieACS URL');
+                }
+                $genieacs_url = rtrim($genieacs_url, '/');
+            }
+            if ($_POST['genieacs_enable'] === 'yes' && $genieacs_url === '') {
+                r2(getUrl('settings/app'), 'e', 'GenieACS URL is required when integration is enabled');
+            }
+            $_POST['genieacs_url'] = $genieacs_url;
 
             // hide dashboard
             $_POST['hide_mrc'] = _post('hide_mrc', 'no');
@@ -354,6 +1065,126 @@ switch ($action) {
             r2(getUrl('settings/app'), 's', Lang::T('Settings Saved Successfully'));
         }
         break;
+
+	    case 'api-block-add':
+	        if ($_app_stage == 'Demo') {
+	            r2(getUrl('settings/app') . '#api-key-blocks', 'e', 'You cannot perform this action in Demo mode');
+	        }
+	        if (!in_array($admin['user_type'], ['SuperAdmin', 'Admin'])) {
+	            _alert(Lang::T('You do not have permission to access this page'), 'danger', "dashboard");
+	        }
+	        $csrf_token = _post('csrf_token');
+	        if (!Csrf::check($csrf_token)) {
+	            r2(getUrl('settings/app') . '#api-key-blocks', 'e', Lang::T('Invalid or Expired CSRF Token') . ".");
+	        }
+	        Csrf::generateAndStoreToken();
+	        $ip = trim((string) _post('api_block_add_ip'));
+	        if ($ip === '') {
+	            r2(getUrl('settings/app') . '#api-key-blocks', 'e', Lang::T('IP Address is required'));
+	        }
+	        if (!filter_var($ip, FILTER_VALIDATE_IP)) {
+	            r2(getUrl('settings/app') . '#api-key-blocks', 'e', Lang::T('Invalid IP Address'));
+	        }
+
+	        $until_raw = trim((string) _post('api_block_add_blocked_until'));
+	        if ($until_raw === '') {
+	            r2(getUrl('settings/app') . '#api-key-blocks', 'e', Lang::T('Blocked Until') . ' ' . Lang::T('is required'));
+	        }
+	        $until_ts = strtotime($until_raw);
+	        if ($until_ts === false) {
+	            r2(getUrl('settings/app') . '#api-key-blocks', 'e', Lang::T('Invalid value'));
+	        }
+	        if ($until_ts <= time()) {
+	            r2(getUrl('settings/app') . '#api-key-blocks', 'e', Lang::T('Blocked Until') . ' must be in the future');
+	        }
+
+	        if (!class_exists('Admin') || !Admin::saveApiKeyBlockState($ip, ['blocked_until' => $until_ts, 'fail_count' => 0])) {
+	            r2(getUrl('settings/app') . '#api-key-blocks', 'e', Lang::T('Failed to save blocked IP record'));
+	        }
+	        _log(
+	            '[' . $admin['username'] . ']: Blocked API key IP ' . $ip . ' until ' . date('Y-m-d H:i:s', $until_ts),
+	            $admin['user_type'],
+	            $admin['id']
+	        );
+	        r2(getUrl('settings/app') . '#api-key-blocks', 's', Lang::T('Settings Saved Successfully'));
+	        break;
+
+	    case 'api-block-edit':
+	        if ($_app_stage == 'Demo') {
+	            r2(getUrl('settings/app') . '#api-key-blocks', 'e', 'You cannot perform this action in Demo mode');
+	        }
+	        if (!in_array($admin['user_type'], ['SuperAdmin', 'Admin'])) {
+	            _alert(Lang::T('You do not have permission to access this page'), 'danger', "dashboard");
+	        }
+	        $csrf_token = _post('csrf_token');
+	        if (!Csrf::check($csrf_token)) {
+	            r2(getUrl('settings/app') . '#api-key-blocks', 'e', Lang::T('Invalid or Expired CSRF Token') . ".");
+	        }
+	        Csrf::generateAndStoreToken();
+	        $ip = trim((string) _post('api_block_edit_ip'));
+	        if ($ip === '') {
+	            r2(getUrl('settings/app') . '#api-key-blocks', 'e', Lang::T('IP Address is required'));
+	        }
+	        if (!filter_var($ip, FILTER_VALIDATE_IP)) {
+	            r2(getUrl('settings/app') . '#api-key-blocks', 'e', Lang::T('Invalid IP Address'));
+	        }
+
+	        $until_raw = trim((string) _post('api_block_edit_blocked_until'));
+	        if ($until_raw === '') {
+	            r2(getUrl('settings/app') . '#api-key-blocks', 'e', Lang::T('Blocked Until') . ' ' . Lang::T('is required'));
+	        }
+	        $until_ts = strtotime($until_raw);
+	        if ($until_ts === false) {
+	            r2(getUrl('settings/app') . '#api-key-blocks', 'e', Lang::T('Invalid value'));
+	        }
+
+	        $fail_count_raw = trim((string) _post('api_block_edit_fail_count'));
+	        $fail_count = ($fail_count_raw === '' || !is_numeric($fail_count_raw)) ? 0 : (int) $fail_count_raw;
+	        if ($fail_count < 0) {
+	            $fail_count = 0;
+	        }
+
+	        if ($until_ts <= time()) {
+	            if (class_exists('Admin')) {
+	                Admin::clearApiKeyBlock($ip);
+	            }
+	            _log('[' . $admin['username'] . ']: Cleared API key IP block record ' . $ip, $admin['user_type'], $admin['id']);
+	            r2(getUrl('settings/app') . '#api-key-blocks', 's', Lang::T('IP unblocked'));
+	        }
+
+	        if (!class_exists('Admin') || !Admin::saveApiKeyBlockState($ip, ['blocked_until' => $until_ts, 'fail_count' => $fail_count])) {
+	            r2(getUrl('settings/app') . '#api-key-blocks', 'e', Lang::T('Failed to save blocked IP record'));
+	        }
+	        _log(
+	            '[' . $admin['username'] . ']: Updated API key IP block record ' . $ip . ' until ' . date('Y-m-d H:i:s', $until_ts),
+	            $admin['user_type'],
+	            $admin['id']
+	        );
+	        r2(getUrl('settings/app') . '#api-key-blocks', 's', Lang::T('Settings Saved Successfully'));
+	        break;
+
+	    case 'api-unblock':
+	        if (!in_array($admin['user_type'], ['SuperAdmin', 'Admin'])) {
+	            _alert(Lang::T('You do not have permission to access this page'), 'danger', "dashboard");
+	        }
+	        $csrf_token = _get('csrf_token');
+	        if (!Csrf::check($csrf_token)) {
+	            r2(getUrl('settings/app') . '#api-key-blocks', 'e', Lang::T('Invalid or Expired CSRF Token') . ".");
+	        }
+	        Csrf::generateAndStoreToken();
+	        $ip = trim((string) _get('ip'));
+	        if ($ip === '') {
+	            r2(getUrl('settings/app') . '#api-key-blocks', 'e', Lang::T('IP Address is required'));
+	        }
+	        if (!filter_var($ip, FILTER_VALIDATE_IP)) {
+	            r2(getUrl('settings/app') . '#api-key-blocks', 'e', Lang::T('Invalid IP Address'));
+	        }
+	        if (class_exists('Admin')) {
+	            Admin::clearApiKeyBlock($ip);
+	        }
+	        _log('[' . $admin['username'] . ']: Unblocked API key IP ' . $ip, $admin['user_type'], $admin['id']);
+	        r2(getUrl('settings/app') . '#api-key-blocks', 's', Lang::T('IP unblocked'));
+	        break;
 
     case 'localisation':
         if (!in_array($admin['user_type'], ['SuperAdmin', 'Admin'])) {
@@ -500,65 +1331,39 @@ switch ($action) {
             _alert(Lang::T('You do not have permission to access this page'), 'danger', "dashboard");
         }
         $search = _req('search');
+        $query = ORM::for_table('tbl_users')->order_by_asc('id');
         if ($search != '') {
-            if ($admin['user_type'] == 'SuperAdmin') {
-                $query = ORM::for_table('tbl_users')
-                    ->where_like('username', '%' . $search . '%')
-                    ->order_by_asc('id');
-                $d = Paginator::findMany($query, ['search' => $search]);
-            } else if ($admin['user_type'] == 'Admin') {
-                $query = ORM::for_table('tbl_users')
-                    ->where_like('username', '%' . $search . '%')->where_any_is([
-                            ['user_type' => 'Report'],
-                            ['user_type' => 'Agent'],
-                            ['user_type' => 'Sales'],
-                            ['id' => $admin['id']]
-                        ])->order_by_asc('id');
-                $d = Paginator::findMany($query, ['search' => $search]);
+            $query->where_like('username', '%' . $search . '%');
+        }
+        if (($admin['user_type'] ?? '') !== 'SuperAdmin') {
+            $managed = settings_get_manageable_user_ids($admin);
+            if (empty($managed)) {
+                $query->where('id', -1);
             } else {
-                $query = ORM::for_table('tbl_users')
-                    ->where_like('username', '%' . $search . '%')
-                    ->where_any_is([
-                        ['id' => $admin['id']],
-                        ['root' => $admin['id']]
-                    ])->order_by_asc('id');
-                $d = Paginator::findMany($query, ['search' => $search]);
-            }
-        } else {
-            if ($admin['user_type'] == 'SuperAdmin') {
-                $query = ORM::for_table('tbl_users')->order_by_asc('id');
-                $d = Paginator::findMany($query);
-            } else if ($admin['user_type'] == 'Admin') {
-                $query = ORM::for_table('tbl_users')->where_any_is([
-                    ['user_type' => 'Report'],
-                    ['user_type' => 'Agent'],
-                    ['user_type' => 'Sales'],
-                    ['id' => $admin['id']]
-                ])->order_by_asc('id');
-                $d = Paginator::findMany($query);
-            } else {
-                $query = ORM::for_table('tbl_users')
-                    ->where_any_is([
-                        ['id' => $admin['id']],
-                        ['root' => $admin['id']]
-                    ])->order_by_asc('id');
-                $d = Paginator::findMany($query);
+                $query->where_in('id', $managed);
             }
         }
-        $admins = [];
+        $d = Paginator::findMany($query, ['search' => $search]);
+
+        $parentIds = [];
         foreach ($d as $k) {
-            if (!empty($k['root'])) {
-                $admins[] = $k['root'];
+            $rid = (int) ($k['root'] ?? 0);
+            if ($rid > 0) {
+                $parentIds[$rid] = $rid;
             }
         }
-        if (count($admins) > 0) {
-            $adms = ORM::for_table('tbl_users')->where_in('id', $admins)->findArray();
-            unset($admins);
-            foreach ($adms as $adm) {
-                $admins[$adm['id']] = $adm['fullname'];
+        $parents = [];
+        if (!empty($parentIds)) {
+            $rows = ORM::for_table('tbl_users')->where_in('id', array_values($parentIds))->find_array();
+            foreach ($rows as $row) {
+                $rid = (int) ($row['id'] ?? 0);
+                if ($rid > 0) {
+                    $parents[$rid] = ($row['fullname'] ?? '') . ' [' . ($row['user_type'] ?? '') . ']';
+                }
             }
         }
-        $ui->assign('admins', $admins);
+
+        $ui->assign('admins', $parents);
         $ui->assign('d', $d);
         $ui->assign('search', $search);
         run_hook('view_list_admin'); #HOOK
@@ -574,96 +1379,101 @@ switch ($action) {
         $csrf_token = Csrf::generateAndStoreToken();
         $ui->assign('csrf_token', $csrf_token);
         $ui->assign('_title', Lang::T('Add User'));
-        $ui->assign('agents', ORM::for_table('tbl_users')->where('user_type', 'Agent')->find_many());
+        $ui->assign('superadmins_parent', settings_get_assignable_superadmin_rows($admin));
+        $ui->assign('agents', settings_get_assignable_agent_rows($admin));
+        $ui->assign('admins_parent', settings_get_assignable_admin_rows($admin));
+        $ui->assign('assignable_routers', settings_list_router_rows_for_actor($admin));
+        $ui->assign('self_admin_id', (int) ($admin['id'] ?? 0));
         $ui->display('admin/admin/add.tpl');
         break;
     case 'users-view':
         $ui->assign('_title', Lang::T('Edit User'));
-        $id = $routes['2'];
-        if (empty($id)) {
-            $id = $admin['id'];
+        $id = (int) ($routes['2'] ?? 0);
+        if ($id < 1) {
+            $id = (int) ($admin['id'] ?? 0);
         }
-        //allow see himself
-        if ($admin['id'] == $id) {
-            $d = ORM::for_table('tbl_users')->where('id', $id)->find_array()[0];
-        } else {
-            if (in_array($admin['user_type'], ['SuperAdmin', 'Admin'])) {
-                // Super Admin can see anyone
-                $d = ORM::for_table('tbl_users')->where('id', $id)->find_array()[0];
-            } else if ($admin['user_type'] == 'Agent') {
-                // Agent can see Sales
-                $d = ORM::for_table('tbl_users')->where_any_is([['root' => $admin['id']], ['id' => $id]])->find_array()[0];
-            }
-        }
-        if ($d) {
-            run_hook('view_edit_admin'); #HOOK
-            if ($d['user_type'] == 'Sales') {
-                $ui->assign('agent', ORM::for_table('tbl_users')->where('id', $d['root'])->find_array()[0]);
-            }
-            $ui->assign('d', $d);
-            $ui->assign('_title', $d['username']);
-            $csrf_token = Csrf::generateAndStoreToken();
-            $ui->assign('csrf_token', $csrf_token);
-            $ui->display('admin/admin/view.tpl');
-        } else {
+        $d = ORM::for_table('tbl_users')->find_one($id);
+        if (!$d || !settings_can_manage_user($admin, $d, true)) {
             r2(getUrl('settings/users'), 'e', Lang::T('Account Not Found'));
         }
+
+        $admin_data = settings_parse_user_data($d['data'] ?? '');
+        $has_api_key = !empty($admin_data['admin_api_key_hash'])
+            || !empty($admin_data['admin_api_key'])
+            || !empty($admin_data['ai_chatbot_api_key_hash'])
+            || !empty($admin_data['ai_chatbot_api_key']);
+
+        $parent_user = null;
+        if ((int) ($d['root'] ?? 0) > 0) {
+            $parent_user = _router_access_user_by_id((int) $d['root']);
+        }
+
+        $routerAssignment = settings_get_router_assignment_from_user($d);
+        $ui->assign('router_assignment_mode', $routerAssignment['mode']);
+        $ui->assign('router_assignment_rows', settings_router_rows_for_ids($routerAssignment['ids']));
+        $ui->assign('admin_api_key_set', $has_api_key);
+        $ui->assign('parent_user', $parent_user);
+        run_hook('view_edit_admin'); #HOOK
+        $ui->assign('d', $d);
+        $ui->assign('_title', $d['username']);
+        $csrf_token = Csrf::generateAndStoreToken();
+        $ui->assign('csrf_token', $csrf_token);
+        $ui->display('admin/admin/view.tpl');
         break;
     case 'users-edit':
         if (!in_array($admin['user_type'], ['SuperAdmin', 'Admin', 'Agent'])) {
             _alert(Lang::T('You do not have permission to access this page'), 'danger', "dashboard");
         }
         $ui->assign('_title', Lang::T('Edit User'));
-        $id = $routes['2'];
-        if (empty($id)) {
-            $id = $admin['id'];
+        $id = (int) ($routes['2'] ?? 0);
+        if ($id < 1) {
+            $id = (int) ($admin['id'] ?? 0);
         }
-        if ($admin['id'] == $id) {
-            $d = ORM::for_table('tbl_users')->find_one($id);
-        } else {
-            if ($admin['user_type'] == 'SuperAdmin') {
-                $d = ORM::for_table('tbl_users')->find_one($id);
-                $ui->assign('agents', ORM::for_table('tbl_users')->where('user_type', 'Agent')->find_many());
-            } else if ($admin['user_type'] == 'Admin') {
-                $d = ORM::for_table('tbl_users')->where_any_is([
-                    ['user_type' => 'Report'],
-                    ['user_type' => 'Agent'],
-                    ['user_type' => 'Sales']
-                ])->find_one($id);
-                $ui->assign('agents', ORM::for_table('tbl_users')->where('user_type', 'Agent')->find_many());
-            } else {
-                // Agent cannot move Sales to other Agent
-                $ui->assign('agents', ORM::for_table('tbl_users')->where('id', $admin['id'])->find_many());
-                $d = ORM::for_table('tbl_users')->where('root', $admin['id'])->find_one($id);
-            }
-        }
-        if ($d) {
-            if (isset($routes['3']) && $routes['3'] == 'deletePhoto') {
-                if ($d['photo'] != '' && strpos($d['photo'], 'default') === false) {
-                    if (file_exists($UPLOAD_PATH . $d['photo']) && strpos($d['photo'], 'default') === false) {
-                        unlink($UPLOAD_PATH . $d['photo']);
-                        if (file_exists($UPLOAD_PATH . $d['photo'] . '.thumb.jpg')) {
-                            unlink($UPLOAD_PATH . $d['photo'] . '.thumb.jpg');
-                        }
-                    }
-                    $d->photo = '/admin.default.png';
-                    $d->save();
-                    $ui->assign('notify_t', 's');
-                    $ui->assign('notify', 'You have successfully deleted the photo');
-                } else {
-                    $ui->assign('notify_t', 'e');
-                    $ui->assign('notify', 'No photo found to delete');
-                }
-            }
-            $ui->assign('id', $id);
-            $ui->assign('d', $d);
-            run_hook('view_edit_admin'); #HOOK
-            $csrf_token = Csrf::generateAndStoreToken();
-            $ui->assign('csrf_token', $csrf_token);
-            $ui->display('admin/admin/edit.tpl');
-        } else {
+        $d = ORM::for_table('tbl_users')->find_one($id);
+        if (!$d || !settings_can_manage_user($admin, $d, true)) {
             r2(getUrl('settings/users'), 'e', Lang::T('Account Not Found'));
         }
+
+        if (isset($routes['3']) && $routes['3'] == 'deletePhoto') {
+            if ($d['photo'] != '' && strpos($d['photo'], 'default') === false) {
+                if (file_exists($UPLOAD_PATH . $d['photo']) && strpos($d['photo'], 'default') === false) {
+                    unlink($UPLOAD_PATH . $d['photo']);
+                    if (file_exists($UPLOAD_PATH . $d['photo'] . '.thumb.jpg')) {
+                        unlink($UPLOAD_PATH . $d['photo'] . '.thumb.jpg');
+                    }
+                }
+                $d->photo = '/admin.default.png';
+                $d->save();
+                $ui->assign('notify_t', 's');
+                $ui->assign('notify', 'You have successfully deleted the photo');
+            } else {
+                $ui->assign('notify_t', 'e');
+                $ui->assign('notify', 'No photo found to delete');
+            }
+        }
+
+        $admin_data = settings_parse_user_data(is_object($d) ? ($d->data ?? '') : ($d['data'] ?? ''));
+        $has_api_key = !empty($admin_data['admin_api_key_hash'])
+            || !empty($admin_data['admin_api_key'])
+            || !empty($admin_data['ai_chatbot_api_key_hash'])
+            || !empty($admin_data['ai_chatbot_api_key']);
+
+        $routerAssignment = settings_get_router_assignment_from_user($d);
+
+        $ui->assign('admin_api_key_set', $has_api_key);
+        $ui->assign('router_assignment_mode', $routerAssignment['mode']);
+        $ui->assign('router_assignment_ids', $routerAssignment['ids']);
+        $ui->assign('assignable_routers', settings_list_router_rows_for_actor($admin));
+        $ui->assign('superadmins_parent', settings_get_assignable_superadmin_rows($admin));
+        $ui->assign('admins_parent', settings_get_assignable_admin_rows($admin));
+        $ui->assign('agents', settings_get_assignable_agent_rows($admin));
+        $ui->assign('self_admin_id', (int) ($admin['id'] ?? 0));
+        $ui->assign('id', $id);
+        $ui->assign('d', $d);
+        run_hook('view_edit_admin'); #HOOK
+        $csrf_token = Csrf::generateAndStoreToken();
+        $ui->assign('csrf_token', $csrf_token);
+        $ui->display('admin/admin/edit.tpl');
         break;
 
     case 'users-delete':
@@ -678,7 +1488,10 @@ switch ($action) {
             r2(getUrl('settings/users'), 'e', 'Sorry You can\'t delete yourself');
         }
         $d = ORM::for_table('tbl_users')->find_one($id);
-        if ($d) {
+        if ($d && settings_can_manage_user($admin, $d, false)) {
+            if (!in_array(($d['user_type'] ?? ''), settings_allowed_roles_for_edit($admin, settings_user_row($d)), true)) {
+                r2(getUrl('settings/users'), 'e', Lang::T('You do not have permission to delete this user'));
+            }
             run_hook('delete_admin'); #HOOK
             $d->delete();
             r2(getUrl('settings/users'), 's', Lang::T('User deleted Successfully'));
@@ -699,17 +1512,21 @@ switch ($action) {
             r2(getUrl('settings/users-add'), 'e', Lang::T('Invalid or Expired CSRF Token') . ".");
         }
         Csrf::generateAndStoreToken();
+
         $username = _post('username');
         $fullname = _post('fullname');
         $password = _post('password');
-        $user_type = _post('user_type');
+        $user_type = trim((string) _post('user_type'));
         $phone = _post('phone');
         $email = _post('email');
         $city = _post('city');
         $subdistrict = _post('subdistrict');
         $ward = _post('ward');
         $send_notif = _post('send_notif');
-        $root = _post('root');
+        $root_input = (int) _post('root');
+        $router_mode = _post('router_access_mode', 'all');
+        $router_ids_input = $_POST['router_access_ids'] ?? [];
+
         $msg = '';
         if (Validator::Length($username, 45, 2) == false) {
             $msg .= Lang::T('Username should be between 3 to 45 characters') . '<br>';
@@ -721,10 +1538,29 @@ switch ($action) {
             $msg .= Lang::T('Password should be minimum 6 characters') . '<br>';
         }
 
+        $allowedCreateRoles = settings_allowed_roles_for_create($admin['user_type'] ?? '');
+        if (!in_array($user_type, $allowedCreateRoles, true)) {
+            $msg .= Lang::T('You do not have permission to assign this role') . '<br>';
+        }
+
+        $root_error = '';
+        $resolved_root = settings_resolve_root_for_role($admin, $user_type, $root_input, [], $root_error);
+        if ($root_error !== '') {
+            $msg .= $root_error . '<br>';
+        }
+
+        $router_error = '';
+        $allowedRouterIds = settings_get_assignable_router_ids($admin, $user_type, $resolved_root);
+        [$router_mode, $router_ids] = settings_sanitize_router_assignment($router_mode, $router_ids_input, $allowedRouterIds, $router_error);
+        if ($router_error !== '') {
+            $msg .= $router_error . '<br>';
+        }
+
         $d = ORM::for_table('tbl_users')->where('username', $username)->find_one();
         if ($d) {
             $msg .= Lang::T('Account already axist') . '<br>';
         }
+
         $date_now = date("Y-m-d H:i:s");
         run_hook('add_admin'); #HOOK
         if ($msg == '') {
@@ -741,12 +1577,11 @@ switch ($action) {
             $d->ward = $ward;
             $d->status = 'Active';
             $d->creationdate = $date_now;
-            if ($admin['user_type'] == 'Agent') {
-                // Prevent hacking from form
-                $d->root = $admin['id'];
-            } else if ($user_type == 'Sales') {
-                $d->root = $root;
-            }
+            $d->root = $resolved_root;
+
+            $user_data = settings_parse_user_data($d->data ?? '');
+            settings_apply_router_assignment($user_data, $user_type, $router_mode, $router_ids);
+            $d->data = settings_json_encode_or_null($user_data);
             $d->save();
 
             if ($send_notif == 'wa') {
@@ -771,19 +1606,40 @@ switch ($action) {
             r2(getUrl('settings/users-edit/'), 'e', Lang::T('Invalid or Expired CSRF Token') . ".");
         }
         Csrf::generateAndStoreToken();
+
         $username = _post('username');
         $fullname = _post('fullname');
         $password = _post('password');
         $cpassword = _post('cpassword');
-        $user_type = _post('user_type');
         $phone = _post('phone');
         $email = _post('email');
         $city = _post('city');
         $subdistrict = _post('subdistrict');
         $ward = _post('ward');
         $status = _post('status');
-        $root = _post('root');
+        $root_input = (int) _post('root');
+        $router_mode = _post('router_access_mode', 'all');
+        $router_ids_input = $_POST['router_access_ids'] ?? [];
+
+        $id = (int) _post('id');
+        $d = ORM::for_table('tbl_users')->find_one($id);
         $msg = '';
+
+        if (!$d || !settings_can_manage_user($admin, $d, true)) {
+            $msg .= Lang::T('Data Not Found') . '<br>';
+        }
+
+        $currentRole = trim((string) ($d['user_type'] ?? ''));
+        $requestedRole = $currentRole;
+        if ((int) ($admin['id'] ?? 0) !== $id) {
+            $requestedRole = trim((string) _post('user_type'));
+        }
+
+        $allowedEditRoles = settings_allowed_roles_for_edit($admin, settings_user_row($d));
+        if (!in_array($requestedRole, $allowedEditRoles, true)) {
+            $msg .= Lang::T('You do not have permission to assign this role') . '<br>';
+        }
+
         if (Validator::Length($username, 45, 2) == false) {
             $msg .= Lang::T('Username should be between 3 to 45 characters') . '<br>';
         }
@@ -799,34 +1655,60 @@ switch ($action) {
             }
         }
 
-        $id = _post('id');
-        if ($admin['id'] == $id) {
-            $d = ORM::for_table('tbl_users')->find_one($id);
-        } else {
-            if ($admin['user_type'] == 'SuperAdmin') {
-                $d = ORM::for_table('tbl_users')->find_one($id);
-            } else if ($admin['user_type'] == 'Admin') {
-                $d = ORM::for_table('tbl_users')->where_any_is([
-                    ['user_type' => 'Report'],
-                    ['user_type' => 'Agent'],
-                    ['user_type' => 'Sales']
-                ])->find_one($id);
-            } else {
-                $d = ORM::for_table('tbl_users')->where('root', $admin['id'])->find_one($id);
-            }
-        }
-        if (!$d) {
-            $msg .= Lang::T('Data Not Found') . '<br>';
-        }
-
-        if ($d['username'] != $username) {
+        if ($d && $d['username'] != $username) {
             $c = ORM::for_table('tbl_users')->where('username', $username)->find_one();
             if ($c) {
                 $msg .= "<b>$username</b> " . Lang::T('Account already axist') . '<br>';
             }
         }
+
+        $root_error = '';
+        $resolved_root = settings_resolve_root_for_role($admin, $requestedRole, $root_input, settings_user_row($d), $root_error);
+        if ($root_error !== '') {
+            $msg .= $root_error . '<br>';
+        }
+
+        $canEditRouterAssignment = false;
+        if (($admin['user_type'] ?? '') === 'SuperAdmin' && $id > 0) {
+            $canEditRouterAssignment = true;
+        } elseif (($admin['user_type'] ?? '') === 'Admin' && (int) ($admin['id'] ?? 0) !== $id && in_array($requestedRole, ['Agent', 'Report'], true)) {
+            $canEditRouterAssignment = true;
+        } elseif (($admin['user_type'] ?? '') === 'Agent' && (int) ($admin['id'] ?? 0) !== $id && $requestedRole === 'Sales') {
+            $canEditRouterAssignment = true;
+        }
+
+        $router_error = '';
+        $router_ids = [];
+        if ($canEditRouterAssignment) {
+            $allowedRouterIds = settings_get_assignable_router_ids($admin, $requestedRole, $resolved_root);
+            [$router_mode, $router_ids] = settings_sanitize_router_assignment($router_mode, $router_ids_input, $allowedRouterIds, $router_error);
+            if ($router_error !== '') {
+                $msg .= $router_error . '<br>';
+            }
+        }
+
+        $api_key = trim((string) _post('admin_api_key'));
+        if ($api_key === '') {
+            $api_key = trim((string) _post('ai_chatbot_api_key'));
+        }
+        $api_key_clear = (_post('admin_api_key_clear') === '1');
+        if (!$api_key_clear && _post('ai_chatbot_api_key_clear') === '1') {
+            $api_key_clear = true;
+        }
+        $api_key_action = ($api_key !== '' || $api_key_clear);
+
         run_hook('edit_admin'); #HOOK
         if ($msg == '') {
+            if ($api_key_action) {
+                $throttle = settings_api_key_backoff_check($admin['id'], $id);
+                if (empty($throttle['allowed'])) {
+                    $wait = (int) ($throttle['wait'] ?? 0);
+                    if ($wait < 1) {
+                        $wait = 1;
+                    }
+                    r2(getUrl('settings/users-edit/') . $id, 'e', Lang::T('Please wait') . ' ' . $wait . ' ' . Lang::T('seconds before rotating API key again'));
+                }
+            }
             if (!empty($_FILES['photo']['name']) && file_exists($_FILES['photo']['tmp_name'])) {
                 if (function_exists('imagecreatetruecolor')) {
                     $hash = md5_file($_FILES['photo']['tmp_name']);
@@ -870,8 +1752,9 @@ switch ($action) {
                         }
                         $d->photo = '/photos/' . $subfolder . '/' . $hash . '.jpg';
                     }
-                    if (file_exists($_FILES['photo']['tmp_name']))
+                    if (file_exists($_FILES['photo']['tmp_name'])) {
                         unlink($_FILES['photo']['tmp_name']);
+                    }
                 } else {
                     r2(getUrl('settings/app'), 'e', 'PHP GD is not installed');
                 }
@@ -884,9 +1767,9 @@ switch ($action) {
             }
 
             $d->fullname = $fullname;
-            if (($admin['id']) != $id) {
-                $user_type = _post('user_type');
-                $d->user_type = $user_type;
+            if ((int) ($admin['id'] ?? 0) !== $id) {
+                $d->user_type = $requestedRole;
+                $d->root = $resolved_root;
             }
             $d->phone = $phone;
             $d->email = $email;
@@ -897,11 +1780,45 @@ switch ($action) {
                 $d->status = $status;
             }
 
-            if ($admin['user_type'] == 'Agent') {
-                // Prevent hacking from form
-                $d->root = $admin['id'];
-            } else if ($user_type == 'Sales') {
-                $d->root = $root;
+            $raw_data = is_object($d) ? ($d->data ?? '') : ($d['data'] ?? '');
+            $user_data = settings_parse_user_data($raw_data);
+            $dataChanged = false;
+
+            // Role change to SuperAdmin should always clear router assignment.
+            if ($requestedRole === 'SuperAdmin') {
+                settings_apply_router_assignment($user_data, $requestedRole, 'all', []);
+                $dataChanged = true;
+            } elseif ($canEditRouterAssignment) {
+                settings_apply_router_assignment($user_data, $requestedRole, $router_mode, $router_ids);
+                $dataChanged = true;
+            }
+
+            if ($api_key_action) {
+                global $api_secret;
+                if ($api_key_clear) {
+                    unset($user_data['admin_api_key']);
+                    unset($user_data['admin_api_key_hash']);
+                    unset($user_data['admin_api_key_last4']);
+                    unset($user_data['ai_chatbot_api_key']);
+                    unset($user_data['ai_chatbot_api_key_hash']);
+                    unset($user_data['ai_chatbot_api_key_last4']);
+                } else {
+                    $secret = trim((string) ($GLOBALS['admin_api_key_secret'] ?? ($api_secret ?? '')));
+                    if ($secret === '') {
+                        $secret = __FILE__;
+                    }
+                    $user_data['admin_api_key_hash'] = hash_hmac('sha256', $api_key, $secret);
+                    $user_data['admin_api_key_last4'] = substr($api_key, -4);
+                    unset($user_data['admin_api_key']);
+                    unset($user_data['ai_chatbot_api_key']);
+                    unset($user_data['ai_chatbot_api_key_hash']);
+                    unset($user_data['ai_chatbot_api_key_last4']);
+                }
+                $dataChanged = true;
+            }
+
+            if ($dataChanged) {
+                $d->data = settings_json_encode_or_null($user_data);
             }
 
             $d->save();
@@ -969,15 +1886,42 @@ switch ($action) {
             _alert(Lang::T('You do not have permission to access this page'), 'danger', "dashboard");
         }
         run_hook('view_notifications'); #HOOK
-        if (file_exists($UPLOAD_PATH . DIRECTORY_SEPARATOR . "notifications.json")) {
-            $ui->assign('_json', json_decode(file_get_contents($UPLOAD_PATH . DIRECTORY_SEPARATOR . 'notifications.json'), true));
-        } else {
-            $ui->assign('_json', json_decode(file_get_contents($UPLOAD_PATH . DIRECTORY_SEPARATOR . 'notifications.default.json'), true));
+        $defaultNotif = json_decode(file_get_contents($UPLOAD_PATH . DIRECTORY_SEPARATOR . 'notifications.default.json'), true);
+        if (!is_array($defaultNotif)) {
+            $defaultNotif = [];
         }
+
+        $currentNotif = null;
+        if (file_exists($UPLOAD_PATH . DIRECTORY_SEPARATOR . "notifications.json")) {
+            $currentNotif = json_decode(file_get_contents($UPLOAD_PATH . DIRECTORY_SEPARATOR . 'notifications.json'), true);
+        }
+        if (!is_array($currentNotif)) {
+            $currentNotif = $defaultNotif;
+        }
+
+        $ui->assign('_json', $currentNotif);
 
         $csrf_token = Csrf::generateAndStoreToken();
         $ui->assign('csrf_token', $csrf_token);
-        $ui->assign('_default', json_decode(file_get_contents($UPLOAD_PATH . DIRECTORY_SEPARATOR . 'notifications.default.json'), true));
+        $ui->assign('_default', $defaultNotif);
+
+        $templateOverrides = [];
+        if (isset($currentNotif['template_overrides']) && is_array($currentNotif['template_overrides'])) {
+            $templateOverrides = $currentNotif['template_overrides'];
+        }
+        $templateOverridesJson = json_encode($templateOverrides, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+        if ($templateOverridesJson === false) {
+            $templateOverridesJson = '{}';
+        }
+        $ui->assign('template_overrides_json', $templateOverridesJson);
+
+        $plans = ORM::for_table('tbl_plans')
+            ->select_many('id', 'name_plan', 'type')
+            ->order_by_asc('type')
+            ->order_by_asc('name_plan')
+            ->find_array();
+        $ui->assign('plans', is_array($plans) ? $plans : []);
+
         $ui->display('admin/settings/notifications.tpl');
         break;
     case 'notifications-post':
@@ -992,9 +1936,441 @@ switch ($action) {
             r2(getUrl('settings/notifications'), 'e', Lang::T('Invalid or Expired CSRF Token') . ".");
         }
         Csrf::generateAndStoreToken();
-        file_put_contents($UPLOAD_PATH . "/notifications.json", json_encode($_POST));
+        $payload = $_POST;
+        unset($payload['csrf_token']);
+
+        $existing = [];
+        $existingPath = $UPLOAD_PATH . DIRECTORY_SEPARATOR . 'notifications.json';
+        if (file_exists($existingPath)) {
+            $existing = json_decode(file_get_contents($existingPath), true);
+            if (!is_array($existing)) {
+                $existing = [];
+            }
+        }
+        if (!isset($payload['template_overrides']) && isset($existing['template_overrides']) && is_array($existing['template_overrides'])) {
+            $payload['template_overrides'] = $existing['template_overrides'];
+        }
+
+        file_put_contents(
+            $existingPath,
+            json_encode($payload, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE)
+        );
         r2(getUrl('settings/notifications'), 's', Lang::T('Settings Saved Successfully'));
         break;
+    case 'notifications-override-type-post':
+        if ($_app_stage == 'Demo') {
+            r2(getUrl('settings/notifications'), 'e', 'You cannot perform this action in Demo mode');
+        }
+        if (!in_array($admin['user_type'], ['SuperAdmin', 'Admin'])) {
+            _alert(Lang::T('You do not have permission to access this page'), 'danger', "dashboard");
+        }
+
+        $csrf_token = _post('csrf_token');
+        if (!Csrf::check($csrf_token)) {
+            r2(getUrl('settings/notifications'), 'e', Lang::T('Invalid or Expired CSRF Token') . ".");
+        }
+        Csrf::generateAndStoreToken();
+
+        $templateKey = trim((string) _post('template_key'));
+        $typeKey = strtoupper(trim((string) _post('type_key')));
+        $message = isset($_POST['message']) ? (string) $_POST['message'] : '';
+
+        if ($templateKey === '' || !preg_match('/^[a-z0-9_]+$/i', $templateKey)) {
+            r2(getUrl('settings/notifications'), 'e', 'Template tidak valid.');
+        }
+        $overrideSupportedTemplates = ['expired', 'reminder_7_day', 'reminder_3_day', 'reminder_1_day', 'invoice_paid', 'edit_expiry_message'];
+        if (!in_array($templateKey, $overrideSupportedTemplates, true)) {
+            r2(getUrl('settings/notifications'), 'e', 'Override tidak tersedia untuk template ini.');
+        }
+        if (!in_array($typeKey, ['HOTSPOT', 'PPPOE', 'VPN'], true)) {
+            r2(getUrl('settings/notifications'), 'e', 'Kategori tidak valid.');
+        }
+
+        $path = $UPLOAD_PATH . DIRECTORY_SEPARATOR . 'notifications.json';
+        $data = [];
+        if (file_exists($path)) {
+            $data = json_decode(file_get_contents($path), true);
+        } else {
+            $data = json_decode(file_get_contents($UPLOAD_PATH . DIRECTORY_SEPARATOR . 'notifications.default.json'), true);
+        }
+        if (!is_array($data)) {
+            $data = [];
+        }
+
+        if (!isset($data['template_overrides']) || !is_array($data['template_overrides'])) {
+            $data['template_overrides'] = [];
+        }
+        if (!isset($data['template_overrides']['type']) || !is_array($data['template_overrides']['type'])) {
+            $data['template_overrides']['type'] = [];
+        }
+        if (!isset($data['template_overrides']['type'][$typeKey]) || !is_array($data['template_overrides']['type'][$typeKey])) {
+            $data['template_overrides']['type'][$typeKey] = [];
+        }
+
+        if (trim($message) === '') {
+            unset($data['template_overrides']['type'][$typeKey][$templateKey]);
+        } else {
+            $data['template_overrides']['type'][$typeKey][$templateKey] = $message;
+        }
+
+        if (empty($data['template_overrides']['type'][$typeKey])) {
+            unset($data['template_overrides']['type'][$typeKey]);
+        }
+        if (empty($data['template_overrides']['type'])) {
+            unset($data['template_overrides']['type']);
+        }
+        if (empty($data['template_overrides'])) {
+            unset($data['template_overrides']);
+        }
+
+        file_put_contents($path, json_encode($data, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
+        r2(getUrl('settings/notifications'), 's', 'Override kategori disimpan.');
+        break;
+    case 'notifications-override-plan-post':
+        if ($_app_stage == 'Demo') {
+            r2(getUrl('settings/notifications'), 'e', 'You cannot perform this action in Demo mode');
+        }
+        if (!in_array($admin['user_type'], ['SuperAdmin', 'Admin'])) {
+            _alert(Lang::T('You do not have permission to access this page'), 'danger', "dashboard");
+        }
+
+        $csrf_token = _post('csrf_token');
+        if (!Csrf::check($csrf_token)) {
+            r2(getUrl('settings/notifications'), 'e', Lang::T('Invalid or Expired CSRF Token') . ".");
+        }
+        Csrf::generateAndStoreToken();
+
+        $planId = (int) _post('plan_id');
+        $templateKey = trim((string) _post('template_key'));
+        $message = isset($_POST['message']) ? (string) $_POST['message'] : '';
+
+        if ($planId < 1) {
+            r2(getUrl('settings/notifications'), 'e', 'Plan belum dipilih.');
+        }
+        if ($templateKey === '' || !preg_match('/^[a-z0-9_]+$/i', $templateKey)) {
+            r2(getUrl('settings/notifications'), 'e', 'Template tidak valid.');
+        }
+        $overrideSupportedTemplates = ['expired', 'reminder_7_day', 'reminder_3_day', 'reminder_1_day', 'invoice_paid', 'edit_expiry_message'];
+        if (!in_array($templateKey, $overrideSupportedTemplates, true)) {
+            r2(getUrl('settings/notifications'), 'e', 'Override tidak tersedia untuk template ini.');
+        }
+
+        $path = $UPLOAD_PATH . DIRECTORY_SEPARATOR . 'notifications.json';
+        $data = [];
+        if (file_exists($path)) {
+            $data = json_decode(file_get_contents($path), true);
+        } else {
+            $data = json_decode(file_get_contents($UPLOAD_PATH . DIRECTORY_SEPARATOR . 'notifications.default.json'), true);
+        }
+        if (!is_array($data)) {
+            $data = [];
+        }
+
+        if (!isset($data['template_overrides']) || !is_array($data['template_overrides'])) {
+            $data['template_overrides'] = [];
+        }
+        if (!isset($data['template_overrides']['plan']) || !is_array($data['template_overrides']['plan'])) {
+            $data['template_overrides']['plan'] = [];
+        }
+        if (!isset($data['template_overrides']['plan'][$planId]) || !is_array($data['template_overrides']['plan'][$planId])) {
+            $data['template_overrides']['plan'][$planId] = [];
+        }
+
+        if (trim($message) === '') {
+            unset($data['template_overrides']['plan'][$planId][$templateKey]);
+        } else {
+            $data['template_overrides']['plan'][$planId][$templateKey] = $message;
+        }
+
+        if (empty($data['template_overrides']['plan'][$planId])) {
+            unset($data['template_overrides']['plan'][$planId]);
+        }
+        if (empty($data['template_overrides']['plan'])) {
+            unset($data['template_overrides']['plan']);
+        }
+        if (empty($data['template_overrides'])) {
+            unset($data['template_overrides']);
+        }
+
+        file_put_contents($path, json_encode($data, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
+        r2(getUrl('settings/notifications'), 's', 'Override plan disimpan.');
+        break;
+    case 'notifications-override-purpose-post':
+        if ($_app_stage == 'Demo') {
+            r2(getUrl('settings/notifications'), 'e', 'You cannot perform this action in Demo mode');
+        }
+        if (!in_array($admin['user_type'], ['SuperAdmin', 'Admin'])) {
+            _alert(Lang::T('You do not have permission to access this page'), 'danger', "dashboard");
+        }
+
+        $csrf_token = _post('csrf_token');
+        if (!Csrf::check($csrf_token)) {
+            r2(getUrl('settings/notifications'), 'e', Lang::T('Invalid or Expired CSRF Token') . ".");
+        }
+        Csrf::generateAndStoreToken();
+
+        $templateKey = trim((string) _post('template_key'));
+        $purposeKey = strtolower(trim((string) _post('purpose_key')));
+        $message = isset($_POST['message']) ? (string) $_POST['message'] : '';
+
+        if ($templateKey === '' || !preg_match('/^[a-z0-9_]+$/i', $templateKey)) {
+            r2(getUrl('settings/notifications'), 'e', 'Template tidak valid.');
+        }
+
+        $overrideSupportedTemplates = ['otp_message', 'welcome_message'];
+        if (!in_array($templateKey, $overrideSupportedTemplates, true)) {
+            r2(getUrl('settings/notifications'), 'e', 'Override tidak tersedia untuk template ini.');
+        }
+
+        if ($purposeKey === '' || !preg_match('/^[a-z0-9_]+$/', $purposeKey)) {
+            r2(getUrl('settings/notifications'), 'e', 'Purpose tidak valid.');
+        }
+
+        $allowedPurposes = [];
+        if ($templateKey === 'otp_message') {
+            $allowedPurposes = ['register', 'verify', 'forgot'];
+        } elseif ($templateKey === 'welcome_message') {
+            $allowedPurposes = ['admin_register', 'self_register'];
+        }
+
+        if (!in_array($purposeKey, $allowedPurposes, true)) {
+            r2(getUrl('settings/notifications'), 'e', 'Purpose tidak valid.');
+        }
+
+        $path = $UPLOAD_PATH . DIRECTORY_SEPARATOR . 'notifications.json';
+        $data = [];
+        if (file_exists($path)) {
+            $data = json_decode(file_get_contents($path), true);
+        } else {
+            $data = json_decode(file_get_contents($UPLOAD_PATH . DIRECTORY_SEPARATOR . 'notifications.default.json'), true);
+        }
+        if (!is_array($data)) {
+            $data = [];
+        }
+
+        if (!isset($data['template_overrides']) || !is_array($data['template_overrides'])) {
+            $data['template_overrides'] = [];
+        }
+        if (!isset($data['template_overrides']['purpose']) || !is_array($data['template_overrides']['purpose'])) {
+            $data['template_overrides']['purpose'] = [];
+        }
+        if (!isset($data['template_overrides']['purpose'][$purposeKey]) || !is_array($data['template_overrides']['purpose'][$purposeKey])) {
+            $data['template_overrides']['purpose'][$purposeKey] = [];
+        }
+
+        if (trim($message) === '') {
+            unset($data['template_overrides']['purpose'][$purposeKey][$templateKey]);
+        } else {
+            $data['template_overrides']['purpose'][$purposeKey][$templateKey] = $message;
+        }
+
+        if (empty($data['template_overrides']['purpose'][$purposeKey])) {
+            unset($data['template_overrides']['purpose'][$purposeKey]);
+        }
+        if (empty($data['template_overrides']['purpose'])) {
+            unset($data['template_overrides']['purpose']);
+        }
+        if (empty($data['template_overrides'])) {
+            unset($data['template_overrides']);
+        }
+
+        file_put_contents($path, json_encode($data, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
+        r2(getUrl('settings/notifications'), 's', 'Override purpose disimpan.');
+        break;
+    case 'notifications-test':
+        header('Content-Type: application/json');
+        if ($_app_stage == 'Demo') {
+            echo json_encode(['ok' => false, 'message' => 'Demo mode']);
+            exit;
+        }
+        if (!in_array($admin['user_type'], ['SuperAdmin', 'Admin'])) {
+            echo json_encode(['ok' => false, 'message' => Lang::T('You do not have permission to access this page')]);
+            exit;
+        }
+        $csrf_token = _post('csrf_token');
+        if (!Csrf::check($csrf_token)) {
+            $newToken = Csrf::generateAndStoreToken();
+            echo json_encode([
+                'ok' => false,
+                'message' => Lang::T('Invalid or Expired CSRF Token') . ".",
+                'csrf_token' => $newToken,
+            ]);
+            exit;
+        }
+
+        $templateKey = trim((string)_post('template'));
+        $phone = trim((string)_post('phone'));
+        $message = (string)_post('message');
+        if ($phone === '') {
+            echo json_encode(['ok' => false, 'message' => 'Nomor WA tidak boleh kosong.']);
+            exit;
+        }
+        if (trim($message) === '') {
+            $message = Lang::getNotifText($templateKey);
+        }
+        if (trim($message) === '') {
+            echo json_encode(['ok' => false, 'message' => 'Template kosong.']);
+            exit;
+        }
+
+        $now = date('d M Y H:i');
+        $future = date('d M Y H:i', strtotime('+30 days'));
+        $companyName = $config['CompanyName'] ?? 'Company';
+        $companyAddress = $config['address'] ?? 'Address';
+        $companyPhone = $config['phone'] ?? '+62800000000';
+        $footer = $config['note'] ?? '';
+        $samplePrice = Lang::moneyFormat(10000);
+        $sampleBalance = Lang::moneyFormat(5000);
+	        $replacements = [
+            '[[company_name]]' => $companyName,
+            '[[company]]' => $companyName,
+            '[[company_address]]' => $companyAddress,
+            '[[company_phone]]' => $companyPhone,
+            '[[address]]' => $companyAddress,
+            '[[phone]]' => $companyPhone,
+            '[[name]]' => 'Dummy',
+            '[[fullname]]' => 'Dummy',
+            '[[username]]' => 'dummy',
+            '[[Username]]' => 'dummy',
+            '[[user_name]]' => 'dummy',
+            '[[user_password]]' => 'password',
+            '[[password]]' => 'password',
+            '[[Password]]' => 'password',
+            '[[package]]' => 'Paket Demo',
+            '[[plan]]' => 'Paket Demo',
+            '[[plan_name]]' => 'Paket Demo',
+            '[[plan_price]]' => $samplePrice,
+            '[[price]]' => $samplePrice,
+            '[[invoice]]' => 'INV-TEST',
+            '[[date]]' => $now,
+            '[[trx_date]]' => $now,
+            '[[payment_gateway]]' => 'Gateway',
+            '[[payment_channel]]' => 'Channel',
+            '[[type]]' => 'PPPOE',
+            '[[expired_date]]' => $future,
+            '[[expiry]]' => $future,
+            '[[footer]]' => $footer,
+            '[[note]]' => 'Testing',
+            '[[invoice_link]]' => APP_URL . '/?_route=voucher/invoice/0/test',
+            '[[balance]]' => $sampleBalance,
+            '[[balance_before]]' => Lang::moneyFormat(10000),
+            '[[current_balance]]' => Lang::moneyFormat(15000),
+	            '[[otp]]' => '123456',
+	            '[[purpose]]' => 'Verification',
+	            '[[otp_expires_at]]' => Lang::dateTimeFormat(date('Y-m-d H:i:s', time() + (int) ($_c['otp_expiry'] ?? 600))),
+	            '[[otp_expired_at]]' => Lang::dateTimeFormat(date('Y-m-d H:i:s', time() + (int) ($_c['otp_expiry'] ?? 600))),
+	            '[[otp_request_allowed_at]]' => Lang::dateTimeFormat(date('Y-m-d H:i:s', time() + (int) ($_c['otp_wait'] ?? 60))),
+	            '[[otp_request_at]]' => Lang::dateTimeFormat(date('Y-m-d H:i:s', time() + (int) ($_c['otp_wait'] ?? 60))),
+	            '[[otp_expiry_seconds]]' => (string) (int) ($_c['otp_expiry'] ?? 600),
+	            '[[otp_expiry]]' => (string) (int) ($_c['otp_expiry'] ?? 600),
+	            '[[otp_wait_seconds]]' => (string) (int) ($_c['otp_wait'] ?? 60),
+	            '[[otp_wait]]' => (string) (int) ($_c['otp_wait'] ?? 60),
+	            '[[bills]]' => "Tax : " . Lang::moneyFormat(1000) . "\nTotal : " . Lang::moneyFormat(11000),
+	            '[[old_plan]]' => 'Paket Lama',
+	            '[[new_plan]]' => 'Paket Baru',
+	            '[[payment_link]]' => '?_route=home&recharge=0&uid=test',
+	            '[[extend_link]]' => '',
+            '[[url]]' => APP_URL . '/?_route=login',
+        ];
+        if (strtolower($templateKey) === 'expired') {
+            $replacements['[[extend_link]]'] = '?_route=home&extend=0&uid=test&stoken=test';
+        }
+
+        $phoneFormatted = Lang::phoneFormat($phone);
+        $customer = ORM::for_table('tbl_customers')->where('phonenumber', $phoneFormatted)->find_one();
+        if (!$customer && $phoneFormatted !== $phone) {
+            $customer = ORM::for_table('tbl_customers')->where('phonenumber', $phone)->find_one();
+        }
+        if ($customer) {
+            $replacements['[[name]]'] = $customer['fullname'] ?: $replacements['[[name]]'];
+            $replacements['[[fullname]]'] = $customer['fullname'] ?: $replacements['[[fullname]]'];
+            $replacements['[[username]]'] = $customer['username'] ?: $replacements['[[username]]'];
+            $replacements['[[Username]]'] = $customer['username'] ?: $replacements['[[Username]]'];
+            $replacements['[[user_name]]'] = $customer['username'] ?: $replacements['[[user_name]]'];
+            $replacements['[[user_password]]'] = $customer['password'] ?: $replacements['[[user_password]]'];
+            $replacements['[[password]]'] = $customer['password'] ?: $replacements['[[password]]'];
+            $replacements['[[Password]]'] = $customer['password'] ?: $replacements['[[Password]]'];
+            if (isset($customer['balance'])) {
+                $replacements['[[balance]]'] = Lang::moneyFormat($customer['balance']);
+                $replacements['[[current_balance]]'] = Lang::moneyFormat($customer['balance']);
+                $replacements['[[balance_before]]'] = Lang::moneyFormat($customer['balance']);
+            }
+
+            $recharge = ORM::for_table('tbl_user_recharges')
+                ->where('customer_id', $customer['id'])
+                ->order_by_desc('id')
+                ->find_one();
+            if ($recharge) {
+                $replacements['[[package]]'] = $recharge['namebp'] ?: $replacements['[[package]]'];
+                $replacements['[[plan]]'] = $recharge['namebp'] ?: $replacements['[[plan]]'];
+                $replacements['[[plan_name]]'] = $recharge['namebp'] ?: $replacements['[[plan_name]]'];
+                if (!empty($recharge['expiration']) && !empty($recharge['time'])) {
+                    $replacements['[[expired_date]]'] = Lang::dateAndTimeFormat($recharge['expiration'], $recharge['time']);
+                    $replacements['[[expiry]]'] = $replacements['[[expired_date]]'];
+                }
+                if (!empty($recharge['type'])) {
+                    $replacements['[[type]]'] = $recharge['type'];
+                }
+                if (!empty($recharge['plan_id'])) {
+                    $plan = ORM::for_table('tbl_plans')->find_one($recharge['plan_id']);
+                    if ($plan) {
+                        $replacements['[[plan_name]]'] = $plan['name_plan'] ?: $replacements['[[plan_name]]'];
+                        if (!empty($plan['price'])) {
+                            $replacements['[[plan_price]]'] = Lang::moneyFormat($plan['price']);
+                            $replacements['[[price]]'] = $replacements['[[plan_price]]'];
+                        }
+                    }
+                }
+            }
+
+            $trx = ORM::for_table('tbl_transactions')
+                ->where('user_id', $customer['id'])
+                ->order_by_desc('id')
+                ->find_one();
+            if ($trx) {
+                $replacements['[[invoice]]'] = $trx['invoice'] ?: $replacements['[[invoice]]'];
+                if (!empty($trx['recharged_on']) && !empty($trx['recharged_time'])) {
+                    $replacements['[[date]]'] = Lang::dateAndTimeFormat($trx['recharged_on'], $trx['recharged_time']);
+                    $replacements['[[trx_date]]'] = $replacements['[[date]]'];
+                }
+                if (!empty($trx['expiration']) && !empty($trx['time'])) {
+                    $replacements['[[expired_date]]'] = Lang::dateAndTimeFormat($trx['expiration'], $trx['time']);
+                    $replacements['[[expiry]]'] = $replacements['[[expired_date]]'];
+                }
+                if (!empty($trx['plan_name'])) {
+                    $replacements['[[plan_name]]'] = $trx['plan_name'];
+                    $replacements['[[package]]'] = $trx['plan_name'];
+                    $replacements['[[plan]]'] = $trx['plan_name'];
+                }
+                if (!empty($trx['price'])) {
+                    $replacements['[[plan_price]]'] = Lang::moneyFormat($trx['price']);
+                    $replacements['[[price]]'] = $replacements['[[plan_price]]'];
+                }
+                if (!empty($trx['type'])) {
+                    $replacements['[[type]]'] = $trx['type'];
+                }
+                if (!empty($trx['method'])) {
+                    $parts = explode('-', $trx['method']);
+                    $replacements['[[payment_gateway]]'] = trim($parts[0] ?? $replacements['[[payment_gateway]]']);
+                    $replacements['[[payment_channel]]'] = trim($parts[1] ?? $replacements['[[payment_channel]]']);
+                }
+                if (!empty($trx['note'])) {
+                    $replacements['[[note]]'] = $trx['note'];
+                }
+                $replacements['[[invoice_link]]'] = '?_route=voucher/invoice/' . $trx['id'] . '/' . md5($trx['id'] . $db_pass);
+            }
+        }
+        $message = strtr($message, $replacements);
+
+	        $sendOptions = ['skip_queue' => true, 'queue_context' => 'test'];
+	        $sent = Message::sendWhatsapp($phone, $message, $sendOptions);
+	        $newToken = Csrf::generateAndStoreToken();
+	        if ($sent === false || $sent === 'kosong') {
+	            echo json_encode(['ok' => false, 'message' => 'Gagal mengirim.', 'csrf_token' => $newToken]);
+	            exit;
+        }
+        echo json_encode(['ok' => true, 'message' => 'Test terkirim.', 'csrf_token' => $newToken]);
+        exit;
     case 'dbstatus':
         if (!in_array($admin['user_type'], ['SuperAdmin', 'Admin'])) {
             _alert(Lang::T('You do not have permission to access this page'), 'danger', "dashboard");

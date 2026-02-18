@@ -79,6 +79,16 @@
                         </div>
                     </div>
                     <div class="form-group">
+                        <label class="col-md-2 control-label">{Lang::T('Customer Self Extend')}</label>
+                        <div class="col-md-10">
+                            <input type="hidden" name="customer_can_extend" value="0">
+                            <label class="checkbox-inline">
+                                <input type="checkbox" name="customer_can_extend" value="1" checked>
+                                {Lang::T('Allow customer self-extend for this plan')}
+                            </label>
+                        </div>
+                    </div>
+                    <div class="form-group">
                         <label class="col-md-2 control-label">{Lang::T('Linked Plans')}</label>
                         <div class="col-md-6">
                             <select name="linked_plans[]" class="form-control select2" multiple>
