@@ -3,7 +3,7 @@ config.php
 .DS_Store
 .vscode/
 *.old
-/system/backup
+system/backup/*
 .playwright/
 node_modules/
 ui/ui/compiled
