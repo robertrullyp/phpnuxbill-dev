@@ -67,11 +67,32 @@ class Lang
     public static function phoneFormat($phone)
     {
         global $config;
-        if (Validator::UnsignedNumber($phone) && !empty($config['country_code_phone'])) {
-            return preg_replace('/^0/',  $config['country_code_phone'], $phone);
-        } else {
+        $phone = trim((string) $phone);
+        if ($phone === '') {
+            return '';
+        }
+
+        // Only normalize phone-like strings, keep other values untouched.
+        if (!preg_match('/^\+?[0-9\s().-]+$/', $phone)) {
             return $phone;
         }
+
+        $digits = preg_replace('/\D+/', '', $phone);
+        if ($digits === '') {
+            return $phone;
+        }
+
+        $code = isset($config['country_code_phone']) ? preg_replace('/\D+/', '', (string) $config['country_code_phone']) : '';
+        if ($code !== '') {
+            if (strpos($digits, '0') === 0) {
+                return $code . substr($digits, 1);
+            }
+            if (strpos($digits, $code) === 0) {
+                return $digits;
+            }
+        }
+
+        return $digits;
     }
 
     public static function dateFormat($date)

@@ -25,7 +25,7 @@
                             <span class="input-group-addon" id="basic-addon1"><i class="glyphicon glyphicon-phone-alt"></i></span>
                             <input type="text" class="form-control" name="phone_number"
                                 placeholder="{if $_c['country_code_phone'] != ''}{$_c['country_code_phone']} {/if}{Lang::T('Phone Number')}"
-                                inputmode="numeric" pattern="[0-9]*">
+                                inputmode="tel" autocomplete="tel">
                         </div>
                     </div>
                     <div class="btn-group btn-group-justified mb15">

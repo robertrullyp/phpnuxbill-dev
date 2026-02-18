@@ -24,9 +24,10 @@ switch ($do) {
         }
         Csrf::generateAndStoreToken();
         $otp_code = _post('otp_code');
-        $phone_number = alphanumeric(_post('phone_number'), "+_.@-");
+        $phone_number_raw = alphanumeric(_post('phone_number'), "+_.@-");
+        $phone_number = Lang::phoneFormat($phone_number_raw);
         if ($_c['registration_username'] === 'phone') {
-            $username = Lang::phoneFormat($phone_number);
+            $username = $phone_number;
         } else {
             $username = alphanumeric(_post('username'), "+_.@-");
         }
@@ -95,7 +96,7 @@ switch ($do) {
 
         // Validate phone number format
         if ($_c['sms_otp_registration'] == 'yes' || $_c['registration_username'] === 'phone') {
-            if (!Validator::PhoneWithCountry($phone_number)) {
+            if (!Validator::PhoneWithCountry($phone_number_raw)) {
                 $msg .= Lang::T('Invalid phone number; start with 62 or 0') . '<br>';
             }
         }
@@ -107,7 +108,7 @@ switch ($do) {
                 $msg .= Lang::T('Account already exists') . '<br>';
             }
         } else {
-            $formatted = Lang::phoneFormat($phone_number);
+            $formatted = $phone_number;
             $d = ORM::for_table('tbl_customers')->where('username', $username)->find_one();
             if ($d) {
                 $msg .= Lang::T('Account already exists') . '<br>';
@@ -120,7 +121,7 @@ switch ($do) {
             }
         }
         // Check if phone number already exists
-        $d = ORM::for_table('tbl_customers')->where('phonenumber', $phone_number)->find_one();
+        $d = ORM::for_table('tbl_customers')->where('phonenumber', $formatted)->find_one();
         if ($d) {
             $msg .= Lang::T('Phone number already registered by another customer') . '<br>';
         }

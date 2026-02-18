@@ -184,12 +184,13 @@ switch ($action) {
             return;
         }
         Csrf::generateAndStoreToken();
-        $phone = Lang::phoneFormat(_post('phone'));
+        $phoneRaw = _post('phone');
+        $phone = Lang::phoneFormat($phoneRaw);
         $username = $user['username'];
         $otpPath = $CACHE_PATH . '/sms/';
         $_SESSION['new_phone'] = $phone;
         // Validate the phone number format
-        if (!Validator::PhoneWithCountry($phone)) {
+        if (!Validator::PhoneWithCountry($phoneRaw)) {
             r2(getUrl('accounts/phone-update'), 'e', Lang::T('Invalid phone number; start with 62 or 0'));
             return;
         }
@@ -270,13 +271,14 @@ switch ($action) {
             r2(getUrl('accounts/phone-update'), 'e', Lang::T('Invalid or Expired CSRF Token') . ".");
         }
         Csrf::generateAndStoreToken();
-        $phone = Lang::phoneFormat(_post('phone'));
+        $phoneRaw = _post('phone');
+        $phone = Lang::phoneFormat($phoneRaw);
         $otp_code = _post('otp');
         $username = $user['username'];
         $otpPath = $CACHE_PATH . '/sms/';
 
         // Validate the phone number format
-        if (!Validator::PhoneWithCountry($phone)) {
+        if (!Validator::PhoneWithCountry($phoneRaw)) {
             r2(getUrl('accounts/phone-update'), 'e', Lang::T('Invalid phone number; start with 62 or 0'));
         }
 
