@@ -116,6 +116,7 @@ class MikrotikPppoe
     {
         $mikrotik = $this->info($plan['routers']);
         $client = $this->getClient($mikrotik['ip_address'], $mikrotik['username'], $mikrotik['password']);
+        $cleanupWarnings = [];
         if (!empty($plan['plan_expired'])) {
             $p = ORM::for_table("tbl_plans")->find_one($plan['plan_expired']);
             if($p){
@@ -124,14 +125,35 @@ class MikrotikPppoe
                 return;
             }
         }
-        $this->removePpoeUser($client, $customer['username']);
-        if (!empty($customer['pppoe_username'])) {
-            $this->removePpoeUser($client, $customer['pppoe_username']);
+        try {
+            $this->removePpoeUser($client, $customer['username']);
+        } catch (Throwable $e) {
+            $cleanupWarnings[] = 'Failed removing PPP secret for username "' . (string) ($customer['username'] ?? '') . '": ' . $e->getMessage();
         }
-        $this->removePpoeActive($client, $customer);
+        if (!empty($customer['pppoe_username'])) {
+            try {
+                $this->removePpoeUser($client, $customer['pppoe_username']);
+            } catch (Throwable $e) {
+                $cleanupWarnings[] = 'Failed removing PPP secret for PPPoE username "' . (string) ($customer['pppoe_username'] ?? '') . '": ' . $e->getMessage();
+            }
+        }
         $bindingWarning = '';
         if (!$this->removePppoeServerBinding($customer, $plan, $bindingWarning) && $bindingWarning !== '') {
             $this->logPppoeBindingWarning($plan, $customer, $bindingWarning, 'remove_customer');
+        }
+        // Keep active disconnect as the final step so all identity cleanup runs first.
+        $activeRemovalError = '';
+        try {
+            $this->removePpoeActive($client, $customer);
+        } catch (Throwable $e) {
+            $activeRemovalError = $e->getMessage();
+        }
+
+        if (!empty($cleanupWarnings)) {
+            $this->logPppoeBindingWarning($plan, $customer, implode(' | ', $cleanupWarnings), 'remove_customer');
+        }
+        if ($activeRemovalError !== '') {
+            throw new Exception('Failed removing PPP active session: ' . $activeRemovalError);
         }
     }
 
@@ -471,9 +493,37 @@ class MikrotikPppoe
             return [];
         }
 
-        $onlineRequest = new RouterOS\Request('/ppp/active/print');
-        $onlineRequest->setArgument('.proplist', '.id,name');
-        $responses = $client->sendSync($onlineRequest);
+        $lookupNames = [];
+        foreach ($candidateNames as $candidateName) {
+            $lookupNames[$candidateName] = true;
+            if (strpos($candidateName, 'pppoe-') !== 0) {
+                $lookupNames['pppoe-' . $candidateName] = true;
+            }
+        }
+
+        $responses = [];
+        foreach (array_keys($lookupNames) as $baseName) {
+            $baseName = trim((string) $baseName);
+            if ($baseName === '') {
+                continue;
+            }
+            $responses = array_merge($responses, $this->queryPppoeActiveByExactName($client, $baseName));
+            try {
+                $query = RouterOS\Query::where('name', $baseName, RouterOS\Query::OP_GT)
+                    ->andWhere('name', $baseName . '~', RouterOS\Query::OP_LT);
+                $request = new RouterOS\Request('/ppp/active/print', $query);
+                $request->setArgument('.proplist', '.id,name');
+                $result = $client->sendSync($request);
+                if ($result instanceof Traversable || is_array($result)) {
+                    foreach ($result as $response) {
+                        $responses[] = $response;
+                    }
+                }
+            } catch (Throwable $e) {
+                // Fallback already has exact-name results.
+            }
+        }
+
         $ids = [];
         foreach ($responses as $response) {
             if (!($response instanceof RouterOS\Response)) {
@@ -493,6 +543,29 @@ class MikrotikPppoe
         }
 
         return array_values($ids);
+    }
+
+    protected function queryPppoeActiveByExactName($client, $name)
+    {
+        $name = trim((string) $name);
+        if ($name === '') {
+            return [];
+        }
+
+        $request = new RouterOS\Request('/ppp/active/print');
+        $request->setArgument('.proplist', '.id,name');
+        $request->setQuery(RouterOS\Query::where('name', $name));
+        $responses = $client->sendSync($request);
+
+        if (!($responses instanceof Traversable) && !is_array($responses)) {
+            return [];
+        }
+
+        $result = [];
+        foreach ($responses as $response) {
+            $result[] = $response;
+        }
+        return $result;
     }
 
     public function resolvePppoeBindingName($customer)
@@ -1033,22 +1106,44 @@ class MikrotikPppoe
             return null;
         }
         $iport = explode(":", $ip);
-        return new RouterOS\Client($iport[0], $user, $pass, ($iport[1]) ? $iport[1] : null);
+        $host = trim((string) ($iport[0] ?? ''));
+        $port = !empty($iport[1]) ? (int) $iport[1] : null;
+        $cacheKey = strtolower($host) . '|' . strtolower(trim((string) $user)) . '|' . (string) $port . '|' . md5((string) $pass);
+
+        static $clientPool = [];
+        if (isset($clientPool[$cacheKey]) && $clientPool[$cacheKey] instanceof RouterOS\Client) {
+            return $clientPool[$cacheKey];
+        }
+
+        $clientPool[$cacheKey] = new RouterOS\Client($host, $user, $pass, $port);
+        return $clientPool[$cacheKey];
     }
 
     function removePpoeUser($client, $username)
     {
         global $_app_stage;
         if ($_app_stage == 'Demo') {
-            return null;
+            return false;
         }
+        if (!$client) {
+            return false;
+        }
+        $username = trim((string) $username);
+        if ($username === '') {
+            return false;
+        }
+
         $printRequest = new RouterOS\Request('/ppp/secret/print');
         //$printRequest->setArgument('.proplist', '.id');
         $printRequest->setQuery(RouterOS\Query::where('name', $username));
         $id = $client->sendSync($printRequest)->getProperty('.id');
+        if (empty($id)) {
+            return false;
+        }
         $removeRequest = new RouterOS\Request('/ppp/secret/remove');
         $removeRequest->setArgument('numbers', $id);
         $client->sendSync($removeRequest);
+        return true;
     }
 
     function addPpoeUser($client, $plan, $customer, $isExp = false)

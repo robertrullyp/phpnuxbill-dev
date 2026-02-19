@@ -37,6 +37,143 @@ while ($row = $statement->fetch(PDO::FETCH_ASSOC)) {
 
 $_c = $config;
 
+function cronLogWarningThrottled($key, $message, $ttlSeconds = 600)
+{
+    global $CACHE_PATH;
+
+    $message = trim((string) $message);
+    if ($message === '') {
+        return;
+    }
+
+    $ttlSeconds = (int) $ttlSeconds;
+    if ($ttlSeconds < 30) {
+        $ttlSeconds = 30;
+    }
+
+    $key = strtolower(trim((string) $key));
+    if ($key === '') {
+        $key = md5($message);
+    }
+    $key = preg_replace('/[^a-z0-9._:-]+/i', '_', $key);
+    if ($key === '') {
+        $key = md5($message);
+    }
+
+    $stateFile = rtrim((string) $CACHE_PATH, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . 'cron-log-throttle.json';
+    $state = [];
+    if (is_file($stateFile)) {
+        $raw = @file_get_contents($stateFile);
+        if (is_string($raw) && $raw !== '') {
+            $decoded = json_decode($raw, true);
+            if (is_array($decoded)) {
+                $state = $decoded;
+            }
+        }
+    }
+
+    $now = time();
+    foreach ($state as $stateKey => $entry) {
+        if (!is_array($entry)) {
+            unset($state[$stateKey]);
+            continue;
+        }
+        $lastSeen = isset($entry['last_seen']) ? (int) $entry['last_seen'] : 0;
+        if ($lastSeen > 0 && ($now - $lastSeen) > 604800) {
+            unset($state[$stateKey]);
+        }
+    }
+
+    $entry = isset($state[$key]) && is_array($state[$key]) ? $state[$key] : [
+        'next_log_at' => 0,
+        'suppressed' => 0,
+        'last_seen' => 0,
+    ];
+
+    $nextLogAt = isset($entry['next_log_at']) ? (int) $entry['next_log_at'] : 0;
+    if ($now >= $nextLogAt) {
+        $suppressed = isset($entry['suppressed']) ? (int) $entry['suppressed'] : 0;
+        if ($suppressed > 0) {
+            _log($message . ' [suppressed ' . $suppressed . ' similar warning(s)]');
+        } else {
+            _log($message);
+        }
+        $entry['next_log_at'] = $now + $ttlSeconds;
+        $entry['suppressed'] = 0;
+    } else {
+        $entry['suppressed'] = isset($entry['suppressed']) ? ((int) $entry['suppressed'] + 1) : 1;
+    }
+
+    $entry['last_seen'] = $now;
+    $state[$key] = $entry;
+
+    $payload = json_encode($state, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+    if ($payload !== false) {
+        @file_put_contents($stateFile, $payload, LOCK_EX);
+    }
+}
+
+function cronAccessRouterFailureKey($planData)
+{
+    $routerName = strtolower(trim((string) ($planData['routers'] ?? '')));
+    $device = strtolower(trim((string) ($planData['device'] ?? '')));
+    if ($routerName === '' && $device === '') {
+        return '';
+    }
+    return $routerName . '|' . $device;
+}
+
+function cronAccessRouterFailureDetected($warningMessage)
+{
+    $warningMessage = strtolower(trim((string) $warningMessage));
+    if ($warningMessage === '') {
+        return false;
+    }
+    $patterns = [
+        'error connecting to routeros',
+        'couldn\'t connect',
+        'could not connect',
+        'connection timed out',
+        'timed out',
+        'connection refused',
+        'network is unreachable',
+        'no route to host',
+    ];
+    foreach ($patterns as $pattern) {
+        if (strpos($warningMessage, $pattern) !== false) {
+            return true;
+        }
+    }
+    return false;
+}
+
+function cronMarkAccessRouterFailed($planData, $warningMessage = '')
+{
+    $key = cronAccessRouterFailureKey($planData);
+    if ($key === '') {
+        return;
+    }
+    if (!isset($GLOBALS['cron_access_router_failures']) || !is_array($GLOBALS['cron_access_router_failures'])) {
+        $GLOBALS['cron_access_router_failures'] = [];
+    }
+    $GLOBALS['cron_access_router_failures'][$key] = [
+        'at' => time(),
+        'message' => trim((string) $warningMessage),
+    ];
+}
+
+function cronShouldSkipAccessRouter($planData)
+{
+    $key = cronAccessRouterFailureKey($planData);
+    if ($key === '') {
+        return false;
+    }
+    if (empty($GLOBALS['cron_access_router_failures']) || !is_array($GLOBALS['cron_access_router_failures'])) {
+        return false;
+    }
+    return isset($GLOBALS['cron_access_router_failures'][$key]);
+}
+
 function resolvePlanForRechargeCron($rechargeRow)
 {
     if (!$rechargeRow) {
@@ -94,6 +231,12 @@ function collectPppoeUsageSampleForRecharge($rechargeRow, $planRow = null, $cust
         }
         return;
     }
+    if (cronShouldSkipAccessRouter($planData)) {
+        if ($closeCycle) {
+            PppoeUsage::closeCycleByRechargeId($rechargeId, date('Y-m-d H:i:s'));
+        }
+        return;
+    }
 
     $customer = $customerRow;
     if (!$customer) {
@@ -121,7 +264,12 @@ function collectPppoeUsageSampleForRecharge($rechargeRow, $planRow = null, $cust
 
         $dvc = Package::getDevice($planData);
         if (!$dvc || !file_exists($dvc)) {
-            _log('PPPoE usage collector warning: device file not found for plan ' . ($planData['name_plan'] ?? ''));
+            $planName = trim((string) ($planData['name_plan'] ?? ''));
+            cronLogWarningThrottled(
+                'access_usage_device_file_missing_' . strtolower($planName),
+                'Access usage collector warning: device file not found for plan ' . ($planData['name_plan'] ?? ''),
+                1800
+            );
             if ($closeCycle) {
                 PppoeUsage::closeCycleById((int) $cycle['id'], date('Y-m-d H:i:s'));
             }
@@ -131,7 +279,11 @@ function collectPppoeUsageSampleForRecharge($rechargeRow, $planRow = null, $cust
         require_once $dvc;
         $deviceClass = trim((string) ($planData['device'] ?? ''));
         if ($deviceClass === '' || !class_exists($deviceClass)) {
-            _log('PPPoE usage collector warning: device class not found: ' . $deviceClass);
+            cronLogWarningThrottled(
+                'access_usage_device_class_missing_' . strtolower($deviceClass),
+                'Access usage collector warning: device class not found: ' . $deviceClass,
+                1800
+            );
             if ($closeCycle) {
                 PppoeUsage::closeCycleById((int) $cycle['id'], date('Y-m-d H:i:s'));
             }
@@ -140,7 +292,11 @@ function collectPppoeUsageSampleForRecharge($rechargeRow, $planRow = null, $cust
 
         $device = new $deviceClass();
         if (!method_exists($device, 'getPppoeBindingCounters')) {
-            _log('PPPoE usage collector warning: getPppoeBindingCounters is not implemented by ' . $deviceClass);
+            cronLogWarningThrottled(
+                'access_usage_method_missing_' . strtolower($deviceClass),
+                'Access usage collector warning: getPppoeBindingCounters is not implemented by ' . $deviceClass,
+                1800
+            );
             if ($closeCycle) {
                 PppoeUsage::closeCycleById((int) $cycle['id'], date('Y-m-d H:i:s'));
             }
@@ -160,8 +316,8 @@ function collectPppoeUsageSampleForRecharge($rechargeRow, $planRow = null, $cust
             $sampleNote = ($source === 'expiry-final')
                 ? 'Final sample before expiry'
                 : 'Cron periodic sample';
-            // PPPoE server interface counters perspective:
-            // tx-byte = router -> customer (Download), rx-byte = customer -> router (Upload).
+            // Device-specific counters perspective, normalized to:
+            // tx_byte = Download, rx_byte = Upload.
             PppoeUsage::recordSample(
                 $cycle,
                 (int) ($counters['tx_byte'] ?? 0),
@@ -171,14 +327,29 @@ function collectPppoeUsageSampleForRecharge($rechargeRow, $planRow = null, $cust
                 $sampleNote
             );
         } elseif ($warning !== '') {
-            _log('PPPoE usage collector warning: ' . $warning);
+            if (cronAccessRouterFailureDetected($warning)) {
+                cronMarkAccessRouterFailed($planData, $warning);
+            }
+            cronLogWarningThrottled(
+                'access_usage_runtime_warning_' . md5($warning),
+                'Access usage collector warning: ' . $warning,
+                600
+            );
         }
 
         if ($closeCycle) {
             PppoeUsage::closeCycleById((int) $cycle['id'], date('Y-m-d H:i:s'));
         }
     } catch (Throwable $e) {
-        _log('PPPoE usage collector error: ' . $e->getMessage());
+        $errMsg = trim((string) $e->getMessage());
+        if (cronAccessRouterFailureDetected($errMsg)) {
+            cronMarkAccessRouterFailed($planData, $errMsg);
+        }
+        cronLogWarningThrottled(
+            'access_usage_runtime_error_' . md5($errMsg),
+            'Access usage collector error: ' . $errMsg,
+            600
+        );
         if ($closeCycle) {
             PppoeUsage::closeCycleByRechargeId($rechargeId, date('Y-m-d H:i:s'));
         }
@@ -193,7 +364,7 @@ function collectPppoeUsageFromActiveRecharges()
 
     $rows = ORM::for_table('tbl_user_recharges')
         ->where('status', 'on')
-        ->where('type', 'PPPOE')
+        ->where_raw("UPPER(TRIM(COALESCE(`type`, ''))) IN ('PPPOE','HOTSPOT')")
         ->order_by_desc('id')
         ->find_many();
 
@@ -220,7 +391,120 @@ function collectPppoeUsageFromActiveRecharges()
         $processed++;
     }
 
-    echo "PPPoE usage sampled for {$processed} active scope(s)\n";
+    echo "Access usage sampled for {$processed} active scope(s)\n";
+}
+
+function cleanupExpiredOffRecharges()
+{
+    $nowTs = time();
+    $today = date('Y-m-d');
+    $rows = ORM::for_table('tbl_user_recharges')
+        ->table_alias('tur')
+        ->select('tur.*')
+        ->where('tur.status', 'off')
+        ->where_lte('tur.expiration', $today)
+        ->order_by_desc('tur.id')
+        ->find_many();
+
+    if (!$rows || count($rows) === 0) {
+        echo "Expired OFF cleanup: 0 scope(s)\n";
+        return;
+    }
+
+    $latestRows = [];
+    foreach ($rows as $row) {
+        $expiresAt = strtotime(trim((string) $row['expiration']) . ' ' . trim((string) $row['time']));
+        if ($expiresAt === false || $expiresAt > $nowTs) {
+            continue;
+        }
+        $scopeKey = (int) ($row['customer_id'] ?? 0) . '|' . trim((string) ($row['routers'] ?? '')) . '|' . strtoupper(trim((string) ($row['type'] ?? '')));
+        if (isset($latestRows[$scopeKey])) {
+            continue;
+        }
+        $latestRows[$scopeKey] = $row;
+    }
+
+    $checked = 0;
+    $disconnected = 0;
+    $skipped = 0;
+    $errors = 0;
+
+    foreach ($latestRows as $scopeKey => $row) {
+        $checked++;
+        try {
+            $hasActiveSibling = ORM::for_table('tbl_user_recharges')
+                ->table_alias('tur2')
+                ->select('tur2.id')
+                ->where('tur2.customer_id', $row['customer_id'])
+                ->where('tur2.routers', $row['routers'])
+                ->where('tur2.type', $row['type'])
+                ->where('tur2.status', 'on')
+                ->find_one();
+            if ($hasActiveSibling) {
+                $skipped++;
+                continue;
+            }
+
+            $plan = resolvePlanForRechargeCron($row);
+            if (!$plan) {
+                $skipped++;
+                continue;
+            }
+
+            $customer = ORM::for_table('tbl_customers')->where('id', (int) ($row['customer_id'] ?? 0))->find_one();
+            if (!$customer) {
+                $skipped++;
+                continue;
+            }
+
+            $planData = is_array($plan) ? $plan : $plan->as_array();
+            $dvc = Package::getDevice($planData);
+            if (!$dvc || !file_exists($dvc)) {
+                $skipped++;
+                continue;
+            }
+            require_once $dvc;
+
+            $deviceClass = trim((string) ($planData['device'] ?? ''));
+            if ($deviceClass === '' || !class_exists($deviceClass)) {
+                $skipped++;
+                continue;
+            }
+
+            $device = new $deviceClass();
+            $shouldDisconnect = true;
+            if (method_exists($device, 'online_customer')) {
+                try {
+                    $onlineId = $device->online_customer($customer, (string) ($row['routers'] ?? ''));
+                    $shouldDisconnect = !empty($onlineId);
+                } catch (Throwable $e) {
+                    cronLogWarningThrottled(
+                        'expired_off_online_check_' . md5($scopeKey . '|' . $e->getMessage()),
+                        'Expired OFF cleanup warning (online check): ' . $e->getMessage(),
+                        600
+                    );
+                    $shouldDisconnect = true;
+                }
+            }
+
+            if (!$shouldDisconnect) {
+                $skipped++;
+                continue;
+            }
+
+            $device->remove_customer($customer, $planData);
+            $disconnected++;
+        } catch (Throwable $e) {
+            $errors++;
+            cronLogWarningThrottled(
+                'expired_off_cleanup_error_' . md5($scopeKey . '|' . $e->getMessage()),
+                'Expired OFF cleanup error: ' . $e->getMessage(),
+                600
+            );
+        }
+    }
+
+    echo "Expired OFF cleanup: checked {$checked}, disconnected {$disconnected}, skipped {$skipped}, errors {$errors}\n";
 }
 
 function processDuePppoeCounterResets()
@@ -231,7 +515,7 @@ function processDuePppoeCounterResets()
 
     $schedules = PppoeUsage::getDueCounterResetSchedules(200);
     if (!is_array($schedules) || count($schedules) === 0) {
-        echo "PPPoE counter reset schedules: 0 due\n";
+        echo "Access counter reset schedules: 0 due\n";
         return;
     }
 
@@ -284,7 +568,11 @@ function processDuePppoeCounterResets()
 
             $dvc = Package::getDevice($planData);
             if (!$dvc || !file_exists($dvc)) {
-                _log('PPPoE counter reset warning: device file not found for recharge #' . $rechargeId);
+                cronLogWarningThrottled(
+                    'pppoe_counter_reset_device_file_missing',
+                    'Access counter reset warning: device file not found for recharge #' . $rechargeId,
+                    900
+                );
                 $pending++;
                 continue;
             }
@@ -322,19 +610,32 @@ function processDuePppoeCounterResets()
             }
 
             if ($warning !== '') {
-                _log('PPPoE counter reset warning: recharge #' . $rechargeId . ' - ' . $warning);
+                cronLogWarningThrottled(
+                    'pppoe_counter_reset_warning_' . md5($warning),
+                    'Access counter reset warning: recharge #' . $rechargeId . ' - ' . $warning,
+                    600
+                );
             } else {
-                _log('PPPoE counter reset warning: recharge #' . $rechargeId . ' - unknown reset failure');
+                cronLogWarningThrottled(
+                    'pppoe_counter_reset_unknown_failure',
+                    'Access counter reset warning: recharge #' . $rechargeId . ' - unknown reset failure',
+                    600
+                );
             }
             // Keep schedule pending for retry on next cron run.
             $pending++;
         } catch (Throwable $e) {
-            _log('PPPoE counter reset error: ' . $e->getMessage());
+            $errMsg = trim((string) $e->getMessage());
+            cronLogWarningThrottled(
+                'pppoe_counter_reset_error_' . md5($errMsg),
+                'Access counter reset error: ' . $errMsg,
+                600
+            );
             $pending++;
         }
     }
 
-    echo "PPPoE counter reset schedules: done {$done}, skipped {$skipped}, pending {$pending}\n";
+    echo "Access counter reset schedules: done {$done}, skipped {$skipped}, pending {$pending}\n";
 }
 
 
@@ -389,6 +690,7 @@ Message::cleanupExpiredWhatsappMedia();
 // Process WhatsApp queue
 Message::processWhatsappQueue();
 collectPppoeUsageFromActiveRecharges();
+cleanupExpiredOffRecharges();
 
 foreach ($d as $ds) {
     try {
@@ -531,7 +833,6 @@ foreach ($d as $ds) {
         echo "Unexpected Error: " . $e->getMessage() . "\n";
     }
 }
-
 processDuePppoeCounterResets();
 
 //Cek interim-update radiusrest

@@ -7,14 +7,23 @@ class PppoeUsage
     const SOURCE_RESET_DONE = 'reset_done';
     const SOURCE_RESET_SKIPPED = 'reset_skipped';
 
+    public static function normalizePlanType($type)
+    {
+        return strtoupper(trim((string) $type));
+    }
+
     public static function isSupportedPlan($plan)
     {
-        $type = strtoupper(trim((string) ($plan['type'] ?? '')));
+        $type = self::normalizePlanType($plan['type'] ?? '');
         $device = strtolower(trim((string) ($plan['device'] ?? '')));
         $router = strtolower(trim((string) ($plan['routers'] ?? '')));
         $isRadius = (int) ($plan['is_radius'] ?? 0) === 1;
 
-        return $type === 'PPPOE' && $device === 'mikrotikpppoe' && !$isRadius && $router !== '' && $router !== 'radius';
+        $isDirectRouter = !$isRadius && $router !== '' && $router !== 'radius';
+        $isPppoe = ($type === 'PPPOE' && $device === 'mikrotikpppoe');
+        $isHotspot = ($type === 'HOTSPOT' && $device === 'mikrotikhotspot');
+
+        return $isDirectRouter && ($isPppoe || $isHotspot);
     }
 
     public static function isStorageReady()
@@ -114,25 +123,45 @@ class PppoeUsage
 
     public static function resolveSecretUsername($customer)
     {
+        return self::resolveUsageIdentity($customer, 'PPPOE');
+    }
+
+    public static function resolveUsageIdentity($customer, $planType = 'PPPOE')
+    {
+        $planType = self::normalizePlanType($planType);
+        $username = trim((string) ($customer['username'] ?? ''));
+        if ($planType === 'HOTSPOT') {
+            return $username;
+        }
+
         $pppoe = trim((string) ($customer['pppoe_username'] ?? ''));
         if ($pppoe !== '') {
             return $pppoe;
         }
-        return trim((string) ($customer['username'] ?? ''));
+        return $username;
     }
 
-    public static function resolveBindingName($secretUsername)
+    public static function resolveBindingName($secretUsername, $planType = 'PPPOE')
     {
-        $secretUsername = preg_replace('/[^a-zA-Z0-9._-]/', '_', (string) $secretUsername);
-        $secretUsername = trim((string) $secretUsername, '_');
-        if ($secretUsername === '') {
-            $secretUsername = 'user';
+        $planType = self::normalizePlanType($planType);
+        $safeUsername = preg_replace('/[^a-zA-Z0-9._-]/', '_', (string) $secretUsername);
+        $safeUsername = trim((string) $safeUsername, '_');
+        if ($safeUsername === '') {
+            $safeUsername = 'user';
         }
+
+        if ($planType === 'HOTSPOT') {
+            if (strlen($safeUsername) > 63) {
+                $safeUsername = substr($safeUsername, 0, 63);
+            }
+            return $safeUsername;
+        }
+
         $maxSuffixLength = 57;
-        if (strlen($secretUsername) > $maxSuffixLength) {
-            $secretUsername = substr($secretUsername, 0, $maxSuffixLength);
+        if (strlen($safeUsername) > $maxSuffixLength) {
+            $safeUsername = substr($safeUsername, 0, $maxSuffixLength);
         }
-        return 'pppoe-' . $secretUsername;
+        return 'pppoe-' . $safeUsername;
     }
 
     public static function toDateTime($date, $time)
@@ -315,7 +344,7 @@ class PppoeUsage
         $transactionId = (int) ($transaction['id'] ?? 0);
         $planId = (int) ($plan['id'] ?? 0);
         $routerName = trim((string) ($recharge['routers'] ?? ($plan['routers'] ?? '')));
-        $type = strtoupper(trim((string) ($recharge['type'] ?? ($plan['type'] ?? 'PPPOE'))));
+        $type = self::normalizePlanType($recharge['type'] ?? ($plan['type'] ?? 'PPPOE'));
 
         if ($customerId < 1 || $rechargeId < 1 || $planId < 1 || $routerName === '' || $type === '') {
             return null;
@@ -327,8 +356,8 @@ class PppoeUsage
 
         self::closeOpenCyclesForScope($customerId, $routerName, $type, $startedAt);
 
-        $secretUser = trim((string) ($baseline['binding_user'] ?? self::resolveSecretUsername($customer)));
-        $bindingName = trim((string) ($baseline['binding_name'] ?? self::resolveBindingName($secretUser)));
+        $secretUser = trim((string) ($baseline['binding_user'] ?? self::resolveUsageIdentity($customer, $type)));
+        $bindingName = trim((string) ($baseline['binding_name'] ?? self::resolveBindingName($secretUser, $type)));
         $counterTx = max(0, (int) ($baseline['tx'] ?? 0));
         $counterRx = max(0, (int) ($baseline['rx'] ?? 0));
 
@@ -403,11 +432,13 @@ class PppoeUsage
 
         $transactionData = $transaction ? $transaction->as_array() : ['id' => 0];
 
+        $usageType = self::normalizePlanType($recharge['type'] ?? ($plan['type'] ?? 'PPPOE'));
+        $usageIdentity = self::resolveUsageIdentity($customer, $usageType);
         return self::openActivationCycle($customer, $plan, $recharge, $transactionData, [
             'tx' => (int) ($recharge['usage_tx_bytes'] ?? 0),
             'rx' => (int) ($recharge['usage_rx_bytes'] ?? 0),
-            'binding_user' => self::resolveSecretUsername($customer),
-            'binding_name' => self::resolveBindingName(self::resolveSecretUsername($customer)),
+            'binding_user' => $usageIdentity,
+            'binding_name' => self::resolveBindingName($usageIdentity, $usageType),
         ], 'Auto-created by cron collector');
     }
 

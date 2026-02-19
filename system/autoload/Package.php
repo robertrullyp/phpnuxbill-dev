@@ -896,11 +896,13 @@ class Package
         }
 
         try {
+            $usageType = PppoeUsage::normalizePlanType($planData['type'] ?? '');
+            $usageIdentity = PppoeUsage::resolveUsageIdentity($customerData, $usageType);
             $baseline = [
                 'tx' => 0,
                 'rx' => 0,
-                'binding_user' => PppoeUsage::resolveSecretUsername($customerData),
-                'binding_name' => PppoeUsage::resolveBindingName(PppoeUsage::resolveSecretUsername($customerData)),
+                'binding_user' => $usageIdentity,
+                'binding_name' => PppoeUsage::resolveBindingName($usageIdentity, $usageType),
             ];
             $note = 'Recharge start';
 
@@ -930,8 +932,9 @@ class Package
         } catch (Throwable $e) {
             if (class_exists('Message')) {
                 Message::sendTelegram(
-                    "PPPoE usage init failed\n" .
+                    "Access usage init failed\n" .
                     'Customer: ' . ($customerData['username'] ?? '') . "\n" .
+                    'Type: ' . ($planData['type'] ?? '') . "\n" .
                     'Plan: ' . ($planData['name_plan'] ?? '') . "\n" .
                     'Router: ' . ($planData['routers'] ?? '') . "\n" .
                     $e->getMessage()

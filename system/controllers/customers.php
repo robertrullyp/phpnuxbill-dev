@@ -380,10 +380,36 @@ switch ($action) {
             r2(getUrl('customers/list'), 'e', Lang::T('Account Not Found'));
         }
         $bs = ORM::for_table('tbl_user_recharges')->where('customer_id', $id_customer)->where('status', 'on')->findMany();
+        $routers = [];
+        $warnings = [];
+        $errors = [];
+        $doneSync = 0;
+        $doneCleanup = 0;
+        $nowTs = time();
+        $resolvePlanForSync = function ($rechargeRow) {
+            if (!$rechargeRow) {
+                return null;
+            }
+            $planId = (int) ($rechargeRow['plan_id'] ?? 0);
+            if ($planId > 0) {
+                $plan = ORM::for_table('tbl_plans')->find_one($planId);
+                if ($plan) {
+                    return $plan;
+                }
+            }
+            $planName = trim((string) ($rechargeRow['namebp'] ?? ''));
+            $planType = strtolower(trim((string) ($rechargeRow['type'] ?? '')));
+            if ($planName === '') {
+                return null;
+            }
+            $q = ORM::for_table('tbl_plans')->where('name_plan', $planName);
+            if ($planType !== '') {
+                $q->where_raw('LOWER(TRIM(`type`)) = ?', [$planType]);
+            }
+            return $q->order_by_desc('id')->find_one();
+        };
+
         if ($bs) {
-            $routers = [];
-            $warnings = [];
-            $errors = [];
             foreach ($bs as $b) {
                 try {
                     $c = ORM::for_table('tbl_customers')->find_one($id_customer);
@@ -391,7 +417,7 @@ switch ($action) {
                     if ($p) {
                         $routers[] = $b['routers'];
                         $dvc = Package::getDevice($p);
-                        if ($_app_stage != 'demo') {
+                        if (strcasecmp((string) $_app_stage, 'demo') !== 0) {
                             if (file_exists($dvc)) {
                                 require_once $dvc;
                                 $deviceClass = trim((string) ($p['device'] ?? ''));
@@ -404,6 +430,7 @@ switch ($action) {
                                 }else{
                                     $device->add_customer($c, $p);
                                 }
+                                $doneSync++;
                                 if (method_exists($device, 'getLastSyncWarning')) {
                                     $syncWarning = trim((string) $device->getLastSyncWarning());
                                     if ($syncWarning !== '') {
@@ -423,20 +450,104 @@ switch ($action) {
                     $errors[] = trim((string) ($b['namebp'] ?? 'Plan')) . ': ' . $syncError;
                 }
             }
-            $routers = array_values(array_unique(array_filter($routers)));
-            $message = 'Sync success to ' . implode(", ", $routers);
-            if (!empty($warnings)) {
-                $message .= '<br>WARN: ' . implode(' | ', $warnings);
-            }
-            if (!empty($errors) && empty($routers)) {
-                r2(getUrl('customers/view/') . $id_customer, 'e', 'Sync failed: ' . implode(' | ', $errors));
-            }
-            if (!empty($errors)) {
-                $message .= '<br>ERROR: ' . implode(' | ', $errors);
-            }
-            r2(getUrl('customers/view/') . $id_customer, empty($errors) ? 's' : 'w', $message);
         }
-        r2(getUrl('customers/view/') . $id_customer, 'e', 'Cannot find active plan');
+
+        $offRows = ORM::for_table('tbl_user_recharges')
+            ->where('customer_id', $id_customer)
+            ->where('status', 'off')
+            ->where_lte('expiration', date('Y-m-d'))
+            ->order_by_desc('id')
+            ->find_many();
+        $latestOffByScope = [];
+        foreach ($offRows as $offRow) {
+            $expiresAt = strtotime(trim((string) $offRow['expiration']) . ' ' . trim((string) $offRow['time']));
+            if ($expiresAt === false || $expiresAt > $nowTs) {
+                continue;
+            }
+            $scopeKey = (int) ($offRow['customer_id'] ?? 0) . '|' . trim((string) ($offRow['routers'] ?? '')) . '|' . strtoupper(trim((string) ($offRow['type'] ?? '')));
+            if (isset($latestOffByScope[$scopeKey])) {
+                continue;
+            }
+            $latestOffByScope[$scopeKey] = $offRow;
+        }
+
+        foreach ($latestOffByScope as $offRow) {
+            try {
+                $hasOnSibling = ORM::for_table('tbl_user_recharges')
+                    ->where('customer_id', $offRow['customer_id'])
+                    ->where('routers', $offRow['routers'])
+                    ->where('type', $offRow['type'])
+                    ->where('status', 'on')
+                    ->find_one();
+                if ($hasOnSibling) {
+                    continue;
+                }
+
+                $c = ORM::for_table('tbl_customers')->find_one($id_customer);
+                if (!$c) {
+                    continue;
+                }
+                $p = $resolvePlanForSync($offRow);
+                if (!$p) {
+                    continue;
+                }
+
+                $dvc = Package::getDevice($p);
+                if (strcasecmp((string) $_app_stage, 'demo') !== 0) {
+                    if (!file_exists($dvc)) {
+                        throw new Exception(Lang::T("Devices Not Found"));
+                    }
+                    require_once $dvc;
+                    $deviceClass = trim((string) ($p['device'] ?? ''));
+                    if ($deviceClass === '' || !class_exists($deviceClass)) {
+                        throw new Exception('Device class not found: ' . $deviceClass);
+                    }
+                    $device = new $deviceClass();
+                    if (method_exists($device, 'online_customer')) {
+                        $onlineId = $device->online_customer($c, (string) ($offRow['routers'] ?? ''));
+                        if (empty($onlineId)) {
+                            continue;
+                        }
+                    }
+                    $device->remove_customer($c, $p);
+                }
+                $routers[] = $offRow['routers'];
+                $doneCleanup++;
+            } catch (Throwable $e) {
+                $cleanupError = trim((string) $e->getMessage());
+                if ($cleanupError === '') {
+                    $cleanupError = 'Unknown cleanup error';
+                }
+                $errors[] = trim((string) ($offRow['namebp'] ?? 'Plan')) . ': ' . $cleanupError;
+            }
+        }
+
+        if ($doneSync === 0 && $doneCleanup === 0 && empty($errors)) {
+            r2(getUrl('customers/view/') . $id_customer, 'e', 'Cannot find active plan');
+        }
+
+        $routers = array_values(array_unique(array_filter($routers)));
+        $messageParts = [];
+        if ($doneSync > 0) {
+            $messageParts[] = 'Sync success to ' . implode(", ", $routers);
+        }
+        if ($doneCleanup > 0) {
+            $messageParts[] = 'Cleanup success for expired inactive service(s): ' . $doneCleanup;
+        }
+        if (empty($messageParts)) {
+            $messageParts[] = 'No active service found to sync';
+        }
+        $message = implode('<br>', $messageParts);
+        if (!empty($warnings)) {
+            $message .= '<br>WARN: ' . implode(' | ', $warnings);
+        }
+        if (!empty($errors) && $doneSync === 0 && $doneCleanup === 0) {
+            r2(getUrl('customers/view/') . $id_customer, 'e', 'Sync failed: ' . implode(' | ', $errors));
+        }
+        if (!empty($errors)) {
+            $message .= '<br>ERROR: ' . implode(' | ', $errors);
+        }
+        r2(getUrl('customers/view/') . $id_customer, empty($errors) ? 's' : 'w', $message);
         break;
     case 'login':
         if (!in_array($admin['user_type'], ['SuperAdmin', 'Admin'])) {
