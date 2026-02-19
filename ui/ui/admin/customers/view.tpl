@@ -229,7 +229,7 @@
                     <div class="box box-{if $package['status']=='on'}success{else}danger{/if}">
                         <div class="box-body box-profile">
                             <h4 class="text-center">{$package['type']} - {$package['namebp']} <span
-                                    api-get-text="{Text::url('autoload/customer_is_active/')}{$package['username']}/{$package['plan_id']}"></span>
+                                    api-get-text="{Text::url('autoload/customer_is_active/')}{$d['id']}/{$package['plan_id']}"></span>
                             </h4>
                             <ul class="list-group list-group-unbordered">
                                 <li class="list-group-item">

@@ -218,8 +218,23 @@ switch ($action) {
         break;
     case 'customer_is_active':
         if ($config['check_customer_online'] == 'yes') {
-            $c = ORM::for_table('tbl_customers')->where('username', $routes['2'])->find_one();
+            $customerKey = trim((string) ($routes['2'] ?? ''));
+            $c = null;
+            if ($customerKey !== '') {
+                if (ctype_digit($customerKey)) {
+                    $c = ORM::for_table('tbl_customers')->find_one((int) $customerKey);
+                } else {
+                    $c = ORM::for_table('tbl_customers')->where('username', $customerKey)->find_one();
+                    if (!$c) {
+                        $c = ORM::for_table('tbl_customers')->where('pppoe_username', $customerKey)->find_one();
+                    }
+                }
+            }
             $p = ORM::for_table('tbl_plans')->find_one($routes['3']);
+            if (!$c || !$p) {
+                echo '<span style="color: yellow;" title="offline">&bull;</span>';
+                break;
+            }
             $dvc = Package::getDevice($p);
             if ($_app_stage != 'Demo') {
                 if (file_exists($dvc)) {
@@ -261,8 +276,14 @@ switch ($action) {
             $c = ORM::for_table('tbl_customers')->find_one($routes['2']);
             foreach ($ds as $d) {
                 if ($d['status'] == 'on') {
+                    $status = '';
                     if ($config['check_customer_online'] == 'yes') {
                         $p = ORM::for_table('tbl_plans')->find_one($d['plan_id']);
+                        if (!$c || !$p) {
+                            $status = '<span style="color: yellow;" title="offline">&bull;</span>';
+                            $ps[] = ('<span class="label label-primary m-1" title="Expired ' . Lang::dateAndTimeFormat($d['expiration'], $d['time']) . '">' . $d['namebp'] . ' ' . $status . '</span>');
+                            continue;
+                        }
                         $dvc = Package::getDevice($p);
                         $status = "";
                         if ($_app_stage != 'Demo') {

@@ -77,10 +77,7 @@ class MikrotikPppoe
 
             //disconnect then
             if(isset($isChangePlan) && $isChangePlan){
-                $this->removePpoeActive($client, $customer['username']);
-                if (!empty($customer['pppoe_username'])) {
-                    $this->removePpoeActive($client, $customer['pppoe_username']);
-                }
+                $this->removePpoeActive($client, $customer);
             }
         }
 
@@ -123,10 +120,7 @@ class MikrotikPppoe
             $p = ORM::for_table("tbl_plans")->find_one($plan['plan_expired']);
             if($p){
                 $this->add_customer($customer, $p);
-                $this->removePpoeActive($client, $customer['username']);
-                if (!empty($customer['pppoe_username'])) {
-                    $this->removePpoeActive($client, $customer['pppoe_username']);
-                }
+                $this->removePpoeActive($client, $customer);
                 return;
             }
         }
@@ -134,10 +128,7 @@ class MikrotikPppoe
         if (!empty($customer['pppoe_username'])) {
             $this->removePpoeUser($client, $customer['pppoe_username']);
         }
-        $this->removePpoeActive($client, $customer['username']);
-        if (!empty($customer['pppoe_username'])) {
-            $this->removePpoeActive($client, $customer['pppoe_username']);
-        }
+        $this->removePpoeActive($client, $customer);
         $bindingWarning = '';
         if (!$this->removePppoeServerBinding($customer, $plan, $bindingWarning) && $bindingWarning !== '') {
             $this->logPppoeBindingWarning($plan, $customer, $bindingWarning, 'remove_customer');
@@ -414,6 +405,94 @@ class MikrotikPppoe
             return $pppoeUsername;
         }
         return trim((string) ($customer['username'] ?? ''));
+    }
+
+    protected function resolvePppoeIdentityCandidates($customerOrName)
+    {
+        $candidates = [];
+        if (is_array($customerOrName)) {
+            $values = [
+                trim((string) ($customerOrName['username'] ?? '')),
+                trim((string) ($customerOrName['pppoe_username'] ?? '')),
+            ];
+        } elseif (is_object($customerOrName)) {
+            $row = [];
+            if (method_exists($customerOrName, 'as_array')) {
+                $row = (array) $customerOrName->as_array();
+            }
+            $values = [
+                trim((string) ($row['username'] ?? ($customerOrName->username ?? ''))),
+                trim((string) ($row['pppoe_username'] ?? ($customerOrName->pppoe_username ?? ''))),
+            ];
+        } else {
+            $values = [trim((string) $customerOrName)];
+        }
+
+        foreach ($values as $value) {
+            if ($value !== '') {
+                $candidates[$value] = true;
+            }
+        }
+
+        return array_keys($candidates);
+    }
+
+    protected function isMatchedPppoeActiveName($activeName, $candidateName)
+    {
+        $activeName = trim((string) $activeName);
+        $candidateName = trim((string) $candidateName);
+        if ($activeName === '' || $candidateName === '') {
+            return false;
+        }
+        if ($activeName === $candidateName) {
+            return true;
+        }
+        if ((bool) preg_match('/^' . preg_quote($candidateName, '/') . '-\d+$/', $activeName)) {
+            return true;
+        }
+        if (strpos($candidateName, 'pppoe-') !== 0) {
+            $prefixed = 'pppoe-' . $candidateName;
+            if ($activeName === $prefixed) {
+                return true;
+            }
+            if ((bool) preg_match('/^' . preg_quote($prefixed, '/') . '-\d+$/', $activeName)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    protected function findPppoeActiveSessionIds($client, array $candidateNames)
+    {
+        $candidateNames = array_values(array_filter(array_map('trim', $candidateNames), function ($name) {
+            return $name !== '';
+        }));
+        if (empty($candidateNames)) {
+            return [];
+        }
+
+        $onlineRequest = new RouterOS\Request('/ppp/active/print');
+        $onlineRequest->setArgument('.proplist', '.id,name');
+        $responses = $client->sendSync($onlineRequest);
+        $ids = [];
+        foreach ($responses as $response) {
+            if (!($response instanceof RouterOS\Response)) {
+                continue;
+            }
+            $id = trim((string) $response->getProperty('.id'));
+            if ($id === '') {
+                continue;
+            }
+            $activeName = trim((string) $response->getProperty('name'));
+            foreach ($candidateNames as $candidateName) {
+                if ($this->isMatchedPppoeActiveName($activeName, $candidateName)) {
+                    $ids[$id] = $id;
+                    break;
+                }
+            }
+        }
+
+        return array_values($ids);
     }
 
     public function resolvePppoeBindingName($customer)
@@ -932,21 +1011,14 @@ class MikrotikPppoe
 
     function online_customer($customer, $router_name)
     {
+        $candidateNames = $this->resolvePppoeIdentityCandidates($customer);
+        if (empty($candidateNames)) {
+            return '';
+        }
         $mikrotik = $this->info($router_name);
         $client = $this->getClient($mikrotik['ip_address'], $mikrotik['username'], $mikrotik['password']);
-        $printRequest = new RouterOS\Request(
-            '/ppp active print',
-            RouterOS\Query::where('name', $customer['username'])
-        );
-        $id = $client->sendSync($printRequest)->getProperty('.id');
-        if(empty($id)){
-            $printRequest = new RouterOS\Request(
-                '/ppp active print',
-                RouterOS\Query::where('name', $customer['pppoe_username'])
-            );
-            $id = $client->sendSync($printRequest)->getProperty('.id');
-        }
-        return $id;
+        $ids = $this->findPppoeActiveSessionIds($client, $candidateNames);
+        return empty($ids) ? '' : $ids[0];
     }
 
     function info($name)
@@ -1003,24 +1075,11 @@ class MikrotikPppoe
         if ($_app_stage == 'Demo') {
             return null;
         }
-        $username = trim((string) $username);
-        if ($username === '') {
+        $candidateNames = $this->resolvePppoeIdentityCandidates($username);
+        if (empty($candidateNames)) {
             return 0;
         }
-        $onlineRequest = new RouterOS\Request('/ppp/active/print');
-        $onlineRequest->setArgument('.proplist', '.id');
-        $onlineRequest->setQuery(RouterOS\Query::where('name', $username));
-        $responses = $client->sendSync($onlineRequest);
-        $ids = [];
-        foreach ($responses as $response) {
-            if (!($response instanceof RouterOS\Response)) {
-                continue;
-            }
-            $id = trim((string) $response->getProperty('.id'));
-            if ($id !== '') {
-                $ids[$id] = $id;
-            }
-        }
+        $ids = $this->findPppoeActiveSessionIds($client, $candidateNames);
         if (empty($ids)) {
             return 0;
         }
