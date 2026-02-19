@@ -327,6 +327,49 @@ function collectPppoeUsageSampleForRecharge($rechargeRow, $planRow = null, $cust
                 $sampleNote
             );
         } elseif ($warning !== '') {
+            $warningLower = strtolower(trim((string) $warning));
+            $shouldAttemptHotspotReconcile = (
+                $source === 'cron'
+                && strcasecmp((string) $deviceClass, 'MikrotikHotspot') === 0
+                && method_exists($device, 'add_customer')
+                && strpos($warningLower, 'hotspot user counter source not found') !== false
+            );
+
+            if ($shouldAttemptHotspotReconcile) {
+                try {
+                    $device->add_customer($customerData, $planData);
+                    $retryWarning = '';
+                    $retryCounters = $device->getPppoeBindingCounters($customerData, $planData, $retryWarning, $bindingName);
+                    if (is_array($retryCounters)) {
+                        if (!empty($retryCounters['binding_name']) && (string) $cycle['binding_name'] !== (string) $retryCounters['binding_name']) {
+                            $cycle->binding_name = (string) $retryCounters['binding_name'];
+                            $cycle->updated_at = date('Y-m-d H:i:s');
+                            $cycle->save();
+                        }
+                        PppoeUsage::recordSample(
+                            $cycle,
+                            (int) ($retryCounters['tx_byte'] ?? 0),
+                            (int) ($retryCounters['rx_byte'] ?? 0),
+                            date('Y-m-d H:i:s'),
+                            $source,
+                            'Cron periodic sample (auto-reconcile hotspot user)'
+                        );
+                        $warning = '';
+                    } else {
+                        $warning = $retryWarning !== '' ? $retryWarning : $warning;
+                    }
+                } catch (Throwable $reconcileError) {
+                    $warning = 'Hotspot auto-reconcile failed: ' . $reconcileError->getMessage();
+                }
+            }
+
+            if ($warning === '') {
+                if ($closeCycle) {
+                    PppoeUsage::closeCycleById((int) $cycle['id'], date('Y-m-d H:i:s'));
+                }
+                return;
+            }
+
             if (cronAccessRouterFailureDetected($warning)) {
                 cronMarkAccessRouterFailed($planData, $warning);
             }

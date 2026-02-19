@@ -477,20 +477,36 @@ class MikrotikHotspot
         if ($_app_stage == 'Demo') {
             return null;
         }
-        $addRequest = new RouterOS\Request('/ip/hotspot/user/add');
+        $username = trim((string) ($customer['username'] ?? ''));
+        $password = (string) ($customer['password'] ?? '');
+        $comment = trim((string) ($customer['fullname'] ?? ''));
+        if (!empty($customer['id'])) {
+            $comment = trim($comment . ' | ' . implode(', ', User::getBillNames($customer['id'])));
+        }
+        $email = trim((string) ($customer['email'] ?? ''));
+        $hasValidEmail = ($email !== '' && filter_var($email, FILTER_VALIDATE_EMAIL) !== false);
+
+        $buildAddRequest = function () use ($username, $password, $comment, $plan, $hasValidEmail, $email) {
+            $request = new RouterOS\Request('/ip/hotspot/user/add');
+            $request->setArgument('name', $username);
+            $request->setArgument('profile', $plan['name_plan']);
+            $request->setArgument('password', $password);
+            $request->setArgument('comment', $comment);
+            if ($hasValidEmail) {
+                $request->setArgument('email', $email);
+            }
+            return $request;
+        };
+
         if ($plan['typebp'] == "Limited") {
             if ($plan['limit_type'] == "Time_Limit") {
                 if ($plan['time_unit'] == 'Hrs')
                     $timelimit = $plan['time_limit'] . ":00:00";
                 else
                     $timelimit = "00:" . $plan['time_limit'] . ":00";
+                $addRequest = $buildAddRequest();
                 $client->sendSync(
                     $addRequest
-                        ->setArgument('name', $customer['username'])
-                        ->setArgument('profile', $plan['name_plan'])
-                        ->setArgument('password', $customer['password'])
-                        ->setArgument('comment', $customer['fullname'] . ' | ' . implode(', ', User::getBillNames($customer['id'])))
-                        ->setArgument('email', $customer['email'])
                         ->setArgument('limit-uptime', $timelimit)
                 );
             } else if ($plan['limit_type'] == "Data_Limit") {
@@ -498,13 +514,9 @@ class MikrotikHotspot
                     $datalimit = $plan['data_limit'] . "000000000";
                 else
                     $datalimit = $plan['data_limit'] . "000000";
+                $addRequest = $buildAddRequest();
                 $client->sendSync(
                     $addRequest
-                        ->setArgument('name', $customer['username'])
-                        ->setArgument('profile', $plan['name_plan'])
-                        ->setArgument('password', $customer['password'])
-                        ->setArgument('comment', $customer['fullname'] . ' | ' . implode(', ', User::getBillNames($customer['id'])))
-                        ->setArgument('email', $customer['email'])
                         ->setArgument('limit-bytes-total', $datalimit)
                 );
             } else if ($plan['limit_type'] == "Both_Limit") {
@@ -516,25 +528,17 @@ class MikrotikHotspot
                     $datalimit = $plan['data_limit'] . "000000000";
                 else
                     $datalimit = $plan['data_limit'] . "000000";
+                $addRequest = $buildAddRequest();
                 $client->sendSync(
                     $addRequest
-                        ->setArgument('name', $customer['username'])
-                        ->setArgument('profile', $plan['name_plan'])
-                        ->setArgument('password', $customer['password'])
-                        ->setArgument('comment', $customer['fullname'] . ' | ' . implode(', ', User::getBillNames($customer['id'])))
-                        ->setArgument('email', $customer['email'])
                         ->setArgument('limit-uptime', $timelimit)
                         ->setArgument('limit-bytes-total', $datalimit)
                 );
             }
         } else {
+            $addRequest = $buildAddRequest();
             $client->sendSync(
                 $addRequest
-                    ->setArgument('name', $customer['username'])
-                    ->setArgument('profile', $plan['name_plan'])
-                    ->setArgument('comment', $customer['fullname'] . ' | ' . implode(', ', User::getBillNames($customer['id'])))
-                    ->setArgument('email', $customer['email'])
-                    ->setArgument('password', $customer['password'])
             );
         }
     }
