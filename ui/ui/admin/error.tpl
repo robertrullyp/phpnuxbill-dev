@@ -5,7 +5,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
     <title>Error - PHPNuxBill</title>
-    <link rel="shortcut icon" href="{$app_url}{$brand_favicon|replace:'\\':'/'}" type="image/x-icon" />
+    <link rel="shortcut icon" href="{$app_url}/{$brand_favicon|replace:'\\':'/'|trim:'/'}" type="image/x-icon" />
 
     <link rel="stylesheet" href="{$app_url}/ui/ui/styles/bootstrap.min.css">
 
