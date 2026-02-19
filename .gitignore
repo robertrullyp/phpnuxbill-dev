@@ -2,10 +2,10 @@ config.php
 *.code-workspace
 .DS_Store
 .vscode/
-*.old
-system/backup/*
 .playwright/
 node_modules/
+*.old
+system/backup/*
 ui/ui/compiled
 ui/compiled/*.php
 ui/cache/*.php

@@ -297,7 +297,17 @@ class MikrotikVpn
             return null;
         }
         $iport = explode(":", $ip);
-        return new RouterOS\Client($iport[0], $user, $pass, ($iport[1]) ? $iport[1] : null);
+        $host = trim((string) ($iport[0] ?? ''));
+        $port = !empty($iport[1]) ? (int) $iport[1] : null;
+        $cacheKey = strtolower($host) . '|' . strtolower(trim((string) $user)) . '|' . (string) $port . '|' . md5((string) $pass);
+
+        static $clientPool = [];
+        if (isset($clientPool[$cacheKey]) && $clientPool[$cacheKey] instanceof RouterOS\Client) {
+            return $clientPool[$cacheKey];
+        }
+
+        $clientPool[$cacheKey] = new RouterOS\Client($host, $user, $pass, $port);
+        return $clientPool[$cacheKey];
     }
 
     function removeVpnUser($client, $username, $cstid)

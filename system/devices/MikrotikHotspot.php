@@ -249,7 +249,208 @@ class MikrotikHotspot
             return null;
         }
         $iport = explode(":", $ip);
-        return new RouterOS\Client($iport[0], $user, $pass, ($iport[1]) ? $iport[1] : null);
+        $host = trim((string) ($iport[0] ?? ''));
+        $port = !empty($iport[1]) ? (int) $iport[1] : null;
+        $cacheKey = strtolower($host) . '|' . strtolower(trim((string) $user)) . '|' . (string) $port . '|' . md5((string) $pass);
+
+        static $clientPool = [];
+        if (isset($clientPool[$cacheKey]) && $clientPool[$cacheKey] instanceof RouterOS\Client) {
+            return $clientPool[$cacheKey];
+        }
+
+        $clientPool[$cacheKey] = new RouterOS\Client($host, $user, $pass, $port);
+        return $clientPool[$cacheKey];
+    }
+
+    protected function resolveHotspotUsageUsername($customer)
+    {
+        if (is_array($customer)) {
+            return trim((string) ($customer['username'] ?? ''));
+        }
+        if (is_object($customer)) {
+            if (isset($customer->username)) {
+                return trim((string) $customer->username);
+            }
+            if (method_exists($customer, 'as_array')) {
+                $row = (array) $customer->as_array();
+                return trim((string) ($row['username'] ?? ''));
+            }
+        }
+        return trim((string) $customer);
+    }
+
+    // Keep this method name for compatibility with existing usage collector flow.
+    // For Hotspot we map:
+    // bytes-out (router -> client) = Download (tx_byte)
+    // bytes-in  (client -> router) = Upload   (rx_byte)
+    public function getPppoeBindingCounters($customer, $plan, &$warning = '', $bindingName = '')
+    {
+        $warning = '';
+        $username = $this->resolveHotspotUsageUsername($customer);
+        if ($username === '') {
+            $warning = 'Hotspot username is empty for usage counter read.';
+            return false;
+        }
+
+        $routerName = trim((string) ($plan['routers'] ?? ''));
+        if ($routerName === '' || strtolower($routerName) === 'radius') {
+            $warning = 'Hotspot usage counter read requires direct MikroTik router.';
+            return false;
+        }
+
+        $mikrotik = $this->info($routerName);
+        if (!$mikrotik) {
+            $warning = 'Router not found for usage counter read: ' . $routerName;
+            return false;
+        }
+
+        try {
+            $client = $this->getClient($mikrotik['ip_address'], $mikrotik['username'], $mikrotik['password']);
+        } catch (Throwable $e) {
+            $warning = 'Error connecting to RouterOS for hotspot usage counter read: ' . $e->getMessage();
+            return false;
+        }
+        if (!$client) {
+            $warning = 'RouterOS client is unavailable for hotspot usage counter read.';
+            return false;
+        }
+
+        $printRequest = new RouterOS\Request('/ip/hotspot/user/print');
+        $printRequest->setArgument('.proplist', '.id,name,bytes-in,bytes-out');
+        $printRequest->setQuery(RouterOS\Query::where('name', $username));
+
+        try {
+            $responses = $client->sendSync($printRequest);
+        } catch (Throwable $e) {
+            $warning = 'Failed reading hotspot usage counters: ' . $e->getMessage();
+            return false;
+        }
+
+        $userId = '';
+        $foundName = $username;
+        $bytesIn = 0;
+        $bytesOut = 0;
+        if ($responses instanceof Traversable || is_array($responses)) {
+            foreach ($responses as $response) {
+                if (!($response instanceof RouterOS\Response)) {
+                    continue;
+                }
+                $rowId = trim((string) $response->getProperty('.id'));
+                if ($rowId === '') {
+                    continue;
+                }
+                $userId = $rowId;
+                $foundName = trim((string) $response->getProperty('name'));
+                if ($foundName === '') {
+                    $foundName = $username;
+                }
+                $bytesIn = max(0, (int) $response->getProperty('bytes-in'));
+                $bytesOut = max(0, (int) $response->getProperty('bytes-out'));
+                break;
+            }
+        }
+
+        if ($userId === '') {
+            $warning = 'Hotspot user counter source not found: ' . $username;
+            return false;
+        }
+
+        // Some RouterOS setups keep user bytes-in/out at zero while active session
+        // counters are increasing. Fallback to active counters in that case.
+        $activeBytesIn = 0;
+        $activeBytesOut = 0;
+        try {
+            $activeRequest = new RouterOS\Request('/ip/hotspot/active/print');
+            $activeRequest->setArgument('.proplist', '.id,user,bytes-in,bytes-out');
+            $activeRequest->setQuery(RouterOS\Query::where('user', $username));
+            $activeResponses = $client->sendSync($activeRequest);
+            if ($activeResponses instanceof Traversable || is_array($activeResponses)) {
+                foreach ($activeResponses as $activeResponse) {
+                    if (!($activeResponse instanceof RouterOS\Response)) {
+                        continue;
+                    }
+                    $activeId = trim((string) $activeResponse->getProperty('.id'));
+                    if ($activeId === '') {
+                        continue;
+                    }
+                    $activeBytesIn += max(0, (int) $activeResponse->getProperty('bytes-in'));
+                    $activeBytesOut += max(0, (int) $activeResponse->getProperty('bytes-out'));
+                }
+            }
+        } catch (Throwable $e) {
+            // Ignore active fallback read failure and keep user counters.
+        }
+
+        if ($bytesIn === 0 && $bytesOut === 0 && ($activeBytesIn > 0 || $activeBytesOut > 0)) {
+            $bytesIn = $activeBytesIn;
+            $bytesOut = $activeBytesOut;
+        }
+
+        return [
+            'tx_byte' => $bytesOut,
+            'rx_byte' => $bytesIn,
+            'binding_name' => $foundName,
+            'binding_user' => $username,
+        ];
+    }
+
+    public function resetPppoeBindingCounters($customer, $plan, &$warning = '', $bindingName = '')
+    {
+        $warning = '';
+        $username = $this->resolveHotspotUsageUsername($customer);
+        if ($username === '') {
+            $warning = 'Hotspot username is empty for counter reset.';
+            return false;
+        }
+
+        $routerName = trim((string) ($plan['routers'] ?? ''));
+        if ($routerName === '' || strtolower($routerName) === 'radius') {
+            $warning = 'Hotspot counter reset requires direct MikroTik router.';
+            return false;
+        }
+
+        $mikrotik = $this->info($routerName);
+        if (!$mikrotik) {
+            $warning = 'Router not found for hotspot counter reset: ' . $routerName;
+            return false;
+        }
+
+        try {
+            $client = $this->getClient($mikrotik['ip_address'], $mikrotik['username'], $mikrotik['password']);
+        } catch (Throwable $e) {
+            $warning = 'Error connecting to RouterOS for hotspot counter reset: ' . $e->getMessage();
+            return false;
+        }
+        if (!$client) {
+            $warning = 'RouterOS client is unavailable for hotspot counter reset.';
+            return false;
+        }
+
+        $findRequest = new RouterOS\Request('/ip/hotspot/user/print');
+        $findRequest->setArgument('.proplist', '.id');
+        $findRequest->setQuery(RouterOS\Query::where('name', $username));
+        try {
+            $userId = trim((string) $client->sendSync($findRequest)->getProperty('.id'));
+        } catch (Throwable $e) {
+            $warning = 'Failed finding hotspot user before counter reset: ' . $e->getMessage();
+            return false;
+        }
+
+        if ($userId === '') {
+            $warning = 'Hotspot user not found for counter reset: ' . $username;
+            return false;
+        }
+
+        $resetRequest = new RouterOS\Request('/ip/hotspot/user/reset-counters');
+        $resetRequest->setArgument('numbers', $userId);
+        try {
+            $client->sendSync($resetRequest);
+        } catch (Throwable $e) {
+            $warning = 'Failed resetting hotspot counters: ' . $e->getMessage();
+            return false;
+        }
+
+        return true;
     }
 
     function removeHotspotUser($client, $username)
@@ -276,20 +477,36 @@ class MikrotikHotspot
         if ($_app_stage == 'Demo') {
             return null;
         }
-        $addRequest = new RouterOS\Request('/ip/hotspot/user/add');
+        $username = trim((string) ($customer['username'] ?? ''));
+        $password = (string) ($customer['password'] ?? '');
+        $comment = trim((string) ($customer['fullname'] ?? ''));
+        if (!empty($customer['id'])) {
+            $comment = trim($comment . ' | ' . implode(', ', User::getBillNames($customer['id'])));
+        }
+        $email = trim((string) ($customer['email'] ?? ''));
+        $hasValidEmail = ($email !== '' && filter_var($email, FILTER_VALIDATE_EMAIL) !== false);
+
+        $buildAddRequest = function () use ($username, $password, $comment, $plan, $hasValidEmail, $email) {
+            $request = new RouterOS\Request('/ip/hotspot/user/add');
+            $request->setArgument('name', $username);
+            $request->setArgument('profile', $plan['name_plan']);
+            $request->setArgument('password', $password);
+            $request->setArgument('comment', $comment);
+            if ($hasValidEmail) {
+                $request->setArgument('email', $email);
+            }
+            return $request;
+        };
+
         if ($plan['typebp'] == "Limited") {
             if ($plan['limit_type'] == "Time_Limit") {
                 if ($plan['time_unit'] == 'Hrs')
                     $timelimit = $plan['time_limit'] . ":00:00";
                 else
                     $timelimit = "00:" . $plan['time_limit'] . ":00";
+                $addRequest = $buildAddRequest();
                 $client->sendSync(
                     $addRequest
-                        ->setArgument('name', $customer['username'])
-                        ->setArgument('profile', $plan['name_plan'])
-                        ->setArgument('password', $customer['password'])
-                        ->setArgument('comment', $customer['fullname'] . ' | ' . implode(', ', User::getBillNames($customer['id'])))
-                        ->setArgument('email', $customer['email'])
                         ->setArgument('limit-uptime', $timelimit)
                 );
             } else if ($plan['limit_type'] == "Data_Limit") {
@@ -297,13 +514,9 @@ class MikrotikHotspot
                     $datalimit = $plan['data_limit'] . "000000000";
                 else
                     $datalimit = $plan['data_limit'] . "000000";
+                $addRequest = $buildAddRequest();
                 $client->sendSync(
                     $addRequest
-                        ->setArgument('name', $customer['username'])
-                        ->setArgument('profile', $plan['name_plan'])
-                        ->setArgument('password', $customer['password'])
-                        ->setArgument('comment', $customer['fullname'] . ' | ' . implode(', ', User::getBillNames($customer['id'])))
-                        ->setArgument('email', $customer['email'])
                         ->setArgument('limit-bytes-total', $datalimit)
                 );
             } else if ($plan['limit_type'] == "Both_Limit") {
@@ -315,25 +528,17 @@ class MikrotikHotspot
                     $datalimit = $plan['data_limit'] . "000000000";
                 else
                     $datalimit = $plan['data_limit'] . "000000";
+                $addRequest = $buildAddRequest();
                 $client->sendSync(
                     $addRequest
-                        ->setArgument('name', $customer['username'])
-                        ->setArgument('profile', $plan['name_plan'])
-                        ->setArgument('password', $customer['password'])
-                        ->setArgument('comment', $customer['fullname'] . ' | ' . implode(', ', User::getBillNames($customer['id'])))
-                        ->setArgument('email', $customer['email'])
                         ->setArgument('limit-uptime', $timelimit)
                         ->setArgument('limit-bytes-total', $datalimit)
                 );
             }
         } else {
+            $addRequest = $buildAddRequest();
             $client->sendSync(
                 $addRequest
-                    ->setArgument('name', $customer['username'])
-                    ->setArgument('profile', $plan['name_plan'])
-                    ->setArgument('comment', $customer['fullname'] . ' | ' . implode(', ', User::getBillNames($customer['id'])))
-                    ->setArgument('email', $customer['email'])
-                    ->setArgument('password', $customer['password'])
             );
         }
     }

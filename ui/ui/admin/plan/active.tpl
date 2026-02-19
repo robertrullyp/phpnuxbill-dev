@@ -104,11 +104,11 @@
                                         {if $ds['type'] == 'Hotspot'}
                                             <a href="{Text::url('')}services/edit/{$ds['plan_id']}">{$ds['namebp']}</a>
                                             <span
-                                                api-get-text="{Text::url('')}autoload/customer_is_active/{$ds['username']}/{$ds['plan_id']}"></span>
+                                                api-get-text="{Text::url('')}autoload/customer_is_active/{if $ds['customer_id'] > 0}{$ds['customer_id']}{else}{$ds['username']}{/if}/{$ds['plan_id']}"></span>
                                         {elseif $ds['type'] == 'PPPOE'}
                                             <a href="{Text::url('')}services/pppoe-edit/{$ds['plan_id']}">{$ds['namebp']}</a>
                                             <span
-                                                api-get-text="{Text::url('')}autoload/customer_is_active/{$ds['username']}/{$ds['plan_id']}"></span>
+                                                api-get-text="{Text::url('')}autoload/customer_is_active/{if $ds['customer_id'] > 0}{$ds['customer_id']}{else}{$ds['username']}{/if}/{$ds['plan_id']}"></span>
                                         {elseif $ds['type'] == 'VPN'}
                                             <a href="{Text::url('')}services/vpn-edit/{$ds['plan_id']}">{$ds['namebp']}</a>
                                         {/if}
