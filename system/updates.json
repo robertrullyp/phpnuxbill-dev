@@ -255,5 +255,6 @@
   "2026.2.15": [],
   "2026.2.16": [
     "ALTER TABLE `tbl_plans` ADD `customer_can_extend` TINYINT(1) NOT NULL DEFAULT '1' COMMENT '0 disable customer self extend' AFTER `invoice_notification`;"
-  ]
+  ],
+  "2026.2.19": []
 }

@@ -2,6 +2,17 @@
 
 # CHANGELOG
 
+## 2026.2.19
+
+- **Access Usage Collector Unification:** Expanded usage/counter collection for direct MikroTik backends (`MikrotikPppoe`, `MikrotikHotspot`, `MikrotikVpn`) with normalized Download/Upload sampling, throttled warning logs, and router-failure skip protection in cron.
+- **Expired Access Cleanup Consistency:** Synced cleanup flow between cron (`system/cron.php`), customer sync, and plan sync so expired users are consistently disconnected/removed through the same backend cleanup path.
+- **PPPoE Session Handling:** Improved PPPoE online checks and removal behavior to handle multi-session usernames more reliably while keeping identity cleanup first and active disconnect as final step.
+- **Hotspot Provisioning Compatibility:** Hardened hotspot user provisioning by validating optional email before sending to RouterOS (prevents `invalid email address` trap on RouterOS v7).
+- **Admin Form & Validation Improvements:** Refined Select2 customer search URL handling in add/edit plan forms and improved phone normalization/validation across register/accounts/settings flows.
+- **Localization & Maintenance:** Updated Indonesian translations and added `system/backup/` ignore rule to reduce repository noise.
+- **Release Metadata Sync:** Synchronized release references in `version.json`, `README.md`, `docs/openapi.yaml`, `docs/openapi.json`, and `system/updates.json`.
+- Version bumped to `2026.2.19`.
+
 ## 2026.2.16
 
 - **PPPoE Deactivation Safety:** Updated `MikrotikPppoe::removePpoeActive()` to remove all matching `/ppp/active` sessions for a secret username (not just first match), ensuring full disconnect on expiry/deactivation for multi-session cases.

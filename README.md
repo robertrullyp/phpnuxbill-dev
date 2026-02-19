@@ -17,8 +17,8 @@ Important notes:
 
 ## Current Release
 
-- **Version:** `2026.2.16`
-- **Focus:** PPPoE deactivation safety (remove all active sessions per secret username), finalized customer self-extend guard controls (global + per-plan), and release metadata/documentation sync.
+- **Version:** `2026.2.19`
+- **Focus:** Access usage/cleanup consistency across direct MikroTik backends, improved PPPoE session handling, RouterOS v7-safe Hotspot provisioning, and release metadata synchronization.
 
 ## What's New in This Fork
 
