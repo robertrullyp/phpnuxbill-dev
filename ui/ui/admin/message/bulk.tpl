@@ -27,14 +27,16 @@
                     <div class="form-group">
                         <label class="col-md-2 control-label">{Lang::T('Service Type')}</label>
                         <div class="col-md-6">
-                            <select class="form-control" name="service" id="service">
-                                <option value="all" {if $group=='all' }selected{/if}>{Lang::T('All')}</option>
-                                <option value="PPPoE" {if $service=='PPPoE' }selected{/if}>{Lang::T('PPPoE')}</option>
-                                <option value="Hotspot" {if $service=='Hotspot' }selected{/if}>{Lang::T('Hotspot')}
-                                </option>
-                                <option value="VPN" {if $service=='VPN' }selected{/if}>{Lang::T('VPN')}</option>
+                            <select class="form-control select2" name="service[]" id="service" multiple>
+                                <option value="all" selected>{Lang::T('All')}</option>
+                                {foreach $service_types as $serviceType}
+                                <option value="{$serviceType|escape}">{Lang::T($serviceType)}</option>
+                                {/foreach}
                             </select>
                         </div>
+                        <p class="help-block col-md-4">
+                            <small>Pilih <b>All</b> atau satu/lebih jenis layanan berdasarkan type customer.</small>
+                        </p>
                     </div>
                     <div class="form-group">
                         <label class="col-md-2 control-label">{Lang::T('Group')}</label>
@@ -721,6 +723,7 @@
     let totalSent = 0;
     let totalFailed = 0;
     let hasMore = true;
+    let syncingServiceSelection = false;
 
     // Initialize DataTable
     let historyTable = $('#historyTable').DataTable({
@@ -731,6 +734,38 @@
         autoWidth: false,
         responsive: true
     });
+
+    function normalizeServiceSelection(changedValue = null) {
+        if (syncingServiceSelection) {
+            return;
+        }
+
+        let selectedServices = $('#service').val() || [];
+        let normalizedServices = selectedServices.slice();
+
+        if (selectedServices.length === 0) {
+            normalizedServices = ['all'];
+        } else if (selectedServices.indexOf('all') !== -1 && selectedServices.length > 1) {
+            normalizedServices = changedValue === 'all'
+                ? ['all']
+                : selectedServices.filter(function (value) { return value !== 'all'; });
+        }
+
+        if (normalizedServices.join('|') !== selectedServices.join('|')) {
+            syncingServiceSelection = true;
+            $('#service').val(normalizedServices).trigger('change.select2');
+            syncingServiceSelection = false;
+        }
+    }
+
+    $('#service').on('change', function (event) {
+        let changedValue = null;
+        if (event && event.params && event.params.data) {
+            changedValue = event.params.data.id || null;
+        }
+        normalizeServiceSelection(changedValue);
+    });
+    normalizeServiceSelection();
 
     function sendBatch() {
         if (!hasMore) return;
@@ -750,7 +785,7 @@
                 router: $('#router').val() || '',
                 page: page,
                 test: $('#test').is(':checked') ? 'on' : 'off',
-                service: $('#service').val(),
+                service: $('#service').val() || ['all'],
                 subject: $('#subjectContent').val(),
             },
             dataType: 'json',
@@ -785,7 +820,7 @@
                             `<span class="text-${statusClass}">${msg.status}</span>`,
                             msg.message ? msg.message : 'No Message',
                             msg.router ? msg.router : 'All Router',
-                            msg.service == 'all' ? 'All Service' : (msg.service || 'No Service')
+                            msg.service ? msg.service : 'No Service'
                         ]).draw(false); // Add row without redrawing the table
                     });
 

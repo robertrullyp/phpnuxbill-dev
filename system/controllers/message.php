@@ -380,7 +380,20 @@ EOT;
             _alert(Lang::T('You do not have permission to access this page'), 'danger', "dashboard");
         }
 
+        $serviceTypes = ['PPPoE', 'Hotspot', 'VPN', 'Others'];
+        $customerServiceTypes = ORM::for_table('tbl_customers')
+            ->select('service_type')
+            ->distinct()
+            ->find_array();
+        foreach ($customerServiceTypes as $customerServiceType) {
+            $serviceType = trim((string) ($customerServiceType['service_type'] ?? ''));
+            if ($serviceType !== '' && !in_array($serviceType, $serviceTypes, true)) {
+                $serviceTypes[] = $serviceType;
+            }
+        }
+
         $ui->assign('routers', _router_get_accessible_routers($admin, true));
+        $ui->assign('service_types', $serviceTypes);
         $ui->display('admin/message/bulk.tpl');
         break;
 
@@ -393,18 +406,44 @@ EOT;
         set_time_limit(0);
 
         // Get request parameters
-        $group = $_REQUEST['group'] ?? '';
-        $message = $_REQUEST['message'] ?? '';
-        $batch = $_REQUEST['batch'] ?? 100;
-        $page = $_REQUEST['page'] ?? 0;
+        $group = trim((string) ($_REQUEST['group'] ?? ''));
+        $message = trim((string) ($_REQUEST['message'] ?? ''));
+        $batch = (int) ($_REQUEST['batch'] ?? 100);
+        $batch = $batch > 0 ? $batch : 100;
+        $page = (int) ($_REQUEST['page'] ?? 0);
+        $page = $page >= 0 ? $page : 0;
         $router = $_REQUEST['router'] ?? null;
         $test = isset($_REQUEST['test']) && $_REQUEST['test'] === 'on';
-        $service = $_REQUEST['service'] ?? '';
-        $subject = $_REQUEST['subject'] ?? '';
+        $serviceInput = $_REQUEST['service'] ?? [];
+        $subject = trim((string) ($_REQUEST['subject'] ?? ''));
         $routerName = '';
         $channels = ['email', 'sms', 'wa', 'inbox'];
         $selectedChannels = [];
         $queueWa = !empty($_REQUEST['wa_queue']) && $_REQUEST['wa_queue'] == '1';
+
+        if (!is_array($serviceInput)) {
+            $serviceInput = explode(',', (string) $serviceInput);
+        }
+        $serviceInput = array_values(array_unique(array_filter(array_map('trim', $serviceInput), static function ($value) {
+            return $value !== '';
+        })));
+        $serviceAllSelected = in_array('all', $serviceInput, true);
+        $selectedServices = $serviceAllSelected
+            ? []
+            : array_values(array_filter($serviceInput, static function ($value) {
+                return $value !== 'all';
+            }));
+        $serviceLabel = $serviceAllSelected ? Lang::T('All') : implode(', ', $selectedServices);
+        $applyServiceFilter = static function ($query, $column) use ($serviceAllSelected, $selectedServices) {
+            if ($serviceAllSelected) {
+                return;
+            }
+            if (empty($selectedServices)) {
+                $query->where_raw('1 = 0');
+                return;
+            }
+            $query->where_in($column, $selectedServices);
+        };
 
         foreach ($channels as $channel) {
             if (isset($_REQUEST[$channel]) && $_REQUEST[$channel] == '1') {
@@ -416,7 +455,7 @@ EOT;
             die(json_encode(['status' => 'error', 'message' => Lang::T('Please select at least one channel type')]));
         }
 
-        if (empty($group) || empty($message) || empty($service)) {
+        if (empty($group) || $message === '' || (!$serviceAllSelected && empty($selectedServices))) {
             die(json_encode(['status' => 'error', 'message' => LANG::T('All fields are required')]));
         }
 
@@ -455,28 +494,13 @@ EOT;
             $query = ORM::for_table('tbl_user_recharges')
                 ->left_outer_join('tbl_customers', 'tbl_user_recharges.customer_id = tbl_customers.id')
                 ->where('tbl_user_recharges.routers', $routerName);
-
-            switch ($service) {
-                case 'all':
-                    break;
-                default:
-                    $validServices = ['PPPoE', 'Hotspot', 'VPN'];
-                    if (in_array($service, $validServices)) {
-                        $query->where('type', $service);
-                    }
-                    break;
-            }
-
-            $totalCustomers = $query->count();
-
-            $query->offset($startpoint)
-                ->limit($batch);
+            $applyServiceFilter($query, 'tbl_customers.service_type');
 
             switch ($group) {
                 case 'all':
                     break;
                 case 'new':
-                    $query->where_raw("DATE(recharged_on) >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)");
+                    $query->where_raw("DATE(tbl_user_recharges.recharged_on) >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)");
                     break;
                 case 'expired':
                     $query->where('tbl_user_recharges.status', 'off');
@@ -484,7 +508,14 @@ EOT;
                 case 'active':
                     $query->where('tbl_user_recharges.status', 'on');
                     break;
+                default:
+                    die(json_encode(['status' => 'error', 'message' => LANG::T('Invalid group')]));
             }
+
+            $totalCustomers = $query->count();
+
+            $query->offset($startpoint)
+                ->limit($batch);
 
             // Fetch the customers
             $query->selects([
@@ -500,73 +531,83 @@ EOT;
             switch ($group) {
                 case 'all':
                     $totalCustomersQuery = ORM::for_table('tbl_customers');
-
-                    switch ($service) {
-                        case 'all':
-                            break;
-                        default:
-                            $validServices = ['PPPoE', 'Hotspot', 'VPN'];
-                            if (in_array($service, $validServices)) {
-                                $totalCustomersQuery->where('service_type', $service);
-                            }
-                            break;
-                    }
+                    $applyServiceFilter($totalCustomersQuery, 'service_type');
                     $totalCustomers = $totalCustomersQuery->count();
-                    $customers = $totalCustomersQuery->offset($startpoint)->limit($batch)->find_array();
+                    $customers = $totalCustomersQuery
+                        ->selects([
+                            ['id', 'customer_id'],
+                            ['phonenumber', 'phonenumber'],
+                            ['fullname', 'fullname'],
+                            ['username', 'username'],
+                            ['email', 'email'],
+                            ['service_type', 'service_type'],
+                        ])
+                        ->offset($startpoint)
+                        ->limit($batch)
+                        ->find_array();
                     break;
 
                 case 'new':
                     $totalCustomersQuery = ORM::for_table('tbl_customers')
                         ->where_raw("DATE(created_at) >= DATE_SUB(CURDATE(), INTERVAL 1 MONTH)");
-
-                    switch ($service) {
-                        case 'all':
-                            break;
-                        default:
-                            $validServices = ['PPPoE', 'Hotspot', 'VPN'];
-                            if (in_array($service, $validServices)) {
-                                $totalCustomersQuery->where('service_type', $service);
-                            }
-                            break;
-                    }
+                    $applyServiceFilter($totalCustomersQuery, 'service_type');
                     $totalCustomers = $totalCustomersQuery->count();
-                    $customers = $totalCustomersQuery->offset($startpoint)->limit($batch)->find_array();
+                    $customers = $totalCustomersQuery
+                        ->selects([
+                            ['id', 'customer_id'],
+                            ['phonenumber', 'phonenumber'],
+                            ['fullname', 'fullname'],
+                            ['username', 'username'],
+                            ['email', 'email'],
+                            ['service_type', 'service_type'],
+                        ])
+                        ->offset($startpoint)
+                        ->limit($batch)
+                        ->find_array();
                     break;
 
                 case 'expired':
                     $totalCustomersQuery = ORM::for_table('tbl_user_recharges')
-                        ->where('status', 'off');
-
-                    switch ($service) {
-                        case 'all':
-                            break;
-                        default:
-                            $validServices = ['PPPoE', 'Hotspot', 'VPN'];
-                            if (in_array($service, $validServices)) {
-                                $totalCustomersQuery->where('type', $service);
-                            }
-                            break;
-                    }
+                        ->left_outer_join('tbl_customers', 'tbl_user_recharges.customer_id = tbl_customers.id')
+                        ->where('tbl_user_recharges.status', 'off');
+                    $applyServiceFilter($totalCustomersQuery, 'tbl_customers.service_type');
                     $totalCustomers = $totalCustomersQuery->count();
-                    $customers = $totalCustomersQuery->select('customer_id')->offset($startpoint)->limit($batch)->find_array();
+                    $customers = $totalCustomersQuery
+                        ->selects([
+                            ['tbl_customers.id', 'customer_id'],
+                            ['tbl_customers.phonenumber', 'phonenumber'],
+                            ['tbl_customers.fullname', 'fullname'],
+                            ['tbl_customers.username', 'username'],
+                            ['tbl_customers.email', 'email'],
+                            ['tbl_customers.service_type', 'service_type'],
+                        ])
+                        ->offset($startpoint)
+                        ->limit($batch)
+                        ->find_array();
                     break;
 
                 case 'active':
                     $totalCustomersQuery = ORM::for_table('tbl_user_recharges')
-                        ->where('status', 'on');
-
-                    switch ($service) {
-                        case 'all':
-                            break;
-                        default:
-                            $validServices = ['PPPoE', 'Hotspot', 'VPN'];
-                            if (in_array($service, $validServices)) {
-                                $totalCustomersQuery->where('type', $service);
-                            }
-                            break;
-                    }
+                        ->left_outer_join('tbl_customers', 'tbl_user_recharges.customer_id = tbl_customers.id')
+                        ->where('tbl_user_recharges.status', 'on');
+                    $applyServiceFilter($totalCustomersQuery, 'tbl_customers.service_type');
                     $totalCustomers = $totalCustomersQuery->count();
-                    $customers = $totalCustomersQuery->select('customer_id')->offset($startpoint)->limit($batch)->find_array(); // Get customer data
+                    $customers = $totalCustomersQuery
+                        ->selects([
+                            ['tbl_customers.id', 'customer_id'],
+                            ['tbl_customers.phonenumber', 'phonenumber'],
+                            ['tbl_customers.fullname', 'fullname'],
+                            ['tbl_customers.username', 'username'],
+                            ['tbl_customers.email', 'email'],
+                            ['tbl_customers.service_type', 'service_type'],
+                        ])
+                        ->offset($startpoint)
+                        ->limit($batch)
+                        ->find_array();
+                    break;
+
+                default:
+                    die(json_encode(['status' => 'error', 'message' => LANG::T('Invalid group')]));
                     break;
             }
         }
@@ -588,25 +629,31 @@ EOT;
         $batchStatus = [];
         //$subject = $config['CompanyName'] . ' ' . Lang::T('Notification Message');
         $from = 'Admin';
+        $currentMessage = '';
 
         foreach ($customers as $customer) {
+            $customerId = (int) ($customer['customer_id'] ?? $customer['id'] ?? 0);
+            $customerName = (string) ($customer['fullname'] ?? '');
+            $customerUsername = (string) ($customer['username'] ?? '');
+            $customerPhone = (string) ($customer['phonenumber'] ?? '');
+            $customerEmail = (string) ($customer['email'] ?? '');
             $currentMessage = str_replace(
                 ['[[name]]', '[[user_name]]', '[[phone]]', '[[company_name]]'],
-                [$customer['fullname'], $customer['username'], $customer['phonenumber'], $config['CompanyName']],
+                [$customerName, $customerUsername, $customerPhone, $config['CompanyName']],
                 $message
             );
 
             $currentSubject = str_replace(
                 ['[[name]]', '[[user_name]]', '[[phone]]', '[[company_name]]'],
-                [$customer['fullname'], $customer['username'], $customer['phonenumber'], $config['CompanyName']],
+                [$customerName, $customerUsername, $customerPhone, $config['CompanyName']],
                 $subject
             );
 
-            $phoneNumber = preg_replace('/\D/', '', $customer['phonenumber']);
+            $phoneNumber = preg_replace('/\D/', '', $customerPhone);
 
             if (empty($phoneNumber)) {
                 $batchStatus[] = [
-                    'name' => $customer['fullname'],
+                    'name' => $customerName,
                     'phone' => '',
                     'status' => 'No Phone Number'
                 ];
@@ -615,36 +662,36 @@ EOT;
 
             if ($test) {
                 $batchStatus[] = [
-                    'name' => $customer['fullname'],
-                    'sent' => $customer['phonenumber'],
+                    'name' => $customerName,
+                    'sent' => $customerPhone,
                     'channel' => implode(', ', array_map('ucfirst', $selectedChannels)),
                     'status' => 'Test Mode',
                     'message' => $currentMessage,
-                    'service' => $service,
+                    'service' => $serviceLabel,
                     'router' => $routerName,
                 ];
             } else {
                 if (isset($_REQUEST['sms']) && $_REQUEST['sms'] == '1') {
-                    if (Message::sendSMS($customer['phonenumber'], $currentMessage)) {
+                    if (Message::sendSMS($customerPhone, $currentMessage)) {
                         $totalSMSSent++;
                         $batchStatus[] = [
-                            'name' => $customer['fullname'],
-                            'sent' => $customer['phonenumber'],
+                            'name' => $customerName,
+                            'sent' => $customerPhone,
                             'channel' => 'SMS',
                             'status' => 'SMS Sent',
                             'message' => $currentMessage,
-                            'service' => $service,
+                            'service' => $serviceLabel,
                             'router' => $routerName,
                         ];
                     } else {
                         $totalSMSFailed++;
                         $batchStatus[] = [
-                            'name' => $customer['fullname'],
-                            'sent' => $customer['phonenumber'],
+                            'name' => $customerName,
+                            'sent' => $customerPhone,
                             'channel' => 'SMS',
                             'status' => 'SMS Failed',
                             'message' => $currentMessage,
-                            'service' => $service,
+                            'service' => $serviceLabel,
                             'router' => $routerName,
                         ];
                     }
@@ -652,78 +699,78 @@ EOT;
 
                 if (isset($_REQUEST['wa']) && $_REQUEST['wa'] == '1') {
                     $waOptions = $queueWa ? ['queue' => true, 'queue_context' => 'bulk'] : [];
-                    if (Message::sendWhatsapp($customer['phonenumber'], $currentMessage, $waOptions)) {
+                    if (Message::sendWhatsapp($customerPhone, $currentMessage, $waOptions)) {
                         $totalWhatsappSent++;
                         $batchStatus[] = [
-                            'name' => $customer['fullname'],
-                            'sent' => $customer['phonenumber'],
+                            'name' => $customerName,
+                            'sent' => $customerPhone,
                             'channel' => 'WhatsApp',
                             'status' => $queueWa ? 'WhatsApp Queued' : 'WhatsApp Sent',
                             'message' => $currentMessage,
-                            'service' => $service,
+                            'service' => $serviceLabel,
                             'router' => $routerName,
                         ];
                     } else {
                         $totalWhatsappFailed++;
                         $batchStatus[] = [
-                            'name' => $customer['fullname'],
-                            'sent' => $customer['phonenumber'],
+                            'name' => $customerName,
+                            'sent' => $customerPhone,
                             'channel' => 'WhatsApp',
                             'status' => 'WhatsApp Failed',
                             'message' => $currentMessage,
-                            'service' => $service,
+                            'service' => $serviceLabel,
                             'router' => $routerName,
                         ];
                     }
                 }
 
                 if (isset($_REQUEST['email']) && $_REQUEST['email'] == '1') {
-                    if (Message::sendEmail($customer['email'], $currentSubject, $currentMessage)) {
+                    if (Message::sendEmail($customerEmail, $currentSubject, $currentMessage)) {
                         $totalEmailSent++;
                         $batchStatus[] = [
-                            'name' => $customer['fullname'],
-                            'sent' => $customer['email'],
+                            'name' => $customerName,
+                            'sent' => $customerEmail,
                             'channel' => 'Email',
                             'status' => 'Email Sent',
                             'message' => $currentMessage,
-                            'service' => $service,
+                            'service' => $serviceLabel,
                             'router' => $routerName,
                         ];
                     } else {
                         $totalEmailFailed++;
                         $batchStatus[] = [
-                            'name' => $customer['fullname'],
-                            'sent' => $customer['email'],
+                            'name' => $customerName,
+                            'sent' => $customerEmail,
                             'channel' => 'Email',
                             'status' => 'Email Failed',
                             'message' => $currentMessage,
-                            'service' => $service,
+                            'service' => $serviceLabel,
                             'router' => $routerName,
                         ];
                     }
                 }
 
                 if (isset($_REQUEST['inbox']) && $_REQUEST['inbox'] == '1') {
-                    if (Message::addToInbox($customer['customer_id'], $currentSubject, $currentMessage, $from)) {
+                    if ($customerId > 0 && Message::addToInbox($customerId, $currentSubject, $currentMessage, $from)) {
                         $totalInboxSent++;
                         $batchStatus[] = [
-                            'name' => $customer['fullname'],
-                            'sent' => $customer['username'],
+                            'name' => $customerName,
+                            'sent' => $customerUsername,
                             'channel' => 'Inbox',
                             'status' => 'Inbox Message Sent',
                             'message' => $currentMessage,
-                            'service' => $service,
+                            'service' => $serviceLabel,
                             'router' => $routerName,
                         ];
                     } else {
                         $totalInboxFailed++;
                         $batchStatus[] = [
-                            'name' => $customer['fullname'],
-                            'sent' => $customer['username'],
+                            'name' => $customerName,
+                            'sent' => $customerUsername,
                             'channel' => 'Inbox',
                             'status' => 'Inbox Message Failed',
                             'message' => $currentMessage,
-                            'service' => $service,
+                            'service' => $serviceLabel,
                             'router' => $routerName,
                         ];
                     }
