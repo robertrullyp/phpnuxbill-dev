@@ -724,6 +724,7 @@
     let totalFailed = 0;
     let hasMore = true;
     let syncingServiceSelection = false;
+    let lastSelectedServices = [];
 
     // Initialize DataTable
     let historyTable = $('#historyTable').DataTable({
@@ -735,37 +736,80 @@
         responsive: true
     });
 
-    function normalizeServiceSelection(changedValue = null) {
+    function getSelectedServices() {
+        const serviceSelect = document.getElementById('service');
+        if (!serviceSelect) {
+            return [];
+        }
+        return Array.from(serviceSelect.options)
+            .filter(function (option) { return option.selected; })
+            .map(function (option) { return option.value; });
+    }
+
+    function setSelectedServices(values) {
+        const serviceSelect = document.getElementById('service');
+        if (!serviceSelect) {
+            return;
+        }
+        const valueMap = {};
+        (values || []).forEach(function (value) {
+            valueMap[value] = true;
+        });
+        Array.from(serviceSelect.options).forEach(function (option) {
+            option.selected = !!valueMap[option.value];
+        });
+        if (window.jQuery) {
+            window.jQuery(serviceSelect).trigger('change.select2');
+        }
+        serviceSelect.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+
+    function normalizeServiceSelection() {
         if (syncingServiceSelection) {
             return;
         }
 
-        let selectedServices = $('#service').val() || [];
+        let selectedServices = getSelectedServices();
         let normalizedServices = selectedServices.slice();
 
         if (selectedServices.length === 0) {
             normalizedServices = ['all'];
         } else if (selectedServices.indexOf('all') !== -1 && selectedServices.length > 1) {
-            normalizedServices = changedValue === 'all'
-                ? ['all']
-                : selectedServices.filter(function (value) { return value !== 'all'; });
+            normalizedServices = lastSelectedServices.indexOf('all') !== -1
+                ? selectedServices.filter(function (value) { return value !== 'all'; })
+                : ['all'];
         }
 
         if (normalizedServices.join('|') !== selectedServices.join('|')) {
             syncingServiceSelection = true;
-            $('#service').val(normalizedServices).trigger('change.select2');
+            setSelectedServices(normalizedServices);
             syncingServiceSelection = false;
         }
+        lastSelectedServices = normalizedServices.slice();
     }
 
-    $('#service').on('change', function (event) {
-        let changedValue = null;
-        if (event && event.params && event.params.data) {
-            changedValue = event.params.data.id || null;
+    document.addEventListener('change', function (event) {
+        if (event.target && event.target.id === 'service') {
+            normalizeServiceSelection();
         }
-        normalizeServiceSelection(changedValue);
     });
-    normalizeServiceSelection();
+    document.addEventListener('click', function (event) {
+        const target = event.target;
+        if (!target) {
+            return;
+        }
+        const serviceContainer = document.querySelector('#service + .select2');
+        const insideServiceContainer = !!(serviceContainer && serviceContainer.contains(target));
+        const serviceResultNode = target.closest('[id^=\"select2-service-result-\"]');
+        if (insideServiceContainer || serviceResultNode) {
+            setTimeout(function () {
+                normalizeServiceSelection();
+            }, 0);
+        }
+    });
+    setTimeout(function () {
+        normalizeServiceSelection();
+    }, 0);
 
     function sendBatch() {
         if (!hasMore) return;
@@ -797,8 +841,6 @@
                 `);
             },
             success: function (response) {
-                console.log("Response received:", response);
-
                 if (response && response.status === 'success') {
                     totalSent += response.totalSent || 0;
                     totalFailed += response.totalFailed || 0;
@@ -834,7 +876,6 @@
                         `);
                     }
                 } else {
-                    console.error("Unexpected response format:", response);
                     $('#status').html(`
                         <div class="alert alert-danger">
                             <i class="fas fa-exclamation-circle"></i> Error: ${response.message}
