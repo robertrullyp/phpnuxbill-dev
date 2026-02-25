@@ -905,9 +905,21 @@
     </div>
 
     <div class="panel">
-        <div class="panel-heading" role="tab" id="TelegramNotification">
+        <div class="panel-heading" role="tab" id="NotificationSystem">
             <h4 class="panel-title">
                 <a class="collapsed" role="button" data-toggle="collapse" data-parent="#accordion"
+                    href="#collapseNotificationSystem" aria-expanded="false" aria-controls="collapseNotificationSystem">
+                    Sistem Pemberitahuan
+                </a>
+            </h4>
+        </div>
+        <div id="collapseNotificationSystem" class="panel-collapse collapse" role="tabpanel">
+            <div class="panel-body">
+                <div class="panel-group" id="notificationAccordion" role="tablist" aria-multiselectable="true">
+    <div class="panel">
+        <div class="panel-heading" role="tab" id="TelegramNotification">
+            <h4 class="panel-title">
+                <a class="collapsed" role="button" data-toggle="collapse" data-parent="#notificationAccordion"
                     href="#collapseTelegramNotification" aria-expanded="false"
                     aria-controls="collapseTelegramNotification">
                     {Lang::T('Telegram Notification')}
@@ -947,7 +959,7 @@
     <div class="panel">
         <div class="panel-heading" role="tab" id="SMSNotification">
             <h4 class="panel-title">
-                <a class="collapsed" role="button" data-toggle="collapse" data-parent="#accordion"
+                <a class="collapsed" role="button" data-toggle="collapse" data-parent="#notificationAccordion"
                     href="#collapseSMSNotification" aria-expanded="false" aria-controls="collapseSMSNotification">
                     {Lang::T('SMS Notification')}
                     <div class="btn-group pull-right">
@@ -1006,7 +1018,7 @@
     <div class="panel">
         <div class="panel-heading" role="tab" id="WhatsappNotification">
             <h4 class="panel-title">
-                <a class="collapsed" role="button" data-toggle="collapse" data-parent="#accordion"
+                <a class="collapsed" role="button" data-toggle="collapse" data-parent="#notificationAccordion"
                     href="#collapseWhatsappNotification" aria-expanded="false"
                     aria-controls="collapseWhatsappNotification">
                     {Lang::T('Whatsapp Notification')}
@@ -1135,7 +1147,7 @@
     <div class="panel">
         <div class="panel-heading" role="tab" id="EmailNotification">
             <h4 class="panel-title">
-                <a class="collapsed" role="button" data-toggle="collapse" data-parent="#accordion"
+                <a class="collapsed" role="button" data-toggle="collapse" data-parent="#notificationAccordion"
                     href="#collapseEmailNotification" aria-expanded="false" aria-controls="collapseEmailNotification">
                     {Lang::T('Email Notification')}
                     <div class="btn-group pull-right">
@@ -1210,6 +1222,10 @@
                 <button class="btn btn-success btn-block js-settings-submit" type="button">
                     {Lang::T('Save Changes')}
                 </button>
+            </div>
+        </div>
+    </div>
+                </div>
             </div>
         </div>
     </div>

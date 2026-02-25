@@ -37,7 +37,7 @@ while ($row = $statement->fetch(PDO::FETCH_ASSOC)) {
 
 $_c = $config;
 
-function cronLogWarningThrottled($key, $message, $ttlSeconds = 600)
+function cronLogWarningThrottled($key, $message, $ttlSeconds = 600, $options = [])
 {
     global $CACHE_PATH;
 
@@ -46,9 +46,22 @@ function cronLogWarningThrottled($key, $message, $ttlSeconds = 600)
         return;
     }
 
-    $ttlSeconds = (int) $ttlSeconds;
-    if ($ttlSeconds < 30) {
-        $ttlSeconds = 30;
+    $baseTtlSeconds = (int) $ttlSeconds;
+    if ($baseTtlSeconds < 30) {
+        $baseTtlSeconds = 30;
+    }
+
+    $useExponentialBackoff = !isset($options['exponential']) || (bool) $options['exponential'];
+    $maxTtlSeconds = isset($options['max_ttl']) ? (int) $options['max_ttl'] : ($baseTtlSeconds * 32);
+    if ($maxTtlSeconds < $baseTtlSeconds) {
+        $maxTtlSeconds = $baseTtlSeconds;
+    }
+    if ($maxTtlSeconds > 86400) {
+        $maxTtlSeconds = 86400;
+    }
+    $resetAfterSeconds = isset($options['reset_after']) ? (int) $options['reset_after'] : max($baseTtlSeconds * 6, 1800);
+    if ($resetAfterSeconds < $baseTtlSeconds) {
+        $resetAfterSeconds = $baseTtlSeconds;
     }
 
     $key = strtolower(trim((string) $key));
@@ -88,7 +101,14 @@ function cronLogWarningThrottled($key, $message, $ttlSeconds = 600)
         'next_log_at' => 0,
         'suppressed' => 0,
         'last_seen' => 0,
+        'last_log_at' => 0,
+        'backoff_level' => 0,
     ];
+
+    $lastLogAt = isset($entry['last_log_at']) ? (int) $entry['last_log_at'] : 0;
+    if ($lastLogAt > 0 && ($now - $lastLogAt) >= $resetAfterSeconds) {
+        $entry['backoff_level'] = 0;
+    }
 
     $nextLogAt = isset($entry['next_log_at']) ? (int) $entry['next_log_at'] : 0;
     if ($now >= $nextLogAt) {
@@ -98,8 +118,48 @@ function cronLogWarningThrottled($key, $message, $ttlSeconds = 600)
         } else {
             _log($message);
         }
-        $entry['next_log_at'] = $now + $ttlSeconds;
+
+        $backoffLevel = isset($entry['backoff_level']) ? (int) $entry['backoff_level'] : 0;
+        if ($backoffLevel < 0) {
+            $backoffLevel = 0;
+        }
+        if ($useExponentialBackoff) {
+            if ($suppressed > 0) {
+                $backoffLevel++;
+            } elseif ($backoffLevel > 0) {
+                $backoffLevel--;
+            }
+        } else {
+            $backoffLevel = 0;
+        }
+
+        $maxBackoffLevel = 0;
+        $ttlProbe = $baseTtlSeconds;
+        while ($ttlProbe < $maxTtlSeconds && $maxBackoffLevel < 20) {
+            $ttlProbe *= 2;
+            $maxBackoffLevel++;
+        }
+        if ($backoffLevel > $maxBackoffLevel) {
+            $backoffLevel = $maxBackoffLevel;
+        }
+
+        $nextTtl = $baseTtlSeconds;
+        for ($i = 0; $i < $backoffLevel; $i++) {
+            if ($nextTtl >= $maxTtlSeconds) {
+                $nextTtl = $maxTtlSeconds;
+                break;
+            }
+            $nextTtl *= 2;
+            if ($nextTtl >= $maxTtlSeconds) {
+                $nextTtl = $maxTtlSeconds;
+                break;
+            }
+        }
+
+        $entry['next_log_at'] = $now + $nextTtl;
         $entry['suppressed'] = 0;
+        $entry['last_log_at'] = $now;
+        $entry['backoff_level'] = $backoffLevel;
     } else {
         $entry['suppressed'] = isset($entry['suppressed']) ? ((int) $entry['suppressed'] + 1) : 1;
     }
@@ -111,6 +171,68 @@ function cronLogWarningThrottled($key, $message, $ttlSeconds = 600)
     if ($payload !== false) {
         @file_put_contents($stateFile, $payload, LOCK_EX);
     }
+}
+
+function cronThrottleKeySegment($value)
+{
+    $value = strtolower(trim((string) $value));
+    $value = preg_replace('/[^a-z0-9._:-]+/i', '_', $value);
+    $value = trim($value, '_');
+    return $value === '' ? 'unknown' : $value;
+}
+
+function cronWarningSignature($warningMessage)
+{
+    $warningMessage = strtolower(trim((string) $warningMessage));
+    if ($warningMessage === '') {
+        return 'unknown';
+    }
+
+    $knownSignatures = [
+        'error connecting to routeros' => 'routeros_connect_error',
+        'routeros client is unavailable' => 'routeros_client_unavailable',
+        'router client is unavailable' => 'router_client_unavailable',
+        'couldn\'t connect' => 'connect_failed',
+        'could not connect' => 'connect_failed',
+        'connection timed out' => 'connect_timeout',
+        'timed out' => 'connect_timeout',
+        'connection refused' => 'connect_refused',
+        'network is unreachable' => 'network_unreachable',
+        'no route to host' => 'no_route_to_host',
+        'router not found' => 'router_not_found',
+    ];
+    foreach ($knownSignatures as $needle => $signature) {
+        if (strpos($warningMessage, $needle) !== false) {
+            return $signature;
+        }
+    }
+
+    $normalized = preg_replace('/\b\d{1,3}(?:\.\d{1,3}){3}(?::\d+)?\b/', '<ip>', $warningMessage);
+    $normalized = preg_replace('/\b\d+\b/', '<n>', (string) $normalized);
+    return 'msg_' . substr(md5((string) $normalized), 0, 12);
+}
+
+function cronBuildScopedWarningKey($prefix, $scope, $warningMessage)
+{
+    return cronThrottleKeySegment($prefix) . '_' . cronThrottleKeySegment($scope) . '_' . cronWarningSignature($warningMessage);
+}
+
+function cronScopeKeyFromPlanData($planData)
+{
+    $routerName = cronThrottleKeySegment($planData['routers'] ?? '');
+    $device = cronThrottleKeySegment($planData['device'] ?? '');
+    return $routerName . '_' . $device;
+}
+
+function cronScopeKeyFromRechargeRow($rechargeRow, $deviceClass = '')
+{
+    $routerName = cronThrottleKeySegment($rechargeRow['routers'] ?? '');
+    $type = cronThrottleKeySegment($rechargeRow['type'] ?? '');
+    $device = cronThrottleKeySegment($deviceClass);
+    if ($device === 'unknown') {
+        $device = $type;
+    }
+    return $routerName . '_' . $device;
 }
 
 function cronAccessRouterFailureKey($planData)
@@ -374,9 +496,13 @@ function collectPppoeUsageSampleForRecharge($rechargeRow, $planRow = null, $cust
                 cronMarkAccessRouterFailed($planData, $warning);
             }
             cronLogWarningThrottled(
-                'access_usage_runtime_warning_' . md5($warning),
+                cronBuildScopedWarningKey('access_usage_runtime_warning', cronScopeKeyFromPlanData($planData), $warning),
                 'Access usage collector warning: ' . $warning,
-                600
+                600,
+                [
+                    'max_ttl' => 21600,
+                    'reset_after' => 3600,
+                ]
             );
         }
 
@@ -389,9 +515,13 @@ function collectPppoeUsageSampleForRecharge($rechargeRow, $planRow = null, $cust
             cronMarkAccessRouterFailed($planData, $errMsg);
         }
         cronLogWarningThrottled(
-            'access_usage_runtime_error_' . md5($errMsg),
+            cronBuildScopedWarningKey('access_usage_runtime_error', cronScopeKeyFromPlanData($planData), $errMsg),
             'Access usage collector error: ' . $errMsg,
-            600
+            600,
+            [
+                'max_ttl' => 21600,
+                'reset_after' => 3600,
+            ]
         );
         if ($closeCycle) {
             PppoeUsage::closeCycleByRechargeId($rechargeId, date('Y-m-d H:i:s'));
@@ -521,10 +651,15 @@ function cleanupExpiredOffRecharges()
                     $onlineId = $device->online_customer($customer, (string) ($row['routers'] ?? ''));
                     $shouldDisconnect = !empty($onlineId);
                 } catch (Throwable $e) {
+                    $warningMessage = trim((string) $e->getMessage());
                     cronLogWarningThrottled(
-                        'expired_off_online_check_' . md5($scopeKey . '|' . $e->getMessage()),
-                        'Expired OFF cleanup warning (online check): ' . $e->getMessage(),
-                        600
+                        cronBuildScopedWarningKey('expired_off_online_check', cronScopeKeyFromPlanData($planData), $warningMessage),
+                        'Expired OFF cleanup warning (online check): ' . $warningMessage,
+                        600,
+                        [
+                            'max_ttl' => 21600,
+                            'reset_after' => 3600,
+                        ]
                     );
                     $shouldDisconnect = true;
                 }
@@ -539,10 +674,18 @@ function cleanupExpiredOffRecharges()
             $disconnected++;
         } catch (Throwable $e) {
             $errors++;
+            $errorMessage = trim((string) $e->getMessage());
+            $scopeForThrottle = (isset($planData) && is_array($planData))
+                ? cronScopeKeyFromPlanData($planData)
+                : cronScopeKeyFromRechargeRow($row);
             cronLogWarningThrottled(
-                'expired_off_cleanup_error_' . md5($scopeKey . '|' . $e->getMessage()),
-                'Expired OFF cleanup error: ' . $e->getMessage(),
-                600
+                cronBuildScopedWarningKey('expired_off_cleanup_error', $scopeForThrottle, $errorMessage),
+                'Expired OFF cleanup error: ' . $errorMessage,
+                600,
+                [
+                    'max_ttl' => 21600,
+                    'reset_after' => 3600,
+                ]
             );
         }
     }
@@ -836,7 +979,16 @@ foreach ($d as $ds) {
                 $u->status = 'off';
                 $u->save();
             } catch (Throwable $e) {
-                _log($e->getMessage());
+                $errorMessage = trim((string) $e->getMessage());
+                cronLogWarningThrottled(
+                    cronBuildScopedWarningKey(
+                        'cron_expired_notification_error',
+                        cronScopeKeyFromRechargeRow($u, (string) ($p['device'] ?? '')),
+                        $errorMessage
+                    ),
+                    'Cron expired notification warning: ' . $errorMessage,
+                    900
+                );
                 sendTelegram($e->getMessage());
                 echo "Error: " . $e->getMessage() . "\n";
             }
@@ -871,7 +1023,13 @@ foreach ($d as $ds) {
         }
     } catch (Throwable $e) {
         // Catch any unexpected errors
-        _log($e->getMessage());
+        $errorMessage = trim((string) $e->getMessage());
+        $scopeRecharge = (isset($u) && $u) ? $u : $ds;
+        cronLogWarningThrottled(
+            cronBuildScopedWarningKey('cron_expiry_processing_error', cronScopeKeyFromRechargeRow($scopeRecharge), $errorMessage),
+            'Cron expiry processing error: ' . $errorMessage,
+            900
+        );
         sendTelegram($e->getMessage());
         echo "Unexpected Error: " . $e->getMessage() . "\n";
     }
@@ -942,7 +1100,16 @@ if ($config['router_check']) {
                 throw new Exception("Neither fsockopen nor stream_socket_client are enabled on the server.");
             }
         } catch (Exception $e) {
-            _log($e->getMessage());
+            $errorMessage = trim((string) $e->getMessage());
+            cronLogWarningThrottled(
+                cronBuildScopedWarningKey('router_monitor_check_error', $ip . ':' . $port, $errorMessage),
+                'Router monitoring warning: ' . $errorMessage,
+                900,
+                [
+                    'max_ttl' => 21600,
+                    'reset_after' => 3600,
+                ]
+            );
             $errors[] = "Error with router $ip: " . $e->getMessage();
         }
 

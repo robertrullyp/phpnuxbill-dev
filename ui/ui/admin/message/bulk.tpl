@@ -27,14 +27,16 @@
                     <div class="form-group">
                         <label class="col-md-2 control-label">{Lang::T('Service Type')}</label>
                         <div class="col-md-6">
-                            <select class="form-control" name="service" id="service">
-                                <option value="all" {if $group=='all' }selected{/if}>{Lang::T('All')}</option>
-                                <option value="PPPoE" {if $service=='PPPoE' }selected{/if}>{Lang::T('PPPoE')}</option>
-                                <option value="Hotspot" {if $service=='Hotspot' }selected{/if}>{Lang::T('Hotspot')}
-                                </option>
-                                <option value="VPN" {if $service=='VPN' }selected{/if}>{Lang::T('VPN')}</option>
+                            <select class="form-control select2" name="service[]" id="service" multiple>
+                                <option value="all" selected>{Lang::T('All')}</option>
+                                {foreach $service_types as $serviceType}
+                                <option value="{$serviceType|escape}">{Lang::T($serviceType)}</option>
+                                {/foreach}
                             </select>
                         </div>
+                        <p class="help-block col-md-4">
+                            <small>Pilih <b>All</b> atau satu/lebih jenis layanan berdasarkan type customer.</small>
+                        </p>
                     </div>
                     <div class="form-group">
                         <label class="col-md-2 control-label">{Lang::T('Group')}</label>
@@ -721,6 +723,8 @@
     let totalSent = 0;
     let totalFailed = 0;
     let hasMore = true;
+    let syncingServiceSelection = false;
+    let lastSelectedServices = [];
 
     // Initialize DataTable
     let historyTable = $('#historyTable').DataTable({
@@ -731,6 +735,81 @@
         autoWidth: false,
         responsive: true
     });
+
+    function getSelectedServices() {
+        const serviceSelect = document.getElementById('service');
+        if (!serviceSelect) {
+            return [];
+        }
+        return Array.from(serviceSelect.options)
+            .filter(function (option) { return option.selected; })
+            .map(function (option) { return option.value; });
+    }
+
+    function setSelectedServices(values) {
+        const serviceSelect = document.getElementById('service');
+        if (!serviceSelect) {
+            return;
+        }
+        const valueMap = {};
+        (values || []).forEach(function (value) {
+            valueMap[value] = true;
+        });
+        Array.from(serviceSelect.options).forEach(function (option) {
+            option.selected = !!valueMap[option.value];
+        });
+        if (window.jQuery) {
+            window.jQuery(serviceSelect).trigger('change.select2');
+        }
+        serviceSelect.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+
+    function normalizeServiceSelection() {
+        if (syncingServiceSelection) {
+            return;
+        }
+
+        let selectedServices = getSelectedServices();
+        let normalizedServices = selectedServices.slice();
+
+        if (selectedServices.length === 0) {
+            normalizedServices = ['all'];
+        } else if (selectedServices.indexOf('all') !== -1 && selectedServices.length > 1) {
+            normalizedServices = lastSelectedServices.indexOf('all') !== -1
+                ? selectedServices.filter(function (value) { return value !== 'all'; })
+                : ['all'];
+        }
+
+        if (normalizedServices.join('|') !== selectedServices.join('|')) {
+            syncingServiceSelection = true;
+            setSelectedServices(normalizedServices);
+            syncingServiceSelection = false;
+        }
+        lastSelectedServices = normalizedServices.slice();
+    }
+
+    document.addEventListener('change', function (event) {
+        if (event.target && event.target.id === 'service') {
+            normalizeServiceSelection();
+        }
+    });
+    document.addEventListener('click', function (event) {
+        const target = event.target;
+        if (!target) {
+            return;
+        }
+        const serviceContainer = document.querySelector('#service + .select2');
+        const insideServiceContainer = !!(serviceContainer && serviceContainer.contains(target));
+        const serviceResultNode = target.closest('[id^=\"select2-service-result-\"]');
+        if (insideServiceContainer || serviceResultNode) {
+            setTimeout(function () {
+                normalizeServiceSelection();
+            }, 0);
+        }
+    });
+    setTimeout(function () {
+        normalizeServiceSelection();
+    }, 0);
 
     function sendBatch() {
         if (!hasMore) return;
@@ -750,7 +829,7 @@
                 router: $('#router').val() || '',
                 page: page,
                 test: $('#test').is(':checked') ? 'on' : 'off',
-                service: $('#service').val(),
+                service: $('#service').val() || ['all'],
                 subject: $('#subjectContent').val(),
             },
             dataType: 'json',
@@ -762,8 +841,6 @@
                 `);
             },
             success: function (response) {
-                console.log("Response received:", response);
-
                 if (response && response.status === 'success') {
                     totalSent += response.totalSent || 0;
                     totalFailed += response.totalFailed || 0;
@@ -785,7 +862,7 @@
                             `<span class="text-${statusClass}">${msg.status}</span>`,
                             msg.message ? msg.message : 'No Message',
                             msg.router ? msg.router : 'All Router',
-                            msg.service == 'all' ? 'All Service' : (msg.service || 'No Service')
+                            msg.service ? msg.service : 'No Service'
                         ]).draw(false); // Add row without redrawing the table
                     });
 
@@ -799,7 +876,6 @@
                         `);
                     }
                 } else {
-                    console.error("Unexpected response format:", response);
                     $('#status').html(`
                         <div class="alert alert-danger">
                             <i class="fas fa-exclamation-circle"></i> Error: ${response.message}
