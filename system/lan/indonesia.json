@@ -1120,5 +1120,11 @@
     "Testing__if_checked_no_real_message_is_sent_": "Pengujian [jika dicentang tidak ada pesan nyata yang dikirim]",
     "Start_Bulk_Messaging": "Mulai Pesan Massal",
     "Message_Sending_History": "Riwayat Pengiriman Pesan",
-    "Sent_To": "Dikirim ke"
+    "Sent_To": "Dikirim ke",
+    "Plan_not_available_for_your_account": "Paket tidak tersedia untuk akun Anda",
+    "Customer_Self_Extend": "Perpanjangan Diri Pelanggan",
+    "Allow_customer_self_extend_for_this_plan": "Izinkan pelanggan melakukan perpanjangan mandiri untuk paket ini",
+    "PPPoE_Service": "Layanan PPPoE",
+    "Select_PPPoE_Service": "Pilih Layanan PPPoE",
+    "Loaded_from_router_PPPoE_server_list__If_empty__sync_recharge_will_try_the_first_available_service_": "Dimuat dari daftar server PPPoE router. Jika kosong, sinkronisasi\/isi ulang akan mencoba layanan pertama yang tersedia."
 }

@@ -11,7 +11,9 @@
 </footer>
 {else}
 <footer class="main-footer">
-    PHPNuxBill by <a href="https://github.com/hotspotbilling/phpnuxbill" rel="nofollow noreferrer noopener"
+    PHPNuxBill-Dev by <a  href="https://github.com/robertrullyp/phpnuxbill-dev" rel="nofollow noreferrer noopener" 
+        target="_blank">PHPNuxBill-Dev</a> Modified by <a href="https://github.com/robertrullyp" rel="nofollow noreferrer noopener"
+        target="_blank">Mr. Free</a> from PHPNuxBill by <a href="https://github.com/hotspotbilling/phpnuxbill" rel="nofollow noreferrer noopener"
         target="_blank">iBNuX</a>, Theme by <a href="https://adminlte.io/" rel="nofollow noreferrer noopener"
         target="_blank">AdminLTE</a>
     <div class="pull-right">
