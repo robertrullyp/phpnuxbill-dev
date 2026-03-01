@@ -479,6 +479,22 @@ Example response (JSON):
 {"success": true, "message": "OK", "result": {}, "meta": {}}
 ```
 
+#### `pppoe_service`
+- Route: `r=autoload/pppoe_service`
+- Method: GET
+- Path params: (tidak ada)
+- GET params: `routers`, `selected`
+- POST params: (tidak ada)
+- REQUEST params: (tidak ada)
+Example request:
+```bash
+curl -s "https://<domain>/system/api.php?r=autoload/pppoe_service&token=a.<aid>.<time>.<sha1>&routers=<ROUTER_NAME>&selected=<SERVICE_NAME>"
+```
+Example response (JSON):
+```json
+{"success": true, "message": "OK", "result": {}, "meta": {}}
+```
+
 #### `pppoe_ip_used`
 - Route: `r=autoload/pppoe_ip_used`
 - Method: GET
@@ -2066,6 +2082,31 @@ Example response (JSON):
 {"success": true, "message": "OK", "result": {}, "meta": {}}
 ```
 
+#### `gateway-config` (dynamic)
+- Route: `r=paymentgateway`
+- Method: GET/POST (dynamic gateway handler)
+- Path params: routes[1] => $gateway
+- GET params: (tidak ada)
+- POST params: (tergantung gateway)
+- REQUEST params: (tergantung gateway)
+Example requests:
+```bash
+# Show gateway config (GET)
+curl -s "https://<domain>/system/api.php?r=paymentgateway/xendit&token=a.<aid>.<time>.<sha1>"
+
+# Save gateway config (POST; fields depend on gateway implementation)
+curl -s -X POST "https://<domain>/system/api.php?r=paymentgateway/xendit&token=a.<aid>.<time>.<sha1>" \
+  -d "key=<value>" \
+  -d "secret=<value>"
+```
+Example response (JSON):
+```json
+{"success": true, "message": "OK", "result": {}, "meta": {}}
+```
+Catatan:
+- Action `delete`, `audit`, `auditview` ditangani endpoint khusus (lihat bagian di bawah).
+- `gateway` harus sesuai nama file gateway di `system/paymentgateway/<gateway>.php`.
+
 #### `delete`
 - Route: `r=paymentgateway/delete`
 - Method: GET
@@ -2208,6 +2249,68 @@ curl -s -X POST "https://<domain>/system/api.php?r=plan/recharge-post&token=a.<a
   -d "using=<value>" 
   -d "note=<optional_note>" 
   # ... lihat daftar parameter di atas
+```
+Example response (JSON):
+```json
+{"success": true, "message": "OK", "result": {}, "meta": {}}
+```
+
+#### `refund`
+- Route: `r=plan/refund`
+- Method: GET
+- Path params: routes[2] => (direct)
+- GET params: (tidak ada)
+- POST params: (tidak ada)
+- REQUEST params: (tidak ada)
+Example request:
+```bash
+curl -s "https://<domain>/system/api.php?r=plan/refund/1&token=a.<aid>.<time>.<sha1>"
+```
+Example response (JSON):
+```json
+{"success": true, "message": "OK", "result": {}, "meta": {}}
+```
+
+#### `refund-confirm`
+- Route: `r=plan/refund-confirm`
+- Method: POST (implicit; uses POST params)
+- Path params: (tidak ada)
+- GET params: (tidak ada)
+- POST params: `csrf_token`, `id_customer`, `plan`, `server`, `using`, `note` (opsional, max 256 karakter)
+- REQUEST params: (tidak ada)
+- Catatan: pada mode API, `csrf_token` diabaikan (CSRF bypass saat `isApi=true`).
+Example request:
+```bash
+curl -s -X POST "https://<domain>/system/api.php?r=plan/refund-confirm&token=a.<aid>.<time>.<sha1>" \
+  -d "csrf_token=<value>" \
+  -d "id_customer=<value>" \
+  -d "plan=<value>" \
+  -d "server=<value>" \
+  -d "using=<value>" \
+  -d "note=<optional_note>"
+```
+Example response (JSON):
+```json
+{"success": true, "message": "OK", "result": {}, "meta": {}}
+```
+
+#### `refund-post`
+- Route: `r=plan/refund-post`
+- Method: POST (implicit; uses POST params)
+- Path params: (tidak ada)
+- GET params: (tidak ada)
+- POST params: `csrf_token`, `id_customer`, `plan`, `server`, `using`, `note` (opsional, max 256 karakter)
+- REQUEST params: (tidak ada)
+- Catatan: pada mode API, `csrf_token` diabaikan (CSRF bypass saat `isApi=true`).
+Example request:
+```bash
+curl -s -X POST "https://<domain>/system/api.php?r=plan/refund-post&token=a.<aid>.<time>.<sha1>" \
+  -d "csrf_token=<value>" \
+  -d "id_customer=<value>" \
+  -d "plan=<value>" \
+  -d "server=<value>" \
+  -d "using=<value>" \
+  -d "note=<optional_note>"
 ```
 Example response (JSON):
 ```json
@@ -3764,6 +3867,45 @@ Example response (JSON):
 {"success": true, "message": "OK", "result": {}, "meta": {}}
 ```
 
+#### `api-block-add`
+- Route: `r=settings/api-block-add`
+- Method: POST (implicit; uses POST params)
+- Path params: (tidak ada)
+- GET params: (tidak ada)
+- POST params: `csrf_token`, `api_block_add_ip`, `api_block_add_blocked_until`
+- REQUEST params: (tidak ada)
+Example request:
+```bash
+curl -s -X POST "https://<domain>/system/api.php?r=settings/api-block-add&token=a.<aid>.<time>.<sha1>" \
+  -d "csrf_token=<value>" \
+  -d "api_block_add_ip=<IP_ADDRESS>" \
+  -d "api_block_add_blocked_until=<YYYY-mm-dd HH:MM:SS>"
+```
+Example response (JSON):
+```json
+{"success": true, "message": "OK", "result": {}, "meta": {}}
+```
+
+#### `api-block-edit`
+- Route: `r=settings/api-block-edit`
+- Method: POST (implicit; uses POST params)
+- Path params: (tidak ada)
+- GET params: (tidak ada)
+- POST params: `csrf_token`, `api_block_edit_ip`, `api_block_edit_blocked_until`, `api_block_edit_fail_count`
+- REQUEST params: (tidak ada)
+Example request:
+```bash
+curl -s -X POST "https://<domain>/system/api.php?r=settings/api-block-edit&token=a.<aid>.<time>.<sha1>" \
+  -d "csrf_token=<value>" \
+  -d "api_block_edit_ip=<IP_ADDRESS>" \
+  -d "api_block_edit_blocked_until=<YYYY-mm-dd HH:MM:SS>" \
+  -d "api_block_edit_fail_count=<value>"
+```
+Example response (JSON):
+```json
+{"success": true, "message": "OK", "result": {}, "meta": {}}
+```
+
 #### `localisation`
 - Route: `r=settings/localisation`
 - Method: GET
@@ -3983,6 +4125,70 @@ Example request:
 ```bash
 curl -s -X POST "https://<domain>/system/api.php?r=settings/notifications-post&token=a.<aid>.<time>.<sha1>" 
   -d "csrf_token=<value>"
+```
+Example response (JSON):
+```json
+{"success": true, "message": "OK", "result": {}, "meta": {}}
+```
+
+#### `notifications-override-type-post`
+- Route: `r=settings/notifications-override-type-post`
+- Method: POST (implicit; uses POST params)
+- Path params: (tidak ada)
+- GET params: (tidak ada)
+- POST params: `csrf_token`, `template_key`, `type_key`, `message`
+- REQUEST params: (tidak ada)
+- Catatan: `type_key` menerima `HOTSPOT`, `PPPOE`, `VPN`.
+Example request:
+```bash
+curl -s -X POST "https://<domain>/system/api.php?r=settings/notifications-override-type-post&token=a.<aid>.<time>.<sha1>" \
+  -d "csrf_token=<value>" \
+  -d "template_key=<value>" \
+  -d "type_key=HOTSPOT" \
+  -d "message=<value>"
+```
+Example response (JSON):
+```json
+{"success": true, "message": "OK", "result": {}, "meta": {}}
+```
+
+#### `notifications-override-plan-post`
+- Route: `r=settings/notifications-override-plan-post`
+- Method: POST (implicit; uses POST params)
+- Path params: (tidak ada)
+- GET params: (tidak ada)
+- POST params: `csrf_token`, `plan_id`, `template_key`, `message`
+- REQUEST params: (tidak ada)
+Example request:
+```bash
+curl -s -X POST "https://<domain>/system/api.php?r=settings/notifications-override-plan-post&token=a.<aid>.<time>.<sha1>" \
+  -d "csrf_token=<value>" \
+  -d "plan_id=<value>" \
+  -d "template_key=<value>" \
+  -d "message=<value>"
+```
+Example response (JSON):
+```json
+{"success": true, "message": "OK", "result": {}, "meta": {}}
+```
+
+#### `notifications-override-purpose-post`
+- Route: `r=settings/notifications-override-purpose-post`
+- Method: POST (implicit; uses POST params)
+- Path params: (tidak ada)
+- GET params: (tidak ada)
+- POST params: `csrf_token`, `template_key`, `purpose_key`, `message`
+- REQUEST params: (tidak ada)
+- Catatan: `purpose_key` tergantung `template_key`:
+  - `otp_message`: `register`, `verify`, `forgot`
+  - `welcome_message`: `admin_register`, `self_register`
+Example request:
+```bash
+curl -s -X POST "https://<domain>/system/api.php?r=settings/notifications-override-purpose-post&token=a.<aid>.<time>.<sha1>" \
+  -d "csrf_token=<value>" \
+  -d "template_key=<value>" \
+  -d "purpose_key=<value>" \
+  -d "message=<value>"
 ```
 Example response (JSON):
 ```json
@@ -4294,6 +4500,22 @@ curl -s -X POST "https://<domain>/system/api.php?r=widgets/pos&token=a.<aid>.<ti
 Example response (JSON):
 ```json
 {"success": true, "message": "widgets/pos", "result": { }, "meta": { }}
+```
+
+#### `widget-command` (dynamic)
+- Route: `r=widgets`
+- Method: GET/POST (dynamic widget command)
+- Path params: routes[1] => $widget; routes[2] => $command
+- GET params: (tidak ada)
+- POST params: (tergantung widget command)
+- REQUEST params: `user`
+Example request:
+```bash
+curl -s "https://<domain>/system/api.php?r=widgets/traffic/reload&token=a.<aid>.<time>.<sha1>&user=Admin"
+```
+Example response (JSON / non-JSON tergantung widget):
+```text
+<binary/pdf/csv/html output>
 ```
 
 Catatan:

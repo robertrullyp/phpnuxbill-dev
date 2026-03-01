@@ -717,6 +717,45 @@ Token (admin, query):
 curl -s "https://<domain>/system/api.php?r=autoload/pppoe_ip_used&id=1&ip=<value>&token=a.<aid>.<time>.<sha1>"
 ```
 
+### GET /autoload/pppoe_service
+- Access: `admin`
+- Legacy route: `r=autoload/pppoe_service`
+- Response: JSON envelope (`success`, `message`, `result`, `meta`)
+- Query params: `routers`, `selected`
+
+Admin API key (X-Admin-Api-Key, recommended):
+```bash
+curl -s \
+  -H "X-Admin-Api-Key: <ADMIN_API_KEY>" \
+  "https://<domain>/system/api.php/autoload/pppoe_service?routers=<value>&selected=<value>"
+```
+
+Admin API key (X-API-Key):
+```bash
+curl -s \
+  -H "X-API-Key: <ADMIN_API_KEY>" \
+  "https://<domain>/system/api.php/autoload/pppoe_service?routers=<value>&selected=<value>"
+```
+
+Admin API key (Authorization: Bearer):
+```bash
+curl -s \
+  -H "Authorization: Bearer <ADMIN_API_KEY>" \
+  "https://<domain>/system/api.php/autoload/pppoe_service?routers=<value>&selected=<value>"
+```
+
+Token (admin, X-Token):
+```bash
+curl -s \
+  -H "X-Token: a.<aid>.<time>.<sha1>" \
+  "https://<domain>/system/api.php/autoload/pppoe_service?routers=<value>&selected=<value>"
+```
+
+Token (admin, query):
+```bash
+curl -s "https://<domain>/system/api.php?r=autoload/pppoe_service&routers=<value>&selected=<value>&token=a.<aid>.<time>.<sha1>"
+```
+
 ### GET /autoload/pppoe_username_used
 - Access: `admin`
 - Legacy route: `r=autoload/pppoe_username_used`
@@ -4535,6 +4574,88 @@ Token (admin, query):
 curl -s "https://<domain>/system/api.php?r=paymentgateway/delete/<pg>&token=a.<aid>.<time>.<sha1>"
 ```
 
+### GET /paymentgateway/{gateway}
+- Access: `admin`
+- Legacy route: `r=paymentgateway/{gateway}`
+- Response: JSON envelope (`success`, `message`, `result`, `meta`)
+
+Admin API key (X-Admin-Api-Key, recommended):
+```bash
+curl -s \
+  -H "X-Admin-Api-Key: <ADMIN_API_KEY>" \
+  "https://<domain>/system/api.php/paymentgateway/<gateway>"
+```
+
+Admin API key (X-API-Key):
+```bash
+curl -s \
+  -H "X-API-Key: <ADMIN_API_KEY>" \
+  "https://<domain>/system/api.php/paymentgateway/<gateway>"
+```
+
+Admin API key (Authorization: Bearer):
+```bash
+curl -s \
+  -H "Authorization: Bearer <ADMIN_API_KEY>" \
+  "https://<domain>/system/api.php/paymentgateway/<gateway>"
+```
+
+Token (admin, X-Token):
+```bash
+curl -s \
+  -H "X-Token: a.<aid>.<time>.<sha1>" \
+  "https://<domain>/system/api.php/paymentgateway/<gateway>"
+```
+
+Token (admin, query):
+```bash
+curl -s "https://<domain>/system/api.php?r=paymentgateway/<gateway>&token=a.<aid>.<time>.<sha1>"
+```
+
+### POST /paymentgateway/{gateway}
+- Access: `admin`
+- Legacy route: `r=paymentgateway/{gateway}`
+- Response: JSON envelope (`success`, `message`, `result`, `meta`)
+
+Admin API key (X-Admin-Api-Key, recommended):
+```bash
+curl -s \
+  -X POST \
+  -H "X-Admin-Api-Key: <ADMIN_API_KEY>" \
+  "https://<domain>/system/api.php/paymentgateway/<gateway>"
+```
+
+Admin API key (X-API-Key):
+```bash
+curl -s \
+  -X POST \
+  -H "X-API-Key: <ADMIN_API_KEY>" \
+  "https://<domain>/system/api.php/paymentgateway/<gateway>"
+```
+
+Admin API key (Authorization: Bearer):
+```bash
+curl -s \
+  -X POST \
+  -H "Authorization: Bearer <ADMIN_API_KEY>" \
+  "https://<domain>/system/api.php/paymentgateway/<gateway>"
+```
+
+Token (admin, X-Token):
+```bash
+curl -s \
+  -X POST \
+  -H "X-Token: a.<aid>.<time>.<sha1>" \
+  "https://<domain>/system/api.php/paymentgateway/<gateway>"
+```
+
+Token (admin, query):
+```bash
+curl -s \
+  -X POST \
+  "https://<domain>/system/api.php?r=paymentgateway/<gateway>&token=a.<aid>.<time>.<sha1>"
+```
+
 ## plan
 
 ### GET /plan
@@ -5110,10 +5231,10 @@ curl -s \
   -X POST \
   -H "X-Admin-Api-Key: <ADMIN_API_KEY>" \
   -d "id_customer=<value>" \
+  -d "note=<value>" \
   -d "plan=<value>" \
   -d "server=<value>" \
   -d "using=<value>" \
-  -d "note=<optional_note>" \
   "https://<domain>/system/api.php/plan/recharge-confirm"
 ```
 
@@ -5123,10 +5244,10 @@ curl -s \
   -X POST \
   -H "X-API-Key: <ADMIN_API_KEY>" \
   -d "id_customer=<value>" \
+  -d "note=<value>" \
   -d "plan=<value>" \
   -d "server=<value>" \
   -d "using=<value>" \
-  -d "note=<optional_note>" \
   "https://<domain>/system/api.php/plan/recharge-confirm"
 ```
 
@@ -5136,10 +5257,10 @@ curl -s \
   -X POST \
   -H "Authorization: Bearer <ADMIN_API_KEY>" \
   -d "id_customer=<value>" \
+  -d "note=<value>" \
   -d "plan=<value>" \
   -d "server=<value>" \
   -d "using=<value>" \
-  -d "note=<optional_note>" \
   "https://<domain>/system/api.php/plan/recharge-confirm"
 ```
 
@@ -5149,10 +5270,10 @@ curl -s \
   -X POST \
   -H "X-Token: a.<aid>.<time>.<sha1>" \
   -d "id_customer=<value>" \
+  -d "note=<value>" \
   -d "plan=<value>" \
   -d "server=<value>" \
   -d "using=<value>" \
-  -d "note=<optional_note>" \
   "https://<domain>/system/api.php/plan/recharge-confirm"
 ```
 
@@ -5161,10 +5282,10 @@ Token (admin, query):
 curl -s \
   -X POST \
   -d "id_customer=<value>" \
+  -d "note=<value>" \
   -d "plan=<value>" \
   -d "server=<value>" \
   -d "using=<value>" \
-  -d "note=<optional_note>" \
   "https://<domain>/system/api.php?r=plan/recharge-confirm&token=a.<aid>.<time>.<sha1>"
 ```
 
@@ -5179,11 +5300,11 @@ curl -s \
   -X POST \
   -H "X-Admin-Api-Key: <ADMIN_API_KEY>" \
   -d "id_customer=<value>" \
+  -d "note=<value>" \
   -d "plan=<value>" \
   -d "server=<value>" \
   -d "svoucher=<value>" \
   -d "using=<value>" \
-  -d "note=<optional_note>" \
   "https://<domain>/system/api.php/plan/recharge-post"
 ```
 
@@ -5193,11 +5314,11 @@ curl -s \
   -X POST \
   -H "X-API-Key: <ADMIN_API_KEY>" \
   -d "id_customer=<value>" \
+  -d "note=<value>" \
   -d "plan=<value>" \
   -d "server=<value>" \
   -d "svoucher=<value>" \
   -d "using=<value>" \
-  -d "note=<optional_note>" \
   "https://<domain>/system/api.php/plan/recharge-post"
 ```
 
@@ -5207,11 +5328,11 @@ curl -s \
   -X POST \
   -H "Authorization: Bearer <ADMIN_API_KEY>" \
   -d "id_customer=<value>" \
+  -d "note=<value>" \
   -d "plan=<value>" \
   -d "server=<value>" \
   -d "svoucher=<value>" \
   -d "using=<value>" \
-  -d "note=<optional_note>" \
   "https://<domain>/system/api.php/plan/recharge-post"
 ```
 
@@ -5221,11 +5342,11 @@ curl -s \
   -X POST \
   -H "X-Token: a.<aid>.<time>.<sha1>" \
   -d "id_customer=<value>" \
+  -d "note=<value>" \
   -d "plan=<value>" \
   -d "server=<value>" \
   -d "svoucher=<value>" \
   -d "using=<value>" \
-  -d "note=<optional_note>" \
   "https://<domain>/system/api.php/plan/recharge-post"
 ```
 
@@ -5234,11 +5355,11 @@ Token (admin, query):
 curl -s \
   -X POST \
   -d "id_customer=<value>" \
+  -d "note=<value>" \
   -d "plan=<value>" \
   -d "server=<value>" \
   -d "svoucher=<value>" \
   -d "using=<value>" \
-  -d "note=<optional_note>" \
   "https://<domain>/system/api.php?r=plan/recharge-post&token=a.<aid>.<time>.<sha1>"
 ```
 
@@ -5370,6 +5491,182 @@ curl -s \
   -d "code=<value>" \
   -d "id_customer=<value>" \
   "https://<domain>/system/api.php?r=plan/refill-post&token=a.<aid>.<time>.<sha1>"
+```
+
+### POST /plan/refund-confirm
+- Access: `admin`
+- Legacy route: `r=plan/refund-confirm`
+- Response: JSON envelope (`success`, `message`, `result`, `meta`)
+
+Admin API key (X-Admin-Api-Key, recommended):
+```bash
+curl -s \
+  -X POST \
+  -H "X-Admin-Api-Key: <ADMIN_API_KEY>" \
+  -d "id_customer=<value>" \
+  -d "note=<value>" \
+  -d "plan=<value>" \
+  -d "server=<value>" \
+  -d "using=<value>" \
+  "https://<domain>/system/api.php/plan/refund-confirm"
+```
+
+Admin API key (X-API-Key):
+```bash
+curl -s \
+  -X POST \
+  -H "X-API-Key: <ADMIN_API_KEY>" \
+  -d "id_customer=<value>" \
+  -d "note=<value>" \
+  -d "plan=<value>" \
+  -d "server=<value>" \
+  -d "using=<value>" \
+  "https://<domain>/system/api.php/plan/refund-confirm"
+```
+
+Admin API key (Authorization: Bearer):
+```bash
+curl -s \
+  -X POST \
+  -H "Authorization: Bearer <ADMIN_API_KEY>" \
+  -d "id_customer=<value>" \
+  -d "note=<value>" \
+  -d "plan=<value>" \
+  -d "server=<value>" \
+  -d "using=<value>" \
+  "https://<domain>/system/api.php/plan/refund-confirm"
+```
+
+Token (admin, X-Token):
+```bash
+curl -s \
+  -X POST \
+  -H "X-Token: a.<aid>.<time>.<sha1>" \
+  -d "id_customer=<value>" \
+  -d "note=<value>" \
+  -d "plan=<value>" \
+  -d "server=<value>" \
+  -d "using=<value>" \
+  "https://<domain>/system/api.php/plan/refund-confirm"
+```
+
+Token (admin, query):
+```bash
+curl -s \
+  -X POST \
+  -d "id_customer=<value>" \
+  -d "note=<value>" \
+  -d "plan=<value>" \
+  -d "server=<value>" \
+  -d "using=<value>" \
+  "https://<domain>/system/api.php?r=plan/refund-confirm&token=a.<aid>.<time>.<sha1>"
+```
+
+### POST /plan/refund-post
+- Access: `admin`
+- Legacy route: `r=plan/refund-post`
+- Response: JSON envelope (`success`, `message`, `result`, `meta`)
+
+Admin API key (X-Admin-Api-Key, recommended):
+```bash
+curl -s \
+  -X POST \
+  -H "X-Admin-Api-Key: <ADMIN_API_KEY>" \
+  -d "id_customer=<value>" \
+  -d "note=<value>" \
+  -d "plan=<value>" \
+  -d "server=<value>" \
+  -d "using=<value>" \
+  "https://<domain>/system/api.php/plan/refund-post"
+```
+
+Admin API key (X-API-Key):
+```bash
+curl -s \
+  -X POST \
+  -H "X-API-Key: <ADMIN_API_KEY>" \
+  -d "id_customer=<value>" \
+  -d "note=<value>" \
+  -d "plan=<value>" \
+  -d "server=<value>" \
+  -d "using=<value>" \
+  "https://<domain>/system/api.php/plan/refund-post"
+```
+
+Admin API key (Authorization: Bearer):
+```bash
+curl -s \
+  -X POST \
+  -H "Authorization: Bearer <ADMIN_API_KEY>" \
+  -d "id_customer=<value>" \
+  -d "note=<value>" \
+  -d "plan=<value>" \
+  -d "server=<value>" \
+  -d "using=<value>" \
+  "https://<domain>/system/api.php/plan/refund-post"
+```
+
+Token (admin, X-Token):
+```bash
+curl -s \
+  -X POST \
+  -H "X-Token: a.<aid>.<time>.<sha1>" \
+  -d "id_customer=<value>" \
+  -d "note=<value>" \
+  -d "plan=<value>" \
+  -d "server=<value>" \
+  -d "using=<value>" \
+  "https://<domain>/system/api.php/plan/refund-post"
+```
+
+Token (admin, query):
+```bash
+curl -s \
+  -X POST \
+  -d "id_customer=<value>" \
+  -d "note=<value>" \
+  -d "plan=<value>" \
+  -d "server=<value>" \
+  -d "using=<value>" \
+  "https://<domain>/system/api.php?r=plan/refund-post&token=a.<aid>.<time>.<sha1>"
+```
+
+### GET /plan/refund/{p2}
+- Access: `admin`
+- Legacy route: `r=plan/refund/{p2}`
+- Response: JSON envelope (`success`, `message`, `result`, `meta`)
+
+Admin API key (X-Admin-Api-Key, recommended):
+```bash
+curl -s \
+  -H "X-Admin-Api-Key: <ADMIN_API_KEY>" \
+  "https://<domain>/system/api.php/plan/refund/<p2>"
+```
+
+Admin API key (X-API-Key):
+```bash
+curl -s \
+  -H "X-API-Key: <ADMIN_API_KEY>" \
+  "https://<domain>/system/api.php/plan/refund/<p2>"
+```
+
+Admin API key (Authorization: Bearer):
+```bash
+curl -s \
+  -H "Authorization: Bearer <ADMIN_API_KEY>" \
+  "https://<domain>/system/api.php/plan/refund/<p2>"
+```
+
+Token (admin, X-Token):
+```bash
+curl -s \
+  -H "X-Token: a.<aid>.<time>.<sha1>" \
+  "https://<domain>/system/api.php/plan/refund/<p2>"
+```
+
+Token (admin, query):
+```bash
+curl -s "https://<domain>/system/api.php?r=plan/refund/<p2>&token=a.<aid>.<time>.<sha1>"
 ```
 
 ### GET /plan/remove-voucher
@@ -9667,6 +9964,119 @@ curl -s "https://<domain>/system/api.php?r=services/vpn-edit/<id>&token=a.<aid>.
 
 ## settings
 
+### POST /settings/api-block-add
+- Access: `admin`
+- Legacy route: `r=settings/api-block-add`
+- Response: JSON envelope (`success`, `message`, `result`, `meta`)
+
+Admin API key (X-Admin-Api-Key, recommended):
+```bash
+curl -s \
+  -X POST \
+  -H "X-Admin-Api-Key: <ADMIN_API_KEY>" \
+  -d "api_block_add_blocked_until=<value>" \
+  -d "api_block_add_ip=<value>" \
+  "https://<domain>/system/api.php/settings/api-block-add"
+```
+
+Admin API key (X-API-Key):
+```bash
+curl -s \
+  -X POST \
+  -H "X-API-Key: <ADMIN_API_KEY>" \
+  -d "api_block_add_blocked_until=<value>" \
+  -d "api_block_add_ip=<value>" \
+  "https://<domain>/system/api.php/settings/api-block-add"
+```
+
+Admin API key (Authorization: Bearer):
+```bash
+curl -s \
+  -X POST \
+  -H "Authorization: Bearer <ADMIN_API_KEY>" \
+  -d "api_block_add_blocked_until=<value>" \
+  -d "api_block_add_ip=<value>" \
+  "https://<domain>/system/api.php/settings/api-block-add"
+```
+
+Token (admin, X-Token):
+```bash
+curl -s \
+  -X POST \
+  -H "X-Token: a.<aid>.<time>.<sha1>" \
+  -d "api_block_add_blocked_until=<value>" \
+  -d "api_block_add_ip=<value>" \
+  "https://<domain>/system/api.php/settings/api-block-add"
+```
+
+Token (admin, query):
+```bash
+curl -s \
+  -X POST \
+  -d "api_block_add_blocked_until=<value>" \
+  -d "api_block_add_ip=<value>" \
+  "https://<domain>/system/api.php?r=settings/api-block-add&token=a.<aid>.<time>.<sha1>"
+```
+
+### POST /settings/api-block-edit
+- Access: `admin`
+- Legacy route: `r=settings/api-block-edit`
+- Response: JSON envelope (`success`, `message`, `result`, `meta`)
+
+Admin API key (X-Admin-Api-Key, recommended):
+```bash
+curl -s \
+  -X POST \
+  -H "X-Admin-Api-Key: <ADMIN_API_KEY>" \
+  -d "api_block_edit_blocked_until=<value>" \
+  -d "api_block_edit_fail_count=<value>" \
+  -d "api_block_edit_ip=<value>" \
+  "https://<domain>/system/api.php/settings/api-block-edit"
+```
+
+Admin API key (X-API-Key):
+```bash
+curl -s \
+  -X POST \
+  -H "X-API-Key: <ADMIN_API_KEY>" \
+  -d "api_block_edit_blocked_until=<value>" \
+  -d "api_block_edit_fail_count=<value>" \
+  -d "api_block_edit_ip=<value>" \
+  "https://<domain>/system/api.php/settings/api-block-edit"
+```
+
+Admin API key (Authorization: Bearer):
+```bash
+curl -s \
+  -X POST \
+  -H "Authorization: Bearer <ADMIN_API_KEY>" \
+  -d "api_block_edit_blocked_until=<value>" \
+  -d "api_block_edit_fail_count=<value>" \
+  -d "api_block_edit_ip=<value>" \
+  "https://<domain>/system/api.php/settings/api-block-edit"
+```
+
+Token (admin, X-Token):
+```bash
+curl -s \
+  -X POST \
+  -H "X-Token: a.<aid>.<time>.<sha1>" \
+  -d "api_block_edit_blocked_until=<value>" \
+  -d "api_block_edit_fail_count=<value>" \
+  -d "api_block_edit_ip=<value>" \
+  "https://<domain>/system/api.php/settings/api-block-edit"
+```
+
+Token (admin, query):
+```bash
+curl -s \
+  -X POST \
+  -d "api_block_edit_blocked_until=<value>" \
+  -d "api_block_edit_fail_count=<value>" \
+  -d "api_block_edit_ip=<value>" \
+  "https://<domain>/system/api.php?r=settings/api-block-edit&token=a.<aid>.<time>.<sha1>"
+```
+
 ### GET /settings/api-unblock
 - Access: `admin`
 - Legacy route: `r=settings/api-unblock`
@@ -10521,6 +10931,183 @@ curl -s \
 Token (admin, query):
 ```bash
 curl -s "https://<domain>/system/api.php?r=settings/notifications&token=a.<aid>.<time>.<sha1>"
+```
+
+### POST /settings/notifications-override-plan-post
+- Access: `admin`
+- Legacy route: `r=settings/notifications-override-plan-post`
+- Response: JSON envelope (`success`, `message`, `result`, `meta`)
+
+Admin API key (X-Admin-Api-Key, recommended):
+```bash
+curl -s \
+  -X POST \
+  -H "X-Admin-Api-Key: <ADMIN_API_KEY>" \
+  -d "message=<value>" \
+  -d "plan_id=<value>" \
+  -d "template_key=<value>" \
+  "https://<domain>/system/api.php/settings/notifications-override-plan-post"
+```
+
+Admin API key (X-API-Key):
+```bash
+curl -s \
+  -X POST \
+  -H "X-API-Key: <ADMIN_API_KEY>" \
+  -d "message=<value>" \
+  -d "plan_id=<value>" \
+  -d "template_key=<value>" \
+  "https://<domain>/system/api.php/settings/notifications-override-plan-post"
+```
+
+Admin API key (Authorization: Bearer):
+```bash
+curl -s \
+  -X POST \
+  -H "Authorization: Bearer <ADMIN_API_KEY>" \
+  -d "message=<value>" \
+  -d "plan_id=<value>" \
+  -d "template_key=<value>" \
+  "https://<domain>/system/api.php/settings/notifications-override-plan-post"
+```
+
+Token (admin, X-Token):
+```bash
+curl -s \
+  -X POST \
+  -H "X-Token: a.<aid>.<time>.<sha1>" \
+  -d "message=<value>" \
+  -d "plan_id=<value>" \
+  -d "template_key=<value>" \
+  "https://<domain>/system/api.php/settings/notifications-override-plan-post"
+```
+
+Token (admin, query):
+```bash
+curl -s \
+  -X POST \
+  -d "message=<value>" \
+  -d "plan_id=<value>" \
+  -d "template_key=<value>" \
+  "https://<domain>/system/api.php?r=settings/notifications-override-plan-post&token=a.<aid>.<time>.<sha1>"
+```
+
+### POST /settings/notifications-override-purpose-post
+- Access: `admin`
+- Legacy route: `r=settings/notifications-override-purpose-post`
+- Response: JSON envelope (`success`, `message`, `result`, `meta`)
+
+Admin API key (X-Admin-Api-Key, recommended):
+```bash
+curl -s \
+  -X POST \
+  -H "X-Admin-Api-Key: <ADMIN_API_KEY>" \
+  -d "message=<value>" \
+  -d "purpose_key=<value>" \
+  -d "template_key=<value>" \
+  "https://<domain>/system/api.php/settings/notifications-override-purpose-post"
+```
+
+Admin API key (X-API-Key):
+```bash
+curl -s \
+  -X POST \
+  -H "X-API-Key: <ADMIN_API_KEY>" \
+  -d "message=<value>" \
+  -d "purpose_key=<value>" \
+  -d "template_key=<value>" \
+  "https://<domain>/system/api.php/settings/notifications-override-purpose-post"
+```
+
+Admin API key (Authorization: Bearer):
+```bash
+curl -s \
+  -X POST \
+  -H "Authorization: Bearer <ADMIN_API_KEY>" \
+  -d "message=<value>" \
+  -d "purpose_key=<value>" \
+  -d "template_key=<value>" \
+  "https://<domain>/system/api.php/settings/notifications-override-purpose-post"
+```
+
+Token (admin, X-Token):
+```bash
+curl -s \
+  -X POST \
+  -H "X-Token: a.<aid>.<time>.<sha1>" \
+  -d "message=<value>" \
+  -d "purpose_key=<value>" \
+  -d "template_key=<value>" \
+  "https://<domain>/system/api.php/settings/notifications-override-purpose-post"
+```
+
+Token (admin, query):
+```bash
+curl -s \
+  -X POST \
+  -d "message=<value>" \
+  -d "purpose_key=<value>" \
+  -d "template_key=<value>" \
+  "https://<domain>/system/api.php?r=settings/notifications-override-purpose-post&token=a.<aid>.<time>.<sha1>"
+```
+
+### POST /settings/notifications-override-type-post
+- Access: `admin`
+- Legacy route: `r=settings/notifications-override-type-post`
+- Response: JSON envelope (`success`, `message`, `result`, `meta`)
+
+Admin API key (X-Admin-Api-Key, recommended):
+```bash
+curl -s \
+  -X POST \
+  -H "X-Admin-Api-Key: <ADMIN_API_KEY>" \
+  -d "message=<value>" \
+  -d "template_key=<value>" \
+  -d "type_key=<value>" \
+  "https://<domain>/system/api.php/settings/notifications-override-type-post"
+```
+
+Admin API key (X-API-Key):
+```bash
+curl -s \
+  -X POST \
+  -H "X-API-Key: <ADMIN_API_KEY>" \
+  -d "message=<value>" \
+  -d "template_key=<value>" \
+  -d "type_key=<value>" \
+  "https://<domain>/system/api.php/settings/notifications-override-type-post"
+```
+
+Admin API key (Authorization: Bearer):
+```bash
+curl -s \
+  -X POST \
+  -H "Authorization: Bearer <ADMIN_API_KEY>" \
+  -d "message=<value>" \
+  -d "template_key=<value>" \
+  -d "type_key=<value>" \
+  "https://<domain>/system/api.php/settings/notifications-override-type-post"
+```
+
+Token (admin, X-Token):
+```bash
+curl -s \
+  -X POST \
+  -H "X-Token: a.<aid>.<time>.<sha1>" \
+  -d "message=<value>" \
+  -d "template_key=<value>" \
+  -d "type_key=<value>" \
+  "https://<domain>/system/api.php/settings/notifications-override-type-post"
+```
+
+Token (admin, query):
+```bash
+curl -s \
+  -X POST \
+  -d "message=<value>" \
+  -d "template_key=<value>" \
+  -d "type_key=<value>" \
+  "https://<domain>/system/api.php?r=settings/notifications-override-type-post&token=a.<aid>.<time>.<sha1>"
 ```
 
 ### POST /settings/notifications-post
@@ -11494,4 +12081,88 @@ curl -s \
   -d "id[]=<value>" \
   -d "orders[]=<value>" \
   "https://<domain>/system/api.php?r=widgets/pos&token=a.<aid>.<time>.<sha1>"
+```
+
+### GET /widgets/{widget}/{command}
+- Access: `admin`
+- Legacy route: `r=widgets/{widget}/{command}`
+- Response: non-JSON (binary/csv/pdf/html/text)
+- Query params: `user`
+
+Admin API key (X-Admin-Api-Key, recommended):
+```bash
+curl -s \
+  -H "X-Admin-Api-Key: <ADMIN_API_KEY>" \
+  "https://<domain>/system/api.php/widgets/<widget>/<command>?user=<USERNAME>"
+```
+
+Admin API key (X-API-Key):
+```bash
+curl -s \
+  -H "X-API-Key: <ADMIN_API_KEY>" \
+  "https://<domain>/system/api.php/widgets/<widget>/<command>?user=<USERNAME>"
+```
+
+Admin API key (Authorization: Bearer):
+```bash
+curl -s \
+  -H "Authorization: Bearer <ADMIN_API_KEY>" \
+  "https://<domain>/system/api.php/widgets/<widget>/<command>?user=<USERNAME>"
+```
+
+Token (admin, X-Token):
+```bash
+curl -s \
+  -H "X-Token: a.<aid>.<time>.<sha1>" \
+  "https://<domain>/system/api.php/widgets/<widget>/<command>?user=<USERNAME>"
+```
+
+Token (admin, query):
+```bash
+curl -s "https://<domain>/system/api.php?r=widgets/<widget>/<command>&user=<USERNAME>&token=a.<aid>.<time>.<sha1>"
+```
+
+### POST /widgets/{widget}/{command}
+- Access: `admin`
+- Legacy route: `r=widgets/{widget}/{command}`
+- Response: non-JSON (binary/csv/pdf/html/text)
+- Query params: `user`
+
+Admin API key (X-Admin-Api-Key, recommended):
+```bash
+curl -s \
+  -X POST \
+  -H "X-Admin-Api-Key: <ADMIN_API_KEY>" \
+  "https://<domain>/system/api.php/widgets/<widget>/<command>?user=<USERNAME>"
+```
+
+Admin API key (X-API-Key):
+```bash
+curl -s \
+  -X POST \
+  -H "X-API-Key: <ADMIN_API_KEY>" \
+  "https://<domain>/system/api.php/widgets/<widget>/<command>?user=<USERNAME>"
+```
+
+Admin API key (Authorization: Bearer):
+```bash
+curl -s \
+  -X POST \
+  -H "Authorization: Bearer <ADMIN_API_KEY>" \
+  "https://<domain>/system/api.php/widgets/<widget>/<command>?user=<USERNAME>"
+```
+
+Token (admin, X-Token):
+```bash
+curl -s \
+  -X POST \
+  -H "X-Token: a.<aid>.<time>.<sha1>" \
+  "https://<domain>/system/api.php/widgets/<widget>/<command>?user=<USERNAME>"
+```
+
+Token (admin, query):
+```bash
+curl -s \
+  -X POST \
+  "https://<domain>/system/api.php?r=widgets/<widget>/<command>&user=<USERNAME>&token=a.<aid>.<time>.<sha1>"
 ```
