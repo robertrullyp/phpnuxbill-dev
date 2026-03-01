@@ -1445,6 +1445,87 @@
         ]
       }
     },
+    "/autoload/pppoe_service": {
+      "get": {
+        "tags": [
+          "autoload"
+        ],
+        "summary": "autoload/pppoe_service",
+        "operationId": "autoload_pppoe_service_get",
+        "description": "Legacy route: `r=autoload/pppoe_service`\nAccess: `admin`\n\nImplementation notes:\n- Legacy routing uses query param `r=...` on `/system/api.php`.\n- OpenAPI paths map to PATH_INFO style `/system/api.php/<route>` (same handler).",
+        "x-phpnuxbill-route": "autoload/pppoe_service",
+        "x-phpnuxbill-access": "admin",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limited / API key throttled",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "description": "Seconds to wait before retrying."
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "AdminApiKey": []
+          },
+          {
+            "AdminApiKeyAlt": []
+          },
+          {
+            "AdminBearerApiKey": []
+          },
+          {
+            "TokenHeader": []
+          },
+          {
+            "TokenHeaderLegacy": []
+          },
+          {
+            "LegacyTokenQuery": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "routers",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "selected",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
     "/autoload/pppoe_ip_used": {
       "get": {
         "tags": [
@@ -9797,6 +9878,152 @@
         }
       }
     },
+    "/paymentgateway/{gateway}": {
+      "get": {
+        "tags": [
+          "paymentgateway"
+        ],
+        "summary": "paymentgateway/gateway-config",
+        "operationId": "paymentgateway_gateway_config_get",
+        "description": "Legacy route: `r=paymentgateway`\nAccess: `admin`\n\nImplementation notes:\n- Legacy routing uses query param `r=...` on `/system/api.php`.\n- OpenAPI paths map to PATH_INFO style `/system/api.php/<route>` (same handler).",
+        "x-phpnuxbill-route": "paymentgateway",
+        "x-phpnuxbill-access": "admin",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limited / API key throttled",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "description": "Seconds to wait before retrying."
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "AdminApiKey": []
+          },
+          {
+            "AdminApiKeyAlt": []
+          },
+          {
+            "AdminBearerApiKey": []
+          },
+          {
+            "TokenHeader": []
+          },
+          {
+            "TokenHeaderLegacy": []
+          },
+          {
+            "LegacyTokenQuery": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "gateway",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "$gateway (routes[1])."
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "paymentgateway"
+        ],
+        "summary": "paymentgateway/gateway-config",
+        "operationId": "paymentgateway_gateway_config_post",
+        "description": "Legacy route: `r=paymentgateway`\nAccess: `admin`\n\nImplementation notes:\n- Legacy routing uses query param `r=...` on `/system/api.php`.\n- OpenAPI paths map to PATH_INFO style `/system/api.php/<route>` (same handler).",
+        "x-phpnuxbill-route": "paymentgateway",
+        "x-phpnuxbill-access": "admin",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limited / API key throttled",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "description": "Seconds to wait before retrying."
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "AdminApiKey": []
+          },
+          {
+            "AdminApiKeyAlt": []
+          },
+          {
+            "AdminBearerApiKey": []
+          },
+          {
+            "TokenHeader": []
+          },
+          {
+            "TokenHeaderLegacy": []
+          },
+          {
+            "LegacyTokenQuery": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "gateway",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "$gateway (routes[1])."
+          }
+        ]
+      }
+    },
     "/paymentgateway/delete/{pg}": {
       "get": {
         "tags": [
@@ -10526,9 +10753,7 @@
                     "type": "string"
                   },
                   "note": {
-                    "type": "string",
-                    "maxLength": 256,
-                    "description": "Optional note for transaction."
+                    "type": "string"
                   }
                 },
                 "additionalProperties": true
@@ -10557,9 +10782,7 @@
                     "type": "string"
                   },
                   "note": {
-                    "type": "string",
-                    "maxLength": 256,
-                    "description": "Optional note for transaction."
+                    "type": "string"
                   }
                 },
                 "additionalProperties": true
@@ -10659,9 +10882,7 @@
                     "type": "string"
                   },
                   "note": {
-                    "type": "string",
-                    "maxLength": 256,
-                    "description": "Optional note for transaction."
+                    "type": "string"
                   }
                 },
                 "additionalProperties": true
@@ -10693,9 +10914,333 @@
                     "type": "string"
                   },
                   "note": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": true
+              }
+            }
+          }
+        }
+      }
+    },
+    "/plan/refund/{p2}": {
+      "get": {
+        "tags": [
+          "plan"
+        ],
+        "summary": "plan/refund",
+        "operationId": "plan_refund_get",
+        "description": "Legacy route: `r=plan/refund`\nAccess: `admin`\n\nImplementation notes:\n- Legacy routing uses query param `r=...` on `/system/api.php`.\n- OpenAPI paths map to PATH_INFO style `/system/api.php/<route>` (same handler).",
+        "x-phpnuxbill-route": "plan/refund",
+        "x-phpnuxbill-access": "admin",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limited / API key throttled",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "description": "Seconds to wait before retrying."
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "AdminApiKey": []
+          },
+          {
+            "AdminApiKeyAlt": []
+          },
+          {
+            "AdminBearerApiKey": []
+          },
+          {
+            "TokenHeader": []
+          },
+          {
+            "TokenHeaderLegacy": []
+          },
+          {
+            "LegacyTokenQuery": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "p2",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "(direct) (routes[2])."
+          }
+        ]
+      }
+    },
+    "/plan/refund-confirm": {
+      "post": {
+        "tags": [
+          "plan"
+        ],
+        "summary": "plan/refund-confirm",
+        "operationId": "plan_refund_confirm_post",
+        "description": "Legacy route: `r=plan/refund-confirm`\nAccess: `admin`\n\nImplementation notes:\n- Legacy routing uses query param `r=...` on `/system/api.php`.\n- OpenAPI paths map to PATH_INFO style `/system/api.php/<route>` (same handler).",
+        "x-phpnuxbill-route": "plan/refund-confirm",
+        "x-phpnuxbill-access": "admin",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limited / API key throttled",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "description": "Seconds to wait before retrying."
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "AdminApiKey": []
+          },
+          {
+            "AdminApiKeyAlt": []
+          },
+          {
+            "AdminBearerApiKey": []
+          },
+          {
+            "TokenHeader": []
+          },
+          {
+            "TokenHeaderLegacy": []
+          },
+          {
+            "LegacyTokenQuery": []
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "csrf_token": {
                     "type": "string",
-                    "maxLength": 256,
-                    "description": "Optional note for transaction."
+                    "deprecated": true,
+                    "description": "CSRF is bypassed when `isApi=true`; this field is ignored for API calls."
+                  },
+                  "id_customer": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "plan": {
+                    "type": "string"
+                  },
+                  "server": {
+                    "type": "string"
+                  },
+                  "using": {
+                    "type": "string"
+                  },
+                  "note": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": true
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "csrf_token": {
+                    "type": "string",
+                    "deprecated": true,
+                    "description": "CSRF is bypassed when `isApi=true`; this field is ignored for API calls."
+                  },
+                  "id_customer": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "plan": {
+                    "type": "string"
+                  },
+                  "server": {
+                    "type": "string"
+                  },
+                  "using": {
+                    "type": "string"
+                  },
+                  "note": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": true
+              }
+            }
+          }
+        }
+      }
+    },
+    "/plan/refund-post": {
+      "post": {
+        "tags": [
+          "plan"
+        ],
+        "summary": "plan/refund-post",
+        "operationId": "plan_refund_post_post",
+        "description": "Legacy route: `r=plan/refund-post`\nAccess: `admin`\n\nImplementation notes:\n- Legacy routing uses query param `r=...` on `/system/api.php`.\n- OpenAPI paths map to PATH_INFO style `/system/api.php/<route>` (same handler).",
+        "x-phpnuxbill-route": "plan/refund-post",
+        "x-phpnuxbill-access": "admin",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limited / API key throttled",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "description": "Seconds to wait before retrying."
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "AdminApiKey": []
+          },
+          {
+            "AdminApiKeyAlt": []
+          },
+          {
+            "AdminBearerApiKey": []
+          },
+          {
+            "TokenHeader": []
+          },
+          {
+            "TokenHeaderLegacy": []
+          },
+          {
+            "LegacyTokenQuery": []
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "csrf_token": {
+                    "type": "string",
+                    "deprecated": true,
+                    "description": "CSRF is bypassed when `isApi=true`; this field is ignored for API calls."
+                  },
+                  "id_customer": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "plan": {
+                    "type": "string"
+                  },
+                  "server": {
+                    "type": "string"
+                  },
+                  "using": {
+                    "type": "string"
+                  },
+                  "note": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": true
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "csrf_token": {
+                    "type": "string",
+                    "deprecated": true,
+                    "description": "CSRF is bypassed when `isApi=true`; this field is ignored for API calls."
+                  },
+                  "id_customer": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "plan": {
+                    "type": "string"
+                  },
+                  "server": {
+                    "type": "string"
+                  },
+                  "using": {
+                    "type": "string"
+                  },
+                  "note": {
+                    "type": "string"
                   }
                 },
                 "additionalProperties": true
@@ -13282,68 +13827,8 @@
           {
             "LegacyTokenQuery": []
           }
-        ]
-      },
-      "get_alt": {
-        "tags": [
-          "pool"
         ],
-        "summary": "pool/sync",
-        "operationId": "pool_sync_get_2",
-        "description": "Legacy route: `r=pool/sync`\nAccess: `admin`\n\nImplementation notes:\n- Legacy routing uses query param `r=...` on `/system/api.php`.\n- OpenAPI paths map to PATH_INFO style `/system/api.php/<route>` (same handler).",
-        "x-phpnuxbill-route": "pool/sync",
-        "x-phpnuxbill-access": "admin",
-        "responses": {
-          "200": {
-            "description": "OK",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiResponse"
-                }
-              }
-            }
-          },
-          "429": {
-            "description": "Rate limited / API key throttled",
-            "headers": {
-              "Retry-After": {
-                "schema": {
-                  "type": "integer",
-                  "minimum": 1
-                },
-                "description": "Seconds to wait before retrying."
-              }
-            },
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiResponse"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "AdminApiKey": []
-          },
-          {
-            "AdminApiKeyAlt": []
-          },
-          {
-            "AdminBearerApiKey": []
-          },
-          {
-            "TokenHeader": []
-          },
-          {
-            "TokenHeaderLegacy": []
-          },
-          {
-            "LegacyTokenQuery": []
-          }
-        ]
+        "parameters": []
       }
     },
     "/pool/add-post": {
@@ -20215,6 +20700,224 @@
         ]
       }
     },
+    "/settings/api-block-add": {
+      "post": {
+        "tags": [
+          "settings"
+        ],
+        "summary": "settings/api-block-add",
+        "operationId": "settings_api_block_add_post",
+        "description": "Legacy route: `r=settings/api-block-add`\nAccess: `admin`\n\nImplementation notes:\n- Legacy routing uses query param `r=...` on `/system/api.php`.\n- OpenAPI paths map to PATH_INFO style `/system/api.php/<route>` (same handler).",
+        "x-phpnuxbill-route": "settings/api-block-add",
+        "x-phpnuxbill-access": "admin",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limited / API key throttled",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "description": "Seconds to wait before retrying."
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "AdminApiKey": []
+          },
+          {
+            "AdminApiKeyAlt": []
+          },
+          {
+            "AdminBearerApiKey": []
+          },
+          {
+            "TokenHeader": []
+          },
+          {
+            "TokenHeaderLegacy": []
+          },
+          {
+            "LegacyTokenQuery": []
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "csrf_token": {
+                    "type": "string",
+                    "deprecated": true,
+                    "description": "CSRF is bypassed when `isApi=true`; this field is ignored for API calls."
+                  },
+                  "api_block_add_ip": {
+                    "type": "string"
+                  },
+                  "api_block_add_blocked_until": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": true
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "csrf_token": {
+                    "type": "string",
+                    "deprecated": true,
+                    "description": "CSRF is bypassed when `isApi=true`; this field is ignored for API calls."
+                  },
+                  "api_block_add_ip": {
+                    "type": "string"
+                  },
+                  "api_block_add_blocked_until": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": true
+              }
+            }
+          }
+        }
+      }
+    },
+    "/settings/api-block-edit": {
+      "post": {
+        "tags": [
+          "settings"
+        ],
+        "summary": "settings/api-block-edit",
+        "operationId": "settings_api_block_edit_post",
+        "description": "Legacy route: `r=settings/api-block-edit`\nAccess: `admin`\n\nImplementation notes:\n- Legacy routing uses query param `r=...` on `/system/api.php`.\n- OpenAPI paths map to PATH_INFO style `/system/api.php/<route>` (same handler).",
+        "x-phpnuxbill-route": "settings/api-block-edit",
+        "x-phpnuxbill-access": "admin",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limited / API key throttled",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "description": "Seconds to wait before retrying."
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "AdminApiKey": []
+          },
+          {
+            "AdminApiKeyAlt": []
+          },
+          {
+            "AdminBearerApiKey": []
+          },
+          {
+            "TokenHeader": []
+          },
+          {
+            "TokenHeaderLegacy": []
+          },
+          {
+            "LegacyTokenQuery": []
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "csrf_token": {
+                    "type": "string",
+                    "deprecated": true,
+                    "description": "CSRF is bypassed when `isApi=true`; this field is ignored for API calls."
+                  },
+                  "api_block_edit_ip": {
+                    "type": "string"
+                  },
+                  "api_block_edit_blocked_until": {
+                    "type": "string"
+                  },
+                  "api_block_edit_fail_count": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": true
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "csrf_token": {
+                    "type": "string",
+                    "deprecated": true,
+                    "description": "CSRF is bypassed when `isApi=true`; this field is ignored for API calls."
+                  },
+                  "api_block_edit_ip": {
+                    "type": "string"
+                  },
+                  "api_block_edit_blocked_until": {
+                    "type": "string"
+                  },
+                  "api_block_edit_fail_count": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": true
+              }
+            }
+          }
+        }
+      }
+    },
     "/settings/localisation": {
       "get": {
         "tags": [
@@ -21462,6 +22165,344 @@
                     "type": "string",
                     "deprecated": true,
                     "description": "CSRF is bypassed when `isApi=true`; this field is ignored for API calls."
+                  }
+                },
+                "additionalProperties": true
+              }
+            }
+          }
+        }
+      }
+    },
+    "/settings/notifications-override-type-post": {
+      "post": {
+        "tags": [
+          "settings"
+        ],
+        "summary": "settings/notifications-override-type-post",
+        "operationId": "settings_notifications_override_type_post_post",
+        "description": "Legacy route: `r=settings/notifications-override-type-post`\nAccess: `admin`\n\nImplementation notes:\n- Legacy routing uses query param `r=...` on `/system/api.php`.\n- OpenAPI paths map to PATH_INFO style `/system/api.php/<route>` (same handler).",
+        "x-phpnuxbill-route": "settings/notifications-override-type-post",
+        "x-phpnuxbill-access": "admin",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limited / API key throttled",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "description": "Seconds to wait before retrying."
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "AdminApiKey": []
+          },
+          {
+            "AdminApiKeyAlt": []
+          },
+          {
+            "AdminBearerApiKey": []
+          },
+          {
+            "TokenHeader": []
+          },
+          {
+            "TokenHeaderLegacy": []
+          },
+          {
+            "LegacyTokenQuery": []
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "csrf_token": {
+                    "type": "string",
+                    "deprecated": true,
+                    "description": "CSRF is bypassed when `isApi=true`; this field is ignored for API calls."
+                  },
+                  "template_key": {
+                    "type": "string"
+                  },
+                  "type_key": {
+                    "type": "string"
+                  },
+                  "message": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": true
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "csrf_token": {
+                    "type": "string",
+                    "deprecated": true,
+                    "description": "CSRF is bypassed when `isApi=true`; this field is ignored for API calls."
+                  },
+                  "template_key": {
+                    "type": "string"
+                  },
+                  "type_key": {
+                    "type": "string"
+                  },
+                  "message": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": true
+              }
+            }
+          }
+        }
+      }
+    },
+    "/settings/notifications-override-plan-post": {
+      "post": {
+        "tags": [
+          "settings"
+        ],
+        "summary": "settings/notifications-override-plan-post",
+        "operationId": "settings_notifications_override_plan_post_post",
+        "description": "Legacy route: `r=settings/notifications-override-plan-post`\nAccess: `admin`\n\nImplementation notes:\n- Legacy routing uses query param `r=...` on `/system/api.php`.\n- OpenAPI paths map to PATH_INFO style `/system/api.php/<route>` (same handler).",
+        "x-phpnuxbill-route": "settings/notifications-override-plan-post",
+        "x-phpnuxbill-access": "admin",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limited / API key throttled",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "description": "Seconds to wait before retrying."
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "AdminApiKey": []
+          },
+          {
+            "AdminApiKeyAlt": []
+          },
+          {
+            "AdminBearerApiKey": []
+          },
+          {
+            "TokenHeader": []
+          },
+          {
+            "TokenHeaderLegacy": []
+          },
+          {
+            "LegacyTokenQuery": []
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "csrf_token": {
+                    "type": "string",
+                    "deprecated": true,
+                    "description": "CSRF is bypassed when `isApi=true`; this field is ignored for API calls."
+                  },
+                  "plan_id": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "template_key": {
+                    "type": "string"
+                  },
+                  "message": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": true
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "csrf_token": {
+                    "type": "string",
+                    "deprecated": true,
+                    "description": "CSRF is bypassed when `isApi=true`; this field is ignored for API calls."
+                  },
+                  "plan_id": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "template_key": {
+                    "type": "string"
+                  },
+                  "message": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": true
+              }
+            }
+          }
+        }
+      }
+    },
+    "/settings/notifications-override-purpose-post": {
+      "post": {
+        "tags": [
+          "settings"
+        ],
+        "summary": "settings/notifications-override-purpose-post",
+        "operationId": "settings_notifications_override_purpose_post_post",
+        "description": "Legacy route: `r=settings/notifications-override-purpose-post`\nAccess: `admin`\n\nImplementation notes:\n- Legacy routing uses query param `r=...` on `/system/api.php`.\n- OpenAPI paths map to PATH_INFO style `/system/api.php/<route>` (same handler).",
+        "x-phpnuxbill-route": "settings/notifications-override-purpose-post",
+        "x-phpnuxbill-access": "admin",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limited / API key throttled",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "description": "Seconds to wait before retrying."
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "AdminApiKey": []
+          },
+          {
+            "AdminApiKeyAlt": []
+          },
+          {
+            "AdminBearerApiKey": []
+          },
+          {
+            "TokenHeader": []
+          },
+          {
+            "TokenHeaderLegacy": []
+          },
+          {
+            "LegacyTokenQuery": []
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "csrf_token": {
+                    "type": "string",
+                    "deprecated": true,
+                    "description": "CSRF is bypassed when `isApi=true`; this field is ignored for API calls."
+                  },
+                  "template_key": {
+                    "type": "string"
+                  },
+                  "purpose_key": {
+                    "type": "string"
+                  },
+                  "message": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": true
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "csrf_token": {
+                    "type": "string",
+                    "deprecated": true,
+                    "description": "CSRF is bypassed when `isApi=true`; this field is ignored for API calls."
+                  },
+                  "template_key": {
+                    "type": "string"
+                  },
+                  "purpose_key": {
+                    "type": "string"
+                  },
+                  "message": {
+                    "type": "string"
                   }
                 },
                 "additionalProperties": true
@@ -23191,6 +24232,198 @@
             }
           }
         }
+      }
+    },
+    "/widgets/{widget}/{command}": {
+      "get": {
+        "tags": [
+          "widgets"
+        ],
+        "summary": "widgets/widget-command",
+        "operationId": "widgets_widget_command_get",
+        "description": "Legacy route: `r=widgets`\nAccess: `admin`\n\nImplementation notes:\n- Legacy routing uses query param `r=...` on `/system/api.php`.\n- OpenAPI paths map to PATH_INFO style `/system/api.php/<route>` (same handler).",
+        "x-phpnuxbill-route": "widgets",
+        "x-phpnuxbill-access": "admin",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              },
+              "application/octet-stream": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limited / API key throttled",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "description": "Seconds to wait before retrying."
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "AdminApiKey": []
+          },
+          {
+            "AdminApiKeyAlt": []
+          },
+          {
+            "AdminBearerApiKey": []
+          },
+          {
+            "TokenHeader": []
+          },
+          {
+            "TokenHeaderLegacy": []
+          },
+          {
+            "LegacyTokenQuery": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "widget",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "$widget (routes[1])."
+          },
+          {
+            "name": "command",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "$command (routes[2])."
+          },
+          {
+            "name": "user",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "widgets"
+        ],
+        "summary": "widgets/widget-command",
+        "operationId": "widgets_widget_command_post",
+        "description": "Legacy route: `r=widgets`\nAccess: `admin`\n\nImplementation notes:\n- Legacy routing uses query param `r=...` on `/system/api.php`.\n- OpenAPI paths map to PATH_INFO style `/system/api.php/<route>` (same handler).",
+        "x-phpnuxbill-route": "widgets",
+        "x-phpnuxbill-access": "admin",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              },
+              "application/octet-stream": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limited / API key throttled",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "description": "Seconds to wait before retrying."
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "AdminApiKey": []
+          },
+          {
+            "AdminApiKeyAlt": []
+          },
+          {
+            "AdminBearerApiKey": []
+          },
+          {
+            "TokenHeader": []
+          },
+          {
+            "TokenHeaderLegacy": []
+          },
+          {
+            "LegacyTokenQuery": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "widget",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "$widget (routes[1])."
+          },
+          {
+            "name": "command",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "$command (routes[2])."
+          },
+          {
+            "name": "user",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
       }
     },
     "/whoami": {
