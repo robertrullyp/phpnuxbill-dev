@@ -287,7 +287,7 @@ CREATE TABLE `tbl_customers_inbox` (
   `customer_id` int NOT NULL,
   `date_created` datetime NOT NULL,
   `date_read` datetime DEFAULT NULL,
-  `subject` varchar(64) COLLATE utf8mb4_general_ci NOT NULL,
+  `subject` varchar(255) COLLATE utf8mb4_general_ci NOT NULL,
   `body` TEXT  NULL DEFAULT NULL,
   `from` varchar(8) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL DEFAULT 'System' COMMENT 'System or Admin or Else',
   `admin_id` int NOT NULL DEFAULT '0' COMMENT 'other than admin is 0',

@@ -20,6 +20,14 @@
                             <input type="text" class="form-control" name="recipient" value="{$log['recipient']}" required>
                         </div>
                     </div>
+                    {if $channel == 'inbox'}
+                        <div class="form-group">
+                            <label class="col-md-3 control-label">{Lang::T('Subject')}</label>
+                            <div class="col-md-6">
+                                <input type="text" class="form-control" name="subject" value="{$resend_subject|escape}" placeholder="{Lang::T('Enter message subject here')}" required>
+                            </div>
+                        </div>
+                    {/if}
                     <div class="form-group">
                         <label class="col-md-3 control-label">{Lang::T('Message')}</label>
                         <div class="col-md-9">

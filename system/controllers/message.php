@@ -267,9 +267,12 @@ EOT;
         $channel = 'wa';
         if (strpos($type, 'sms') !== false) {
             $channel = 'sms';
-        } elseif (strpos($type, 'email') !== false || strpos($type, 'inbox') !== false) {
+        } elseif (strpos($type, 'inbox') !== false) {
+            $channel = 'inbox';
+        } elseif (strpos($type, 'email') !== false) {
             $channel = 'other';
         }
+        $resendSubject = Lang::T('Notification Message');
         $payloadUsed = false;
         if ($channel === 'wa') {
             $content = trim((string) $log['message_content']);
@@ -321,6 +324,7 @@ EOT;
         }
         $ui->assign('log', $log);
         $ui->assign('channel', $channel);
+        $ui->assign('resend_subject', $resendSubject);
         $ui->assign('payload_used', $payloadUsed);
         $ui->display('admin/message/resend.tpl');
         break;
@@ -332,6 +336,7 @@ EOT;
         $logId = _post('log_id');
         $recipient = trim((string) _post('recipient'));
         $message = trim((string) _post('message'));
+        $subject = trim((string) _post('subject'));
         $channel = trim((string) _post('channel'));
         if ($recipient === '' || $message === '') {
             r2(getUrl('message/resend/' . $logId), 'e', Lang::T('Recipient and message are required'));
@@ -367,6 +372,23 @@ EOT;
             }
         } elseif ($channel === 'sms') {
             $sent = Message::sendSMS($recipient, $message);
+        } elseif ($channel === 'inbox') {
+            if ($subject === '') {
+                $subject = Lang::T('Notification Message');
+            }
+            if (function_exists('mb_substr')) {
+                $subject = mb_substr($subject, 0, 255, 'UTF-8');
+            } else {
+                $subject = substr($subject, 0, 255);
+            }
+            $customer = ORM::for_table('tbl_customers')->where('username', $recipient)->find_one();
+            if (!$customer && ctype_digit($recipient)) {
+                $customer = ORM::for_table('tbl_customers')->find_one((int) $recipient);
+            }
+            if (!$customer) {
+                r2(getUrl('message/resend/' . $logId), 'e', Lang::T('Customer not found'));
+            }
+            $sent = Message::addToInbox((int) $customer['id'], $subject, $message, 'Admin');
         } else {
             r2(getUrl('message/resend/' . $logId), 'e', Lang::T('Unsupported channel for resend'));
         }
