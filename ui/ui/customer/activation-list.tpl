@@ -16,6 +16,7 @@
                                 <th>{Lang::T('Type')}</th>
                                 <th>{Lang::T('Created On')}</th>
                                 <th>{Lang::T('Expires On')}</th>
+                                <th>{Lang::T('Traffic Usage')}</th>
                                 <th>{Lang::T('Method')}</th>
                             </tr>
                         </thead>
@@ -28,6 +29,11 @@
                                     <td>{$ds.type|escape:'html'}</td>
                                     <td>{Lang::dateAndTimeFormat($ds.recharged_on, $ds.recharged_time)}</td>
                                     <td>{Lang::dateAndTimeFormat($ds.expiration, $ds.time)}</td>
+                                    <td>
+                                        {Lang::T('DL')}: {(($ds.usage_tx_bytes|default:0)/1073741824)|number_format:2:'.':','} GB
+                                        <br>
+                                        {Lang::T('UL')}: {(($ds.usage_rx_bytes|default:0)/1073741824)|number_format:2:'.':','} GB
+                                    </td>
                                     <td>{$ds.method|escape:'html'}</td>
                                 </tr>
                             {/foreach}

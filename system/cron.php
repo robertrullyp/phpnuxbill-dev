@@ -739,6 +739,7 @@ function processDuePppoeCounterResets()
             }
 
             if (strtolower(trim((string) ($recharge['status'] ?? ''))) !== 'on') {
+                PppoeUsage::updateRechargeTotals($rechargeId, 0, 0);
                 PppoeUsage::finalizeCounterResetSchedule($scheduleId, 'skipped', 'Recharge inactive');
                 $skipped++;
                 continue;
@@ -790,7 +791,32 @@ function processDuePppoeCounterResets()
             $warning = '';
             $resetOk = $device->resetPppoeBindingCounters($customerData, $planData, $warning, $bindingName);
             if ($resetOk) {
-                PppoeUsage::finalizeCounterResetSchedule($scheduleId, 'done', 'Counter reset executed at ' . date('Y-m-d H:i:s'));
+                $executedAt = date('Y-m-d H:i:s');
+                $postResetTx = 0;
+                $postResetRx = 0;
+                if (method_exists($device, 'getPppoeBindingCounters')) {
+                    $postResetWarning = '';
+                    $postResetCounters = $device->getPppoeBindingCounters($customerData, $planData, $postResetWarning, $bindingName);
+                    if (is_array($postResetCounters)) {
+                        $postResetTx = max(0, (int) ($postResetCounters['tx_byte'] ?? 0));
+                        $postResetRx = max(0, (int) ($postResetCounters['rx_byte'] ?? 0));
+                        if (!empty($postResetCounters['binding_name'])) {
+                            $bindingName = trim((string) $postResetCounters['binding_name']);
+                        }
+                    }
+                }
+
+                PppoeUsage::resetUsageTotalsAtScheduledExpiry(
+                    $recharge,
+                    $planData,
+                    $customerData,
+                    $executedAt,
+                    $postResetTx,
+                    $postResetRx,
+                    'Counter reset schedule executed',
+                    $bindingName
+                );
+                PppoeUsage::finalizeCounterResetSchedule($scheduleId, 'done', 'Counter reset executed at ' . $executedAt);
                 $done++;
                 continue;
             }

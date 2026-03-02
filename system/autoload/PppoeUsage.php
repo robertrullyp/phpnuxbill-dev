@@ -645,6 +645,99 @@ class PppoeUsage
         return true;
     }
 
+    public static function resetUsageTotalsAtScheduledExpiry(
+        $recharge,
+        $plan = null,
+        $customer = null,
+        $sampleAt = null,
+        $counterTx = 0,
+        $counterRx = 0,
+        $note = '',
+        $bindingName = ''
+    ) {
+        if (!self::isStorageReady() || !$recharge) {
+            return false;
+        }
+
+        $rechargeData = is_array($recharge) ? $recharge : $recharge->as_array();
+        $rechargeId = (int) ($rechargeData['id'] ?? 0);
+        if ($rechargeId < 1) {
+            return false;
+        }
+
+        // Keep app-side aggregate counter aligned with scheduled reset boundary.
+        self::updateRechargeTotals($rechargeId, 0, 0);
+
+        $status = strtolower(trim((string) ($rechargeData['status'] ?? '')));
+        if ($status !== 'on') {
+            return true;
+        }
+
+        if ($plan === null) {
+            $planId = (int) ($rechargeData['plan_id'] ?? 0);
+            if ($planId > 0) {
+                $plan = ORM::for_table('tbl_plans')->find_one($planId);
+            }
+        }
+        if ($customer === null) {
+            $customerId = (int) ($rechargeData['customer_id'] ?? 0);
+            if ($customerId > 0) {
+                $customer = ORM::for_table('tbl_customers')->find_one($customerId);
+            }
+        }
+        if (!$plan || !$customer) {
+            return true;
+        }
+
+        $planData = is_array($plan) ? $plan : $plan->as_array();
+        if (!self::isSupportedPlan($planData)) {
+            return true;
+        }
+        $customerData = is_array($customer) ? $customer : $customer->as_array();
+
+        $sampleAt = self::normalizeDateTime($sampleAt, date('Y-m-d H:i:s'));
+        $rechargeData['recharged_on'] = substr($sampleAt, 0, 10);
+        $rechargeData['recharged_time'] = substr($sampleAt, 11, 8);
+
+        $transaction = ORM::for_table('tbl_transactions')
+            ->where('user_id', (int) ($rechargeData['customer_id'] ?? 0))
+            ->where('plan_name', (string) ($rechargeData['namebp'] ?? ''))
+            ->where('routers', (string) ($rechargeData['routers'] ?? ''))
+            ->order_by_desc('id')
+            ->find_one();
+        $transactionData = $transaction ? $transaction->as_array() : ['id' => 0];
+
+        $usageType = self::normalizePlanType($rechargeData['type'] ?? ($planData['type'] ?? 'PPPOE'));
+        $usageIdentity = self::resolveUsageIdentity($customerData, $usageType);
+        $bindingName = trim((string) $bindingName);
+        if ($bindingName === '') {
+            $bindingName = self::resolveBindingName($usageIdentity, $usageType);
+        }
+
+        $counterTx = max(0, (int) $counterTx);
+        $counterRx = max(0, (int) $counterRx);
+        $note = trim((string) $note);
+        if ($note === '') {
+            $note = 'Cycle reset at scheduled expiry';
+        }
+
+        self::openActivationCycle(
+            $customerData,
+            $planData,
+            $rechargeData,
+            $transactionData,
+            [
+                'tx' => $counterTx,
+                'rx' => $counterRx,
+                'binding_user' => $usageIdentity,
+                'binding_name' => $bindingName,
+            ],
+            $note
+        );
+
+        return true;
+    }
+
     private static function insertSample($cycle, $counterTx, $counterRx, $deltaTx, $deltaRx, $sampleAt, $source, $note)
     {
         if (!self::isStorageReady()) {
