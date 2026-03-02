@@ -887,7 +887,7 @@ class MikrotikPppoe
         return true;
     }
 
-    public function getPppoeBindingCounters($customer, $plan, &$warning = '', $bindingName = '')
+    public function getUsageBindingCounters($customer, $plan, &$warning = '', $bindingName = '')
     {
         $warning = '';
         $routerName = trim((string) ($plan['routers'] ?? ''));
@@ -941,7 +941,7 @@ class MikrotikPppoe
         }
     }
 
-    public function resetPppoeBindingCounters($customer, $plan, &$warning = '', $bindingName = '')
+    public function resetUsageBindingCounters($customer, $plan, &$warning = '', $bindingName = '')
     {
         $warning = '';
         $routerName = trim((string) ($plan['routers'] ?? ''));

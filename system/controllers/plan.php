@@ -944,15 +944,15 @@ switch ($action) {
 
             $planName = $d['namebp'];
             $d->save();
-            if (class_exists('PppoeUsage') && PppoeUsage::isStorageReady()) {
+            if (class_exists('PlanUsage') && PlanUsage::isStorageReady()) {
                 $newPlanData = $newPlan ? $newPlan->as_array() : [];
-                if (PppoeUsage::isSupportedPlan($newPlanData)) {
+                if (PlanUsage::isSupportedPlan($newPlanData)) {
                     $rechargeId = (int) ($d['id'] ?? 0);
                     if ($rechargeId > 0) {
-                        $oldExpiryAt = PppoeUsage::toDateTime($previousExpiration, $previousTime);
-                        $newExpiryAt = PppoeUsage::toDateTime($expiration, $time);
-                        PppoeUsage::scheduleCounterReset($rechargeId, $oldExpiryAt, 'Admin plan edit: keep previous expiry reset');
-                        PppoeUsage::scheduleCounterReset($rechargeId, $newExpiryAt, 'Admin plan edit: schedule new expiry reset');
+                        $oldExpiryAt = PlanUsage::toDateTime($previousExpiration, $previousTime);
+                        $newExpiryAt = PlanUsage::toDateTime($expiration, $time);
+                        PlanUsage::scheduleCounterReset($rechargeId, $oldExpiryAt, 'Admin plan edit: keep previous expiry reset');
+                        PlanUsage::scheduleCounterReset($rechargeId, $newExpiryAt, 'Admin plan edit: schedule new expiry reset');
                     }
                 }
             }
@@ -1780,11 +1780,11 @@ switch ($action) {
                     $tur->time = $expirationTime;
                     $tur->status = "on";
                     $tur->save();
-                    if (class_exists('PppoeUsage') && PppoeUsage::isStorageReady()) {
+                    if (class_exists('PlanUsage') && PlanUsage::isStorageReady()) {
                         $planData = $p ? $p->as_array() : [];
-                        if (PppoeUsage::isSupportedPlan($planData)) {
-                            $expiryAt = PppoeUsage::toDateTime($expiration, $expirationTime);
-                            PppoeUsage::scheduleCounterReset((int) ($tur['id'] ?? 0), $expiryAt, 'Admin extend: schedule new expiry reset');
+                        if (PlanUsage::isSupportedPlan($planData)) {
+                            $expiryAt = PlanUsage::toDateTime($expiration, $expirationTime);
+                            PlanUsage::scheduleCounterReset((int) ($tur['id'] ?? 0), $expiryAt, 'Admin extend: schedule new expiry reset');
                         }
                     }
 

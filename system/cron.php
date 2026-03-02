@@ -323,9 +323,9 @@ function resolvePlanForRechargeCron($rechargeRow)
     return null;
 }
 
-function collectPppoeUsageSampleForRecharge($rechargeRow, $planRow = null, $customerRow = null, $source = 'cron', $closeCycle = false)
+function collectPlanUsageSampleForRecharge($rechargeRow, $planRow = null, $customerRow = null, $source = 'cron', $closeCycle = false)
 {
-    if (!class_exists('PppoeUsage') || !PppoeUsage::isStorageReady() || !$rechargeRow) {
+    if (!class_exists('PlanUsage') || !PlanUsage::isStorageReady() || !$rechargeRow) {
         return;
     }
 
@@ -341,21 +341,21 @@ function collectPppoeUsageSampleForRecharge($rechargeRow, $planRow = null, $cust
     }
     if (!$plan) {
         if ($closeCycle) {
-            PppoeUsage::closeCycleByRechargeId($rechargeId, date('Y-m-d H:i:s'));
+            PlanUsage::closeCycleByRechargeId($rechargeId, date('Y-m-d H:i:s'));
         }
         return;
     }
 
     $planData = is_array($plan) ? $plan : $plan->as_array();
-    if (!PppoeUsage::isSupportedPlan($planData)) {
+    if (!PlanUsage::isSupportedPlan($planData)) {
         if ($closeCycle) {
-            PppoeUsage::closeCycleByRechargeId($rechargeId, date('Y-m-d H:i:s'));
+            PlanUsage::closeCycleByRechargeId($rechargeId, date('Y-m-d H:i:s'));
         }
         return;
     }
     if (cronShouldSkipAccessRouter($planData)) {
         if ($closeCycle) {
-            PppoeUsage::closeCycleByRechargeId($rechargeId, date('Y-m-d H:i:s'));
+            PlanUsage::closeCycleByRechargeId($rechargeId, date('Y-m-d H:i:s'));
         }
         return;
     }
@@ -369,17 +369,17 @@ function collectPppoeUsageSampleForRecharge($rechargeRow, $planRow = null, $cust
     }
     if (!$customer) {
         if ($closeCycle) {
-            PppoeUsage::closeCycleByRechargeId($rechargeId, date('Y-m-d H:i:s'));
+            PlanUsage::closeCycleByRechargeId($rechargeId, date('Y-m-d H:i:s'));
         }
         return;
     }
 
     $customerData = is_array($customer) ? $customer : $customer->as_array();
     try {
-        $cycle = PppoeUsage::ensureOpenCycleForRecharge($rechargeData, $planData, $customerData);
+        $cycle = PlanUsage::ensureOpenCycleForRecharge($rechargeData, $planData, $customerData);
         if (!$cycle) {
             if ($closeCycle) {
-                PppoeUsage::closeCycleByRechargeId($rechargeId, date('Y-m-d H:i:s'));
+                PlanUsage::closeCycleByRechargeId($rechargeId, date('Y-m-d H:i:s'));
             }
             return;
         }
@@ -393,7 +393,7 @@ function collectPppoeUsageSampleForRecharge($rechargeRow, $planRow = null, $cust
                 1800
             );
             if ($closeCycle) {
-                PppoeUsage::closeCycleById((int) $cycle['id'], date('Y-m-d H:i:s'));
+                PlanUsage::closeCycleById((int) $cycle['id'], date('Y-m-d H:i:s'));
             }
             return;
         }
@@ -407,27 +407,27 @@ function collectPppoeUsageSampleForRecharge($rechargeRow, $planRow = null, $cust
                 1800
             );
             if ($closeCycle) {
-                PppoeUsage::closeCycleById((int) $cycle['id'], date('Y-m-d H:i:s'));
+                PlanUsage::closeCycleById((int) $cycle['id'], date('Y-m-d H:i:s'));
             }
             return;
         }
 
         $device = new $deviceClass();
-        if (!method_exists($device, 'getPppoeBindingCounters')) {
+        if (!method_exists($device, 'getUsageBindingCounters')) {
             cronLogWarningThrottled(
                 'access_usage_method_missing_' . strtolower($deviceClass),
-                'Access usage collector warning: getPppoeBindingCounters is not implemented by ' . $deviceClass,
+                'Access usage collector warning: getUsageBindingCounters is not implemented by ' . $deviceClass,
                 1800
             );
             if ($closeCycle) {
-                PppoeUsage::closeCycleById((int) $cycle['id'], date('Y-m-d H:i:s'));
+                PlanUsage::closeCycleById((int) $cycle['id'], date('Y-m-d H:i:s'));
             }
             return;
         }
 
         $warning = '';
         $bindingName = trim((string) ($cycle['binding_name'] ?? ''));
-        $counters = $device->getPppoeBindingCounters($customerData, $planData, $warning, $bindingName);
+        $counters = $device->getUsageBindingCounters($customerData, $planData, $warning, $bindingName);
         if (is_array($counters)) {
             if (!empty($counters['binding_name']) && (string) $cycle['binding_name'] !== (string) $counters['binding_name']) {
                 $cycle->binding_name = (string) $counters['binding_name'];
@@ -440,7 +440,7 @@ function collectPppoeUsageSampleForRecharge($rechargeRow, $planRow = null, $cust
                 : 'Cron periodic sample';
             // Device-specific counters perspective, normalized to:
             // tx_byte = Download, rx_byte = Upload.
-            PppoeUsage::recordSample(
+            PlanUsage::recordSample(
                 $cycle,
                 (int) ($counters['tx_byte'] ?? 0),
                 (int) ($counters['rx_byte'] ?? 0),
@@ -461,14 +461,14 @@ function collectPppoeUsageSampleForRecharge($rechargeRow, $planRow = null, $cust
                 try {
                     $device->add_customer($customerData, $planData);
                     $retryWarning = '';
-                    $retryCounters = $device->getPppoeBindingCounters($customerData, $planData, $retryWarning, $bindingName);
+                    $retryCounters = $device->getUsageBindingCounters($customerData, $planData, $retryWarning, $bindingName);
                     if (is_array($retryCounters)) {
                         if (!empty($retryCounters['binding_name']) && (string) $cycle['binding_name'] !== (string) $retryCounters['binding_name']) {
                             $cycle->binding_name = (string) $retryCounters['binding_name'];
                             $cycle->updated_at = date('Y-m-d H:i:s');
                             $cycle->save();
                         }
-                        PppoeUsage::recordSample(
+                        PlanUsage::recordSample(
                             $cycle,
                             (int) ($retryCounters['tx_byte'] ?? 0),
                             (int) ($retryCounters['rx_byte'] ?? 0),
@@ -487,7 +487,7 @@ function collectPppoeUsageSampleForRecharge($rechargeRow, $planRow = null, $cust
 
             if ($warning === '') {
                 if ($closeCycle) {
-                    PppoeUsage::closeCycleById((int) $cycle['id'], date('Y-m-d H:i:s'));
+                    PlanUsage::closeCycleById((int) $cycle['id'], date('Y-m-d H:i:s'));
                 }
                 return;
             }
@@ -507,7 +507,7 @@ function collectPppoeUsageSampleForRecharge($rechargeRow, $planRow = null, $cust
         }
 
         if ($closeCycle) {
-            PppoeUsage::closeCycleById((int) $cycle['id'], date('Y-m-d H:i:s'));
+            PlanUsage::closeCycleById((int) $cycle['id'], date('Y-m-d H:i:s'));
         }
     } catch (Throwable $e) {
         $errMsg = trim((string) $e->getMessage());
@@ -524,14 +524,14 @@ function collectPppoeUsageSampleForRecharge($rechargeRow, $planRow = null, $cust
             ]
         );
         if ($closeCycle) {
-            PppoeUsage::closeCycleByRechargeId($rechargeId, date('Y-m-d H:i:s'));
+            PlanUsage::closeCycleByRechargeId($rechargeId, date('Y-m-d H:i:s'));
         }
     }
 }
 
-function collectPppoeUsageFromActiveRecharges()
+function collectPlanUsageFromActiveRecharges()
 {
-    if (!class_exists('PppoeUsage') || !PppoeUsage::isStorageReady()) {
+    if (!class_exists('PlanUsage') || !PlanUsage::isStorageReady()) {
         return;
     }
 
@@ -557,10 +557,10 @@ function collectPppoeUsageFromActiveRecharges()
             continue;
         }
         $planData = $plan->as_array();
-        if (!PppoeUsage::isSupportedPlan($planData)) {
+        if (!PlanUsage::isSupportedPlan($planData)) {
             continue;
         }
-        collectPppoeUsageSampleForRecharge($row, $plan, null, 'cron', false);
+        collectPlanUsageSampleForRecharge($row, $plan, null, 'cron', false);
         $processed++;
     }
 
@@ -693,13 +693,13 @@ function cleanupExpiredOffRecharges()
     echo "Expired OFF cleanup: checked {$checked}, disconnected {$disconnected}, skipped {$skipped}, errors {$errors}\n";
 }
 
-function processDuePppoeCounterResets()
+function processDuePlanCounterResets()
 {
-    if (!class_exists('PppoeUsage') || !PppoeUsage::isStorageReady()) {
+    if (!class_exists('PlanUsage') || !PlanUsage::isStorageReady()) {
         return;
     }
 
-    $schedules = PppoeUsage::getDueCounterResetSchedules(200);
+    $schedules = PlanUsage::getDueCounterResetSchedules(200);
     if (!is_array($schedules) || count($schedules) === 0) {
         echo "Access counter reset schedules: 0 due\n";
         return;
@@ -720,34 +720,34 @@ function processDuePppoeCounterResets()
         try {
             $recharge = ORM::for_table('tbl_user_recharges')->find_one($rechargeId);
             if (!$recharge) {
-                PppoeUsage::finalizeCounterResetSchedule($scheduleId, 'skipped', 'Recharge not found');
+                PlanUsage::finalizeCounterResetSchedule($scheduleId, 'skipped', 'Recharge not found');
                 $skipped++;
                 continue;
             }
 
             $plan = resolvePlanForRechargeCron($recharge);
             if (!$plan) {
-                PppoeUsage::finalizeCounterResetSchedule($scheduleId, 'skipped', 'Plan not found');
+                PlanUsage::finalizeCounterResetSchedule($scheduleId, 'skipped', 'Plan not found');
                 $skipped++;
                 continue;
             }
             $planData = is_array($plan) ? $plan : $plan->as_array();
-            if (!PppoeUsage::isSupportedPlan($planData)) {
-                PppoeUsage::finalizeCounterResetSchedule($scheduleId, 'skipped', 'Unsupported plan/device for PPPoE reset');
+            if (!PlanUsage::isSupportedPlan($planData)) {
+                PlanUsage::finalizeCounterResetSchedule($scheduleId, 'skipped', 'Unsupported plan/device for usage reset');
                 $skipped++;
                 continue;
             }
 
             if (strtolower(trim((string) ($recharge['status'] ?? ''))) !== 'on') {
-                PppoeUsage::updateRechargeTotals($rechargeId, 0, 0);
-                PppoeUsage::finalizeCounterResetSchedule($scheduleId, 'skipped', 'Recharge inactive');
+                PlanUsage::updateRechargeTotals($rechargeId, 0, 0);
+                PlanUsage::finalizeCounterResetSchedule($scheduleId, 'skipped', 'Recharge inactive');
                 $skipped++;
                 continue;
             }
 
             $customer = ORM::for_table('tbl_customers')->where('id', (int) ($recharge['customer_id'] ?? 0))->find_one();
             if (!$customer) {
-                PppoeUsage::finalizeCounterResetSchedule($scheduleId, 'skipped', 'Customer not found');
+                PlanUsage::finalizeCounterResetSchedule($scheduleId, 'skipped', 'Customer not found');
                 $skipped++;
                 continue;
             }
@@ -767,14 +767,14 @@ function processDuePppoeCounterResets()
             require_once $dvc;
             $deviceClass = trim((string) ($planData['device'] ?? ''));
             if ($deviceClass === '' || !class_exists($deviceClass)) {
-                PppoeUsage::finalizeCounterResetSchedule($scheduleId, 'skipped', 'Device class not found: ' . $deviceClass);
+                PlanUsage::finalizeCounterResetSchedule($scheduleId, 'skipped', 'Device class not found: ' . $deviceClass);
                 $skipped++;
                 continue;
             }
 
             $device = new $deviceClass();
-            if (!method_exists($device, 'resetPppoeBindingCounters')) {
-                PppoeUsage::finalizeCounterResetSchedule($scheduleId, 'skipped', 'Device does not support resetPppoeBindingCounters');
+            if (!method_exists($device, 'resetUsageBindingCounters')) {
+                PlanUsage::finalizeCounterResetSchedule($scheduleId, 'skipped', 'Device does not support resetUsageBindingCounters');
                 $skipped++;
                 continue;
             }
@@ -782,21 +782,21 @@ function processDuePppoeCounterResets()
             $bindingName = '';
             $cycleId = (int) ($scheduleData['cycle_id'] ?? 0);
             if ($cycleId > 0) {
-                $cycle = PppoeUsage::getCycleById($cycleId);
+                $cycle = PlanUsage::getCycleById($cycleId);
                 if ($cycle && !empty($cycle['binding_name'])) {
                     $bindingName = trim((string) $cycle['binding_name']);
                 }
             }
 
             $warning = '';
-            $resetOk = $device->resetPppoeBindingCounters($customerData, $planData, $warning, $bindingName);
+            $resetOk = $device->resetUsageBindingCounters($customerData, $planData, $warning, $bindingName);
             if ($resetOk) {
                 $executedAt = date('Y-m-d H:i:s');
                 $postResetTx = 0;
                 $postResetRx = 0;
-                if (method_exists($device, 'getPppoeBindingCounters')) {
+                if (method_exists($device, 'getUsageBindingCounters')) {
                     $postResetWarning = '';
-                    $postResetCounters = $device->getPppoeBindingCounters($customerData, $planData, $postResetWarning, $bindingName);
+                    $postResetCounters = $device->getUsageBindingCounters($customerData, $planData, $postResetWarning, $bindingName);
                     if (is_array($postResetCounters)) {
                         $postResetTx = max(0, (int) ($postResetCounters['tx_byte'] ?? 0));
                         $postResetRx = max(0, (int) ($postResetCounters['rx_byte'] ?? 0));
@@ -806,7 +806,7 @@ function processDuePppoeCounterResets()
                     }
                 }
 
-                PppoeUsage::resetUsageTotalsAtScheduledExpiry(
+                PlanUsage::resetUsageTotalsAtScheduledExpiry(
                     $recharge,
                     $planData,
                     $customerData,
@@ -816,7 +816,7 @@ function processDuePppoeCounterResets()
                     'Counter reset schedule executed',
                     $bindingName
                 );
-                PppoeUsage::finalizeCounterResetSchedule($scheduleId, 'done', 'Counter reset executed at ' . $executedAt);
+                PlanUsage::finalizeCounterResetSchedule($scheduleId, 'done', 'Counter reset executed at ' . $executedAt);
                 $done++;
                 continue;
             }
@@ -901,7 +901,7 @@ run_hook('cronjob'); #HOOK
 Message::cleanupExpiredWhatsappMedia();
 // Process WhatsApp queue
 Message::processWhatsappQueue();
-collectPppoeUsageFromActiveRecharges();
+collectPlanUsageFromActiveRecharges();
 cleanupExpiredOffRecharges();
 
 foreach ($d as $ds) {
@@ -966,8 +966,8 @@ foreach ($d as $ds) {
 	                )
 	                ->find_one();
 		            if ($hasUnlimitedSibling) {
-                        if (class_exists('PppoeUsage') && PppoeUsage::isStorageReady()) {
-                            PppoeUsage::closeCycleByRechargeId((int) $u['id'], date('Y-m-d H:i:s'));
+                        if (class_exists('PlanUsage') && PlanUsage::isStorageReady()) {
+                            PlanUsage::closeCycleByRechargeId((int) $u['id'], date('Y-m-d H:i:s'));
                         }
 		                $u->status = 'off';
 		                $u->save();
@@ -976,7 +976,7 @@ foreach ($d as $ds) {
 		            }
 
             echo " : EXPIRED \r\n";
-            collectPppoeUsageSampleForRecharge($u, $p, $c, 'expiry-final', true);
+            collectPlanUsageSampleForRecharge($u, $p, $c, 'expiry-final', true);
 
             $dvc = Package::getDevice($p);
             if ($_app_stage != 'demo') {
@@ -1060,7 +1060,7 @@ foreach ($d as $ds) {
         echo "Unexpected Error: " . $e->getMessage() . "\n";
     }
 }
-processDuePppoeCounterResets();
+processDuePlanCounterResets();
 
 //Cek interim-update radiusrest
 if ($config['frrest_interim_update'] != 0) {

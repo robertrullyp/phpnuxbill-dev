@@ -279,11 +279,10 @@ class MikrotikHotspot
         return trim((string) $customer);
     }
 
-    // Keep this method name for compatibility with existing usage collector flow.
     // For Hotspot we map:
     // bytes-out (router -> client) = Download (tx_byte)
     // bytes-in  (client -> router) = Upload   (rx_byte)
-    public function getPppoeBindingCounters($customer, $plan, &$warning = '', $bindingName = '')
+    public function getUsageBindingCounters($customer, $plan, &$warning = '', $bindingName = '')
     {
         $warning = '';
         $username = $this->resolveHotspotUsageUsername($customer);
@@ -394,7 +393,7 @@ class MikrotikHotspot
         ];
     }
 
-    public function resetPppoeBindingCounters($customer, $plan, &$warning = '', $bindingName = '')
+    public function resetUsageBindingCounters($customer, $plan, &$warning = '', $bindingName = '')
     {
         $warning = '';
         $username = $this->resolveHotspotUsageUsername($customer);

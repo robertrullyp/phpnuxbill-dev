@@ -1,6 +1,6 @@
 <?php
 
-class PppoeUsage
+class PlanUsage
 {
     private static $storageReady = null;
     const SOURCE_RESET_SCHEDULE = 'reset_schedule';
@@ -333,7 +333,7 @@ class PppoeUsage
         return ORM::for_table('tbl_recharge_usage_cycles')->find_one($cycleId);
     }
 
-    public static function openActivationCycle($customer, $plan, $recharge, $transaction, $baseline = [], $note = '')
+    public static function openActivationCycle($customer, $plan, $recharge, $transaction, $baseline = [], $note = '', $resetPolicy = 'auto')
     {
         if (!self::isStorageReady()) {
             return null;
@@ -360,6 +360,23 @@ class PppoeUsage
         $bindingName = trim((string) ($baseline['binding_name'] ?? self::resolveBindingName($secretUser, $type)));
         $counterTx = max(0, (int) ($baseline['tx'] ?? 0));
         $counterRx = max(0, (int) ($baseline['rx'] ?? 0));
+        $currentUsageTx = max(0, (int) ($recharge['usage_tx_bytes'] ?? 0));
+        $currentUsageRx = max(0, (int) ($recharge['usage_rx_bytes'] ?? 0));
+
+        $resetPolicy = strtolower(trim((string) $resetPolicy));
+        if (!in_array($resetPolicy, ['auto', 'force', 'keep'], true)) {
+            $resetPolicy = 'auto';
+        }
+        if ($resetPolicy === 'force') {
+            $shouldResetTotals = true;
+        } elseif ($resetPolicy === 'keep') {
+            $shouldResetTotals = false;
+        } else {
+            $shouldResetTotals = !self::hasPendingFutureResetSchedule($rechargeId, $startedAt);
+        }
+
+        $initialUsageTx = $shouldResetTotals ? 0 : $currentUsageTx;
+        $initialUsageRx = $shouldResetTotals ? 0 : $currentUsageRx;
 
         $cycle = ORM::for_table('tbl_recharge_usage_cycles')->create();
         $cycle->recharge_id = $rechargeId;
@@ -373,8 +390,8 @@ class PppoeUsage
         $cycle->started_at = $startedAt;
         $cycle->expires_at = $expiresAt;
         $cycle->status = 'open';
-        $cycle->usage_tx_bytes = 0;
-        $cycle->usage_rx_bytes = 0;
+        $cycle->usage_tx_bytes = $initialUsageTx;
+        $cycle->usage_rx_bytes = $initialUsageRx;
         $cycle->last_counter_tx = $counterTx;
         $cycle->last_counter_rx = $counterRx;
         $cycle->last_sample_at = $now;
@@ -383,7 +400,7 @@ class PppoeUsage
         $cycle->updated_at = $now;
         $cycle->save();
 
-        self::updateRechargeTotals($rechargeId, 0, 0);
+        self::updateRechargeTotals($rechargeId, $initialUsageTx, $initialUsageRx);
         self::insertSample($cycle, $counterTx, $counterRx, 0, 0, $now, 'activation', trim((string) $note));
         self::scheduleCounterReset($rechargeId, $expiresAt, 'Auto-scheduled at activation expiry', (int) ($cycle['id'] ?? 0));
 
@@ -439,7 +456,7 @@ class PppoeUsage
             'rx' => (int) ($recharge['usage_rx_bytes'] ?? 0),
             'binding_user' => $usageIdentity,
             'binding_name' => self::resolveBindingName($usageIdentity, $usageType),
-        ], 'Auto-created by cron collector');
+        ], 'Auto-created by cron collector', 'keep');
     }
 
     public static function recordSample($cycle, $counterTx, $counterRx, $sampleAt = null, $source = 'cron', $note = '')
@@ -610,6 +627,32 @@ class PppoeUsage
             ->find_many();
     }
 
+    public static function hasPendingFutureResetSchedule($rechargeId, $afterAt = null)
+    {
+        if (!self::isStorageReady()) {
+            return false;
+        }
+
+        $rechargeId = (int) $rechargeId;
+        if ($rechargeId < 1) {
+            return false;
+        }
+
+        if ($afterAt === null || trim((string) $afterAt) === '') {
+            $afterAt = date('Y-m-d H:i:s');
+        }
+        $afterAt = self::normalizeDateTime($afterAt);
+
+        $pending = ORM::for_table('tbl_recharge_usage_samples')
+            ->where('recharge_id', $rechargeId)
+            ->where('source', self::SOURCE_RESET_SCHEDULE)
+            ->where_gt('sample_at', $afterAt)
+            ->order_by_asc('sample_at')
+            ->find_one();
+
+        return $pending ? true : false;
+    }
+
     public static function finalizeCounterResetSchedule($scheduleId, $status = 'done', $detail = '')
     {
         if (!self::isStorageReady()) {
@@ -732,7 +775,8 @@ class PppoeUsage
                 'binding_user' => $usageIdentity,
                 'binding_name' => $bindingName,
             ],
-            $note
+            $note,
+            'force'
         );
 
         return true;

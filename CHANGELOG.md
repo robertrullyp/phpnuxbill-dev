@@ -36,7 +36,7 @@
 
 - **PPPoE Service Mapping:** Added `pppoe_service` support on PPPoE plan add/edit with router-driven autoload (`/interface/pppoe-server/server/print`) and sync-time fallback to first available service.
 - **PPPoE Binding Automation (Non-RADIUS):** Extended `MikrotikPppoe` flow to reconcile `/interface/pppoe-server` bindings (`name`, `user`, `service`, `comment`) alongside `/ppp/secret` during add/edit/recharge/remove.
-- **PPPoE Usage History Per Activation:** Added activation-cycle usage engine (`PppoeUsage`) with cycle/sample persistence and aggregate counters (`usage_tx_bytes`, `usage_rx_bytes`) stored per recharge transaction.
+- **Plan Usage History Per Activation:** Added activation-cycle usage engine (`PlanUsage`) with cycle/sample persistence and aggregate counters (`usage_tx_bytes`, `usage_rx_bytes`) stored per recharge transaction.
 - **Cron Traffic Collector:** Added periodic PPPoE sampling in `system/cron.php`, including counter-reset handling, final expiry sampling, safe close behavior, and non-fatal warning strategy when router/binding is unavailable.
 - **Usage Visibility in UI:** Surfaced TX/RX usage in customer active-plan widget, admin active-plan list (`/plan/list`), and activation report (`/reports/activation`).
 - **Updater Migration Compatibility:** Hardened `update.php` migration executor to safely skip known legacy enum-downgrade failures (`Data truncated for column 'type'`) so newer schemas are not blocked by obsolete migration steps.

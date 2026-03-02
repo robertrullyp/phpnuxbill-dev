@@ -871,9 +871,9 @@ class Package
         return '23:59:59';
     }
 
-    protected static function handlePppoeUsageActivation($customer, $plan, $rechargeRow, $transactionRow)
+    protected static function handlePlanUsageActivation($customer, $plan, $rechargeRow, $transactionRow)
     {
-        if (!class_exists('PppoeUsage')) {
+        if (!class_exists('PlanUsage')) {
             return;
         }
 
@@ -882,7 +882,7 @@ class Package
         }
 
         $planData = is_array($plan) ? $plan : $plan->as_array();
-        if (!PppoeUsage::isSupportedPlan($planData) || !PppoeUsage::isStorageReady()) {
+        if (!PlanUsage::isSupportedPlan($planData) || !PlanUsage::isStorageReady()) {
             return;
         }
 
@@ -896,13 +896,13 @@ class Package
         }
 
         try {
-            $usageType = PppoeUsage::normalizePlanType($planData['type'] ?? '');
-            $usageIdentity = PppoeUsage::resolveUsageIdentity($customerData, $usageType);
+            $usageType = PlanUsage::normalizePlanType($planData['type'] ?? '');
+            $usageIdentity = PlanUsage::resolveUsageIdentity($customerData, $usageType);
             $baseline = [
                 'tx' => 0,
                 'rx' => 0,
                 'binding_user' => $usageIdentity,
-                'binding_name' => PppoeUsage::resolveBindingName($usageIdentity, $usageType),
+                'binding_name' => PlanUsage::resolveBindingName($usageIdentity, $usageType),
             ];
             $note = 'Recharge start';
 
@@ -912,9 +912,9 @@ class Package
                 $deviceClass = $planData['device'] ?? '';
                 if ($deviceClass !== '' && class_exists($deviceClass)) {
                     $device = new $deviceClass();
-                    if (method_exists($device, 'getPppoeBindingCounters')) {
+                    if (method_exists($device, 'getUsageBindingCounters')) {
                         $counterWarning = '';
-                        $counters = $device->getPppoeBindingCounters($customerData, $planData, $counterWarning, $baseline['binding_name']);
+                        $counters = $device->getUsageBindingCounters($customerData, $planData, $counterWarning, $baseline['binding_name']);
                         if (is_array($counters)) {
                             $baseline['tx'] = max(0, (int) ($counters['tx_byte'] ?? 0));
                             $baseline['rx'] = max(0, (int) ($counters['rx_byte'] ?? 0));
@@ -928,7 +928,7 @@ class Package
                 }
             }
 
-            PppoeUsage::openActivationCycle($customerData, $planData, $rechargeData, $transactionData, $baseline, $note);
+            PlanUsage::openActivationCycle($customerData, $planData, $rechargeData, $transactionData, $baseline, $note);
         } catch (Throwable $e) {
             if (class_exists('Message')) {
                 Message::sendTelegram(
@@ -1235,9 +1235,9 @@ class Package
             $previousExpiryAt = ($previousExpiryDate === '')
                 ? date('Y-m-d H:i:s')
                 : ($previousExpiryDate . ' ' . $previousExpiryTime);
-            $shouldSchedulePreviousExpiryReset = class_exists('PppoeUsage')
-                && PppoeUsage::isStorageReady()
-                && PppoeUsage::isSupportedPlan(is_object($p) ? $p->as_array() : (array) $p);
+            $shouldSchedulePreviousExpiryReset = class_exists('PlanUsage')
+                && PlanUsage::isStorageReady()
+                && PlanUsage::isSupportedPlan(is_object($p) ? $p->as_array() : (array) $p);
             $lastExpired = Lang::dateAndTimeFormat($b['expiration'], $b['time']);
             $isChangePlan = false;
             if ($b['namebp'] == $p['name_plan'] && $b['status'] == 'on') {
@@ -1365,7 +1365,7 @@ class Package
                 $b->save();
                 self::clearExtendAnchorStart($id_customer, (int) ($b['id'] ?? 0));
                 if ($shouldSchedulePreviousExpiryReset) {
-                    PppoeUsage::scheduleCounterReset((int) $b['id'], $previousExpiryAt, 'Recharge extension: keep previous expiry reset');
+                    PlanUsage::scheduleCounterReset((int) $b['id'], $previousExpiryAt, 'Recharge extension: keep previous expiry reset');
                 }
                 $rechargeForUsage = $b;
             }
@@ -1562,7 +1562,7 @@ class Package
         if (is_array($bills) && count($bills) > 0) {
             User::billsPaid($bills, $id_customer);
         }
-        self::handlePppoeUsageActivation($c, $p, $rechargeForUsage, $transactionForNotification);
+        self::handlePlanUsageActivation($c, $p, $rechargeForUsage, $transactionForNotification);
         self::activateLinkedPlans($id_customer, $gateway, $channel, $note, $processedPlanIds, $p, $isVoucher, $router_name, $chargeSummary);
         run_hook("recharge_user_finish");
         if (!$skipInvoiceNotification && $transactionForNotification) {
@@ -1923,14 +1923,14 @@ class Package
         $transaction->note = $trxNote;
         $transaction->save();
 
-        if (class_exists('PppoeUsage') && PppoeUsage::isStorageReady() && PppoeUsage::isSupportedPlan($plan)) {
+        if (class_exists('PlanUsage') && PlanUsage::isStorageReady() && PlanUsage::isSupportedPlan($plan)) {
             $rechargeId = (int) ($activeRecharge['id'] ?? 0);
             if ($rechargeId > 0) {
-                PppoeUsage::cancelPendingCounterResetSchedules($rechargeId);
+                PlanUsage::cancelPendingCounterResetSchedules($rechargeId);
                 if ($deactivate) {
-                    PppoeUsage::closeCycleByRechargeId($rechargeId, date('Y-m-d H:i:s'));
+                    PlanUsage::closeCycleByRechargeId($rechargeId, date('Y-m-d H:i:s'));
                 } else {
-                    PppoeUsage::rescheduleCounterReset($rechargeId, $newExpiryAt, 'Refund: schedule new expiry reset');
+                    PlanUsage::rescheduleCounterReset($rechargeId, $newExpiryAt, 'Refund: schedule new expiry reset');
                 }
             }
         }

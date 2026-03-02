@@ -96,7 +96,7 @@ switch ($action) {
             $transactionIds = array_values(array_unique($transactionIds));
 
             $usageMap = [];
-            if (!empty($transactionIds) && class_exists('PppoeUsage') && PppoeUsage::isStorageReady()) {
+            if (!empty($transactionIds) && class_exists('PlanUsage') && PlanUsage::isStorageReady()) {
                 try {
                     $usageRows = ORM::for_table('tbl_recharge_usage_cycles')
                         ->select('transaction_id')

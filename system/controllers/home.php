@@ -403,11 +403,11 @@ if (isset($_GET['recharge']) && !empty($_GET['recharge'])) {
             $tur->time = $expirationTime;
             $tur->status = "on";
             $tur->save();
-            if (class_exists('PppoeUsage') && PppoeUsage::isStorageReady()) {
+            if (class_exists('PlanUsage') && PlanUsage::isStorageReady()) {
                 $planData = $p ? $p->as_array() : [];
-                if (PppoeUsage::isSupportedPlan($planData)) {
-                    $expiryAt = PppoeUsage::toDateTime($expiration, $expirationTime);
-                    PppoeUsage::scheduleCounterReset((int) ($tur['id'] ?? 0), $expiryAt, 'Customer extend: schedule new expiry reset');
+                if (PlanUsage::isSupportedPlan($planData)) {
+                    $expiryAt = PlanUsage::toDateTime($expiration, $expirationTime);
+                    PlanUsage::scheduleCounterReset((int) ($tur['id'] ?? 0), $expiryAt, 'Customer extend: schedule new expiry reset');
                 }
             }
             Message::sendExpiryEditNotification(
