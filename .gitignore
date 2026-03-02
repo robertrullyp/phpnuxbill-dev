@@ -60,6 +60,7 @@ docs/*
 !docs/API_EXAMPLES.md
 !docs/api.md
 !docs/OPENAPI.md
+!docs/RELEASE_AUDIT*
 !docs/openapi.yaml
 !docs/insomnia.rest.json
 !docs/*.json

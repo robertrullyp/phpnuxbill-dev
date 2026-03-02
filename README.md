@@ -17,8 +17,8 @@ Important notes:
 
 ## Current Release
 
-- **Version:** `2026.2.19`
-- **Focus:** Access usage/cleanup consistency across direct MikroTik backends, improved PPPoE session handling, RouterOS v7-safe Hotspot provisioning, and release metadata synchronization.
+- **Version:** `2026.3.2`
+- **Focus:** Plan usage cycle consistency during recharge/activation boundaries, PlanUsage standardization from legacy usage naming, and release metadata synchronization.
 
 ## What's New in This Fork
 
@@ -61,6 +61,7 @@ Enhancements and changes added on top of upstream:
   - Optional “welcome package” support (including inactive plans for welcome selection).
   - Voucher fixes: filtering, batch selection tracking, and stability improvements.
   - Unlimited logic generalized for `validity <= 0` across validity units (including `Period`) in recharge/package lifecycle and cron execution.
+  - Usage cycle engine fully standardized as `PlanUsage` (replacing legacy `PppoeUsage` naming), including generic device counter methods and clearer reset boundaries at scheduled expiry.
   - Reminder toggles per plan allow disabling due-date notifications for specific offerings (respected by cron reminders and all plan forms).
   - Linked plan relationships let admins preconfigure upgrade/downgrade suggestions; links are stored in the new `tbl_plan_links` table and enforced idempotently during updates.
   - Optional transaction notes stored on recharge and shown on invoice/reports when enabled.

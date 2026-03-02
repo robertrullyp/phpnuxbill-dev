@@ -2,6 +2,15 @@
 
 # CHANGELOG
 
+## 2026.3.2
+
+- **Plan Usage Engine Standardization:** Standardized usage lifecycle naming to `PlanUsage` across recharge, cron, controller flows, and device integrations for both PPPoE and Hotspot direct MikroTik plans.
+- **Recharge/Activation Boundary Consistency:** Refined activation/recharge cycle opening so app-side usage totals are reset only when appropriate (fresh activation or scheduled-boundary transition), while extension flows preserve ongoing cycle reference until scheduled expiry reset is reached.
+- **Scheduled Expiry Reset Workflow:** Strengthened scheduled reset execution in cron to perform device counter reset via generic `resetUsageBindingCounters`, then reopen a new cycle and align app usage totals at the exact scheduled expiry boundary.
+- **Per-Activation Usage History Reliability:** Kept cycle/sample history as first-class source for activation usage reporting and synchronized aggregate `usage_tx_bytes`/`usage_rx_bytes` from cycle events to avoid mixed-period totals.
+- **Release Metadata & Audit Sync:** Updated release references in `version.json`, `README.md`, `docs/openapi.yaml`, `docs/openapi.json`, `system/updates.json`, and added release audit document.
+- Version bumped to `2026.3.2`.
+
 ## 2026.2.19
 
 - **Access Usage Collector Unification:** Expanded usage/counter collection for direct MikroTik backends (`MikrotikPppoe`, `MikrotikHotspot`, `MikrotikVpn`) with normalized Download/Upload sampling, throttled warning logs, and router-failure skip protection in cron.
