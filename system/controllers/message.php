@@ -16,6 +16,253 @@ if (empty($action)) {
     $action = 'send';
 }
 
+$isRequestTruthy = static function ($keys, array $source = null) {
+    if (!is_array($keys)) {
+        $keys = [$keys];
+    }
+    if ($source === null) {
+        $source = $_POST;
+    }
+    foreach ($keys as $key) {
+        if (!array_key_exists($key, $source)) {
+            continue;
+        }
+        return Package::isTruthyValue($source[$key]);
+    }
+    return false;
+};
+
+$resolveResendChannel = static function ($messageType) {
+    $type = strtolower(trim((string) $messageType));
+    if ($type === '') {
+        return 'wa';
+    }
+    if (strpos($type, 'sms') !== false || strpos($type, 'mikrotik') !== false) {
+        return 'sms';
+    }
+    if (strpos($type, 'inbox') !== false) {
+        return 'inbox';
+    }
+    if (strpos($type, 'email') !== false) {
+        return 'email';
+    }
+    if (
+        strpos($type, 'whatsapp') !== false ||
+        strpos($type, 'wa ') === 0 ||
+        strpos($type, 'wa_') === 0 ||
+        strpos($type, 'wa-') === 0
+    ) {
+        return 'wa';
+    }
+    return 'wa';
+};
+
+$extractWaPayload = static function ($message) {
+    $trimmed = ltrim((string) $message);
+    if ($trimmed === '') {
+        return null;
+    }
+    if ($trimmed[0] !== '{' && $trimmed[0] !== '[') {
+        return null;
+    }
+    $decoded = json_decode($trimmed, true);
+    if (!is_array($decoded)) {
+        return null;
+    }
+    $isAssoc = array_keys($decoded) !== range(0, count($decoded) - 1);
+    if (!$isAssoc) {
+        return null;
+    }
+    $payloadKeys = ['action', 'to', 'text', 'body', 'message', 'interactive', 'requestPhoneNumber', 'contacts'];
+    foreach ($payloadKeys as $payloadKey) {
+        if (array_key_exists($payloadKey, $decoded)) {
+            return $decoded;
+        }
+    }
+    return null;
+};
+
+$sendResendByChannel = static function ($channel, $recipient, $message, $subject = '') use ($extractWaPayload) {
+    $result = [
+        'raw_result' => false,
+        'blocking_error' => '',
+    ];
+    if ($channel === 'wa') {
+        $payload = $extractWaPayload($message);
+        if (is_array($payload)) {
+            unset($payload['idempotency_key'], $payload['idempotencyKey']);
+            if (!isset($payload['action'])) {
+                $payload['action'] = 'send';
+            }
+            $payload['to'] = Lang::phoneFormat($recipient);
+            $result['raw_result'] = Message::sendWhatsapp($payload, '', ['queue_context' => 'resend']);
+        } else {
+            $result['raw_result'] = Message::sendWhatsapp($recipient, $message, ['queue_context' => 'resend']);
+        }
+        return $result;
+    }
+
+    if ($channel === 'sms') {
+        $result['raw_result'] = Message::sendSMS($recipient, $message);
+        return $result;
+    }
+
+    if ($channel === 'email') {
+        if ($subject === '') {
+            $subject = Lang::T('Notification Message');
+        }
+        if (function_exists('mb_substr')) {
+            $subject = mb_substr($subject, 0, 255, 'UTF-8');
+        } else {
+            $subject = substr($subject, 0, 255);
+        }
+        $result['raw_result'] = Message::sendEmail($recipient, $subject, $message);
+        return $result;
+    }
+
+    if ($channel === 'inbox') {
+        if ($subject === '') {
+            $subject = Lang::T('Notification Message');
+        }
+        if (function_exists('mb_substr')) {
+            $subject = mb_substr($subject, 0, 255, 'UTF-8');
+        } else {
+            $subject = substr($subject, 0, 255);
+        }
+        $customer = ORM::for_table('tbl_customers')->where('username', $recipient)->find_one();
+        if (!$customer && ctype_digit((string) $recipient)) {
+            $customer = ORM::for_table('tbl_customers')->find_one((int) $recipient);
+        }
+        if (!$customer) {
+            $result['blocking_error'] = Lang::T('Customer not found');
+            return $result;
+        }
+        $result['raw_result'] = Message::addToInbox((int) $customer['id'], $subject, $message, 'Admin');
+        return $result;
+    }
+
+    $result['blocking_error'] = Lang::T('Unsupported channel for resend');
+    return $result;
+};
+
+$collectResendAttemptLogs = static function ($minLogId, $recipient, $channel) use ($resolveResendChannel) {
+    $query = ORM::for_table('tbl_message_logs')
+        ->where_gt('id', (int) $minLogId);
+    $recipientCandidates = [(string) $recipient];
+    $formattedRecipient = trim((string) Lang::phoneFormat($recipient));
+    if ($formattedRecipient !== '' && !in_array($formattedRecipient, $recipientCandidates, true)) {
+        $recipientCandidates[] = $formattedRecipient;
+    }
+    if (count($recipientCandidates) === 1) {
+        $query->where('recipient', $recipientCandidates[0]);
+    } else {
+        $query->where_in('recipient', $recipientCandidates);
+    }
+
+    $attemptLogs = $query
+        ->order_by_desc('id')
+        ->limit(50)
+        ->find_array();
+    $filtered = [];
+    foreach ($attemptLogs as $attemptLog) {
+        if ($resolveResendChannel($attemptLog['message_type'] ?? '') === $channel) {
+            $filtered[] = $attemptLog;
+        }
+    }
+    return $filtered;
+};
+
+$resolveResendAttemptOutcome = static function (array $attemptLogs, $rawSendResult, $fallbackError = '') {
+    $latestStatus = null;
+    foreach ($attemptLogs as $attemptLog) {
+        $status = strtolower(trim((string) ($attemptLog['status'] ?? '')));
+        if ($status === 'success') {
+            $latestStatus = true;
+            break;
+        }
+        if ($status === 'error') {
+            $latestStatus = false;
+            break;
+        }
+    }
+
+    $isSuccess = ($latestStatus === null) ? !empty($rawSendResult) : $latestStatus;
+    $latestError = '';
+
+    if (!$isSuccess) {
+        foreach ($attemptLogs as $attemptLog) {
+            $errorMessage = trim((string) ($attemptLog['error_message'] ?? ''));
+            if ($errorMessage === '') {
+                continue;
+            }
+            $errorLower = strtolower($errorMessage);
+            $typeLower = strtolower(trim((string) ($attemptLog['message_type'] ?? '')));
+            if ($errorLower === 'debug payload' || strpos($typeLower, 'payload') !== false) {
+                continue;
+            }
+            $latestError = $errorMessage;
+            break;
+        }
+
+        if ($latestError === '') {
+            foreach ($attemptLogs as $attemptLog) {
+                $errorMessage = trim((string) ($attemptLog['error_message'] ?? ''));
+                if ($errorMessage !== '') {
+                    $latestError = $errorMessage;
+                    break;
+                }
+            }
+        }
+
+        if ($latestError === '' && is_string($rawSendResult)) {
+            $latestError = trim($rawSendResult);
+        }
+        if ($latestError === '') {
+            $latestError = trim((string) $fallbackError);
+        }
+        if ($latestError === '') {
+            $latestError = Lang::T('Failed to resend message');
+        }
+    }
+
+    return [
+        'success' => $isSuccess,
+        'error_message' => $latestError,
+    ];
+};
+
+$resendAndSyncLog = static function ($log, $channel, $recipient, $message, $subject = '') use (
+    $sendResendByChannel,
+    $collectResendAttemptLogs,
+    $resolveResendAttemptOutcome
+) {
+    $startMaxLogId = (int) ORM::for_table('tbl_message_logs')->max('id');
+    $sendResult = $sendResendByChannel($channel, $recipient, $message, $subject);
+
+    if ($sendResult['blocking_error'] !== '') {
+        $outcome = [
+            'success' => false,
+            'error_message' => $sendResult['blocking_error'],
+        ];
+    } else {
+        $attemptLogs = $collectResendAttemptLogs($startMaxLogId, $recipient, $channel);
+        $outcome = $resolveResendAttemptOutcome(
+            $attemptLogs,
+            $sendResult['raw_result'],
+            $sendResult['blocking_error']
+        );
+    }
+
+    $log->recipient = $recipient;
+    $log->message_content = $message;
+    $log->status = $outcome['success'] ? 'Success' : 'Error';
+    $log->error_message = $outcome['success'] ? '' : $outcome['error_message'];
+    $log->sent_at = date('Y-m-d H:i:s');
+    $log->save();
+
+    return $outcome;
+};
+
 switch ($action) {
     case 'send':
         if (!in_array($admin['user_type'], ['SuperAdmin', 'Admin', 'Agent', 'Sales'])) {
@@ -64,7 +311,10 @@ EOT;
         $id_customer = $_POST['id_customer'] ?? '';
         $message = $_POST['message'] ?? '';
         $subject = $_POST['subject'] ?? '';
-        $channels = ['email', 'sms', 'wa', 'inbox'];
+        $smsSelected = $isRequestTruthy('sms');
+        $waSelected = $isRequestTruthy('wa');
+        $emailSelected = $isRequestTruthy(['email', 'mail']);
+        $inboxSelected = $isRequestTruthy('inbox');
 
 
         // Validate subject based on the selected channel
@@ -72,7 +322,7 @@ EOT;
             r2(getUrl('message/send'), 'e', Lang::T('Please select a customer'));
         }
 
-        if (empty($subject) && (isset($_POST['email']) || isset($_POST['inbox']))) {
+        if (empty($subject) && ($emailSelected || $inboxSelected)) {
             r2(getUrl('message/send'), 'e', Lang::T('Subject is required'));
         }
 
@@ -80,7 +330,7 @@ EOT;
             r2(getUrl('message/send'), 'e', Lang::T('Message is required'));
         }
 
-        if (count(array_intersect_key(array_flip($channels), $_POST)) === 0) {
+        if (!($smsSelected || $waSelected || $emailSelected || $inboxSelected)) {
             r2(getUrl('message/send'), 'e', Lang::T('Please select at least one channel type'));
         }
 
@@ -120,21 +370,21 @@ EOT;
         // Send the message through the selected channels
         $smsSent = $waSent = $emailSent = $inboxSent = false;
 
-        if (isset($_POST['sms'])) {
+        if ($smsSelected) {
             $smsSent = Message::sendSMS($customer['phonenumber'], $currentMessage);
         }
 
-        if (isset($_POST['wa'])) {
-            $queueWa = !empty($_POST['wa_queue']);
+        if ($waSelected) {
+            $queueWa = $isRequestTruthy('wa_queue');
             $waOptions = $queueWa ? ['queue' => true, 'queue_context' => 'manual'] : [];
             $waSent = Message::sendWhatsapp($customer['phonenumber'], $currentMessage, $waOptions);
         }
 
-        if (isset($_POST['email'])) {
+        if ($emailSelected) {
             $emailSent = Message::sendEmail($customer['email'], $currentSubject, $currentMessage);
         }
 
-        if (isset($_POST['inbox'])) {
+        if ($inboxSelected) {
             $inboxSent = Message::addToInbox($customer['id'], $currentSubject, $currentMessage, 'Admin');
         }
 
@@ -264,14 +514,7 @@ EOT;
             r2(getUrl('logs/message'), 'e', Lang::T('Log not found'));
         }
         $type = strtolower((string) $log['message_type']);
-        $channel = 'wa';
-        if (strpos($type, 'sms') !== false) {
-            $channel = 'sms';
-        } elseif (strpos($type, 'inbox') !== false) {
-            $channel = 'inbox';
-        } elseif (strpos($type, 'email') !== false) {
-            $channel = 'other';
-        }
+        $channel = $resolveResendChannel($log['message_type']);
         $resendSubject = Lang::T('Notification Message');
         $payloadUsed = false;
         if ($channel === 'wa') {
@@ -329,6 +572,41 @@ EOT;
         $ui->display('admin/message/resend.tpl');
         break;
 
+    case 'resend-now':
+        if (!in_array($admin['user_type'], ['SuperAdmin', 'Admin', 'Agent', 'Sales'])) {
+            _alert(Lang::T('You do not have permission to access this page'), 'danger', "dashboard");
+        }
+        $logId = $routes['2'] ?? _get('id');
+        $log = ORM::for_table('tbl_message_logs')->find_one($logId);
+        if (!$log) {
+            r2(getUrl('logs/message'), 'e', Lang::T('Log not found'));
+        }
+        $status = strtolower(trim((string) ($log['status'] ?? '')));
+        if ($status !== 'error') {
+            r2(getUrl('logs/message'), 'e', Lang::T('Only error logs can be resent'));
+        }
+        $channel = $resolveResendChannel($log['message_type']);
+        if (!in_array($channel, ['wa', 'sms', 'email', 'inbox'], true)) {
+            r2(getUrl('logs/message'), 'e', Lang::T('Unsupported channel for resend'));
+        }
+
+        $recipient = trim((string) $log['recipient']);
+        $message = trim((string) $log['message_content']);
+        if ($recipient === '' || $message === '') {
+            $log->status = 'Error';
+            $log->error_message = Lang::T('Recipient and message are required');
+            $log->sent_at = date('Y-m-d H:i:s');
+            $log->save();
+            r2(getUrl('logs/message'), 'e', Lang::T('Recipient and message are required'));
+        }
+
+        $outcome = $resendAndSyncLog($log, $channel, $recipient, $message, Lang::T('Notification Message'));
+        if (!empty($outcome['success'])) {
+            r2(getUrl('logs/message'), 's', Lang::T('Message resent successfully'));
+        }
+        r2(getUrl('logs/message'), 'e', Lang::T('Failed to resend message'));
+        break;
+
     case 'resend-post':
         if (!in_array($admin['user_type'], ['SuperAdmin', 'Admin', 'Agent', 'Sales'])) {
             _alert(Lang::T('You do not have permission to access this page'), 'danger', "dashboard");
@@ -341,61 +619,22 @@ EOT;
         if ($recipient === '' || $message === '') {
             r2(getUrl('message/resend/' . $logId), 'e', Lang::T('Recipient and message are required'));
         }
-        $sent = false;
-        if ($channel === 'wa') {
-            $payload = null;
-            $trimmed = ltrim($message);
-            if ($trimmed !== '' && ($trimmed[0] === '{' || $trimmed[0] === '[')) {
-                $decoded = json_decode($trimmed, true);
-                if (is_array($decoded)) {
-                    $isAssoc = array_keys($decoded) !== range(0, count($decoded) - 1);
-                    if ($isAssoc) {
-                        $payloadKeys = ['action', 'to', 'text', 'body', 'message', 'interactive', 'requestPhoneNumber', 'contacts'];
-                        foreach ($payloadKeys as $payloadKey) {
-                            if (array_key_exists($payloadKey, $decoded)) {
-                                $payload = $decoded;
-                                break;
-                            }
-                        }
-                    }
-                }
-            }
-            if (is_array($payload)) {
-                unset($payload['idempotency_key'], $payload['idempotencyKey']);
-                if (!isset($payload['action'])) {
-                    $payload['action'] = 'send';
-                }
-                $payload['to'] = Lang::phoneFormat($recipient);
-                $sent = Message::sendWhatsapp($payload, '', ['queue_context' => 'resend']);
-            } else {
-                $sent = Message::sendWhatsapp($recipient, $message, ['queue_context' => 'resend']);
-            }
-        } elseif ($channel === 'sms') {
-            $sent = Message::sendSMS($recipient, $message);
-        } elseif ($channel === 'inbox') {
-            if ($subject === '') {
-                $subject = Lang::T('Notification Message');
-            }
-            if (function_exists('mb_substr')) {
-                $subject = mb_substr($subject, 0, 255, 'UTF-8');
-            } else {
-                $subject = substr($subject, 0, 255);
-            }
-            $customer = ORM::for_table('tbl_customers')->where('username', $recipient)->find_one();
-            if (!$customer && ctype_digit($recipient)) {
-                $customer = ORM::for_table('tbl_customers')->find_one((int) $recipient);
-            }
-            if (!$customer) {
-                r2(getUrl('message/resend/' . $logId), 'e', Lang::T('Customer not found'));
-            }
-            $sent = Message::addToInbox((int) $customer['id'], $subject, $message, 'Admin');
-        } else {
+        $log = ORM::for_table('tbl_message_logs')->find_one($logId);
+        if (!$log) {
+            r2(getUrl('logs/message'), 'e', Lang::T('Log not found'));
+        }
+        if ($channel === '') {
+            $channel = $resolveResendChannel($log['message_type']);
+        }
+        if (!in_array($channel, ['wa', 'sms', 'email', 'inbox'], true)) {
             r2(getUrl('message/resend/' . $logId), 'e', Lang::T('Unsupported channel for resend'));
         }
-        if ($sent) {
+        $outcome = $resendAndSyncLog($log, $channel, $recipient, $message, $subject);
+        if (!empty($outcome['success'])) {
             r2(getUrl('logs/message'), 's', Lang::T('Message resent successfully'));
         }
-        r2(getUrl('message/resend/' . $logId), 'e', Lang::T('Failed to resend message'));
+        r2(getUrl('message/resend/' . $logId), 'e', $outcome['error_message']);
+        break;
 
     case 'send_bulk':
         if (!in_array($admin['user_type'], ['SuperAdmin', 'Admin', 'Agent', 'Sales'])) {
@@ -435,13 +674,12 @@ EOT;
         $page = (int) ($_REQUEST['page'] ?? 0);
         $page = $page >= 0 ? $page : 0;
         $router = $_REQUEST['router'] ?? null;
-        $test = isset($_REQUEST['test']) && $_REQUEST['test'] === 'on';
+        $test = $isRequestTruthy('test', $_REQUEST);
         $serviceInput = $_REQUEST['service'] ?? [];
         $subject = trim((string) ($_REQUEST['subject'] ?? ''));
         $routerName = '';
-        $channels = ['email', 'sms', 'wa', 'inbox'];
         $selectedChannels = [];
-        $queueWa = !empty($_REQUEST['wa_queue']) && $_REQUEST['wa_queue'] == '1';
+        $queueWa = $isRequestTruthy('wa_queue', $_REQUEST);
 
         if (!is_array($serviceInput)) {
             $serviceInput = explode(',', (string) $serviceInput);
@@ -467,10 +705,22 @@ EOT;
             $query->where_in($column, $selectedServices);
         };
 
-        foreach ($channels as $channel) {
-            if (isset($_REQUEST[$channel]) && $_REQUEST[$channel] == '1') {
-                $selectedChannels[] = $channel;
-            }
+        $smsSelected = $isRequestTruthy('sms', $_REQUEST);
+        $waSelected = $isRequestTruthy(['wa', 'whatsapp'], $_REQUEST);
+        $emailSelected = $isRequestTruthy(['email', 'mail'], $_REQUEST);
+        $inboxSelected = $isRequestTruthy('inbox', $_REQUEST);
+
+        if ($emailSelected) {
+            $selectedChannels[] = 'email';
+        }
+        if ($smsSelected) {
+            $selectedChannels[] = 'sms';
+        }
+        if ($waSelected) {
+            $selectedChannels[] = 'wa';
+        }
+        if ($inboxSelected) {
+            $selectedChannels[] = 'inbox';
         }
 
         if (empty($selectedChannels)) {
@@ -693,7 +943,7 @@ EOT;
                     'router' => $routerName,
                 ];
             } else {
-                if (isset($_REQUEST['sms']) && $_REQUEST['sms'] == '1') {
+                if ($smsSelected) {
                     if (Message::sendSMS($customerPhone, $currentMessage)) {
                         $totalSMSSent++;
                         $batchStatus[] = [
@@ -719,7 +969,7 @@ EOT;
                     }
                 }
 
-                if (isset($_REQUEST['wa']) && $_REQUEST['wa'] == '1') {
+                if ($waSelected) {
                     $waOptions = $queueWa ? ['queue' => true, 'queue_context' => 'bulk'] : [];
                     if (Message::sendWhatsapp($customerPhone, $currentMessage, $waOptions)) {
                         $totalWhatsappSent++;
@@ -746,7 +996,7 @@ EOT;
                     }
                 }
 
-                if (isset($_REQUEST['email']) && $_REQUEST['email'] == '1') {
+                if ($emailSelected) {
                     if (Message::sendEmail($customerEmail, $currentSubject, $currentMessage)) {
                         $totalEmailSent++;
                         $batchStatus[] = [
@@ -772,7 +1022,7 @@ EOT;
                     }
                 }
 
-                if (isset($_REQUEST['inbox']) && $_REQUEST['inbox'] == '1') {
+                if ($inboxSelected) {
                     if ($customerId > 0 && Message::addToInbox($customerId, $currentSubject, $currentMessage, $from)) {
                         $totalInboxSent++;
                         $batchStatus[] = [
@@ -823,16 +1073,26 @@ EOT;
 
             // Get the posted data
             $customerIds = $_POST['customer_ids'] ?? [];
-            $via = $_POST['message_type'] ?? '';
+            $via = strtolower(trim((string) ($_POST['message_type'] ?? '')));
+            if ($via === 'mail') {
+                $via = 'email';
+            } elseif ($via === 'whatsapp') {
+                $via = 'wa';
+            }
             $subject = $_POST['subject'] ?? '';
             $message = isset($_POST['message']) ? trim($_POST['message']) : '';
-            $queueWa = !empty($_POST['wa_queue']);
+            $queueWa = $isRequestTruthy('wa_queue');
             if (empty($customerIds) || empty($message) || empty($via)) {
                 echo json_encode(['status' => 'error', 'message' => Lang::T('Invalid customer IDs, Message, or Message Type.')]);
                 exit;
             }
 
-            if ($via === 'all' || $via === 'email' || $via === 'inbox' && empty($subject)) {
+            if (!in_array($via, ['all', 'sms', 'wa', 'email', 'inbox'], true)) {
+                echo json_encode(['status' => 'error', 'message' => Lang::T('Invalid message type.')]);
+                exit;
+            }
+
+            if (($via === 'all' || $via === 'email' || $via === 'inbox') && empty($subject)) {
                 die(json_encode(['status' => 'error', 'message' => LANG::T('Subject is required to send message using') . ' ' . $via . '.']));
             }
 

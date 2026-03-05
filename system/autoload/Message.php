@@ -460,10 +460,7 @@ class Message
                         return $response;
                     }
                 }
-                if (
-                    stripos($response, 'not registered') !== false ||
-                    stripos($response, 'failed') !== false
-                ) {
+                if (self::isGatewayTextErrorResponse($response)) {
                     self::logMessage('WhatsApp HTTP Response', $phone, $txt, 'Error', $response);
                     return false;
                 }
@@ -666,10 +663,7 @@ class Message
                 return $response;
             }
 
-            if (
-                stripos($response, 'not registered') !== false ||
-                stripos($response, 'failed') !== false
-            ) {
+            if (self::isGatewayTextErrorResponse($response)) {
                 $errorMeta = [
                     'code' => '',
                     'message' => (string) $response,
@@ -1043,6 +1037,46 @@ class Message
         }
 
         return null;
+    }
+
+    private static function isGatewayTextErrorResponse($response)
+    {
+        if (!is_string($response)) {
+            return false;
+        }
+
+        $normalized = strtolower(trim($response));
+        if ($normalized === '') {
+            return false;
+        }
+
+        $keywords = [
+            'not registered',
+            'failed',
+            'error code',
+            'bad gateway',
+            'gateway timeout',
+            'service unavailable',
+            'internal server error',
+            'forbidden',
+            'unauthorized',
+            'invalid token',
+            'exception',
+        ];
+
+        foreach ($keywords as $keyword) {
+            if (strpos($normalized, $keyword) !== false) {
+                return true;
+            }
+        }
+
+        // Fallback for terse proxy-like text responses such as:
+        // "error 502", "http 500", or "status: 503".
+        if (preg_match('/\b(error|http|status)\s*[:=]?\s*[45]\d{2}\b/i', $normalized)) {
+            return true;
+        }
+
+        return false;
     }
 
     private static function normalizeBooleanValue($value)

@@ -141,8 +141,15 @@
                                     {/if}
                                 </td>
                                 <td>
-                                    {if $ds['status'] != 'Success'}
-                                    <a class="btn btn-warning btn-xs" href="{Text::url('message/resend/')}{$ds['id']}">Edit &amp; Resend</a>
+                                    {assign var=status_lower value=strtolower($ds['status']|default:'')}
+                                    {assign var=type_lower value=strtolower($ds['message_type']|default:'')}
+                                    {assign var=is_resendable value=false}
+                                    {if strstr($type_lower,'whatsapp') || substr($type_lower,0,3) == 'wa ' || substr($type_lower,0,3) == 'wa_' || substr($type_lower,0,3) == 'wa-' || strstr($type_lower,'sms') || strstr($type_lower,'mikrotik') || strstr($type_lower,'email') || strstr($type_lower,'inbox')}
+                                        {assign var=is_resendable value=true}
+                                    {/if}
+                                    {if $status_lower == 'error' && $is_resendable}
+                                    <a class="btn btn-warning btn-xs" href="{Text::url('message/resend-now/')}{$ds['id']}"
+                                        onclick="return ask(this, '{Lang::T('Resend this message now')}?')">{Lang::T('Resend')}</a>
                                     {/if}
                                 </td>
                             </tr>

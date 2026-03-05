@@ -20,7 +20,7 @@
                             <input type="text" class="form-control" name="recipient" value="{$log['recipient']}" required>
                         </div>
                     </div>
-                    {if $channel == 'inbox'}
+                    {if in_array($channel, ['inbox', 'email'])}
                         <div class="form-group">
                             <label class="col-md-3 control-label">{Lang::T('Subject')}</label>
                             <div class="col-md-6">

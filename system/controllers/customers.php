@@ -91,6 +91,22 @@ $syncGenieAcsPppCredentials = function ($customerId, $serviceSupportsGenieAcs, $
     return '';
 };
 
+$isRequestTruthy = static function ($keys, array $source = null) {
+    if (!is_array($keys)) {
+        $keys = [$keys];
+    }
+    if ($source === null) {
+        $source = $_POST;
+    }
+    foreach ($keys as $key) {
+        if (!array_key_exists($key, $source)) {
+            continue;
+        }
+        return Package::isTruthyValue($source[$key]);
+    }
+    return false;
+};
+
 switch ($action) {
     case 'csv':
         if (!in_array($admin['user_type'], ['SuperAdmin', 'Admin'])) {
@@ -889,7 +905,7 @@ switch ($action) {
             }
 
             // Send welcome message
-            if (isset($_POST['send_welcome_message']) && $_POST['send_welcome_message'] == true) {
+            if ($isRequestTruthy('send_welcome_message')) {
                 $welcomeMessage = Lang::getNotifText('welcome_message', ['purpose' => 'admin_register']);
                 $welcomeMessage = str_replace('[[company]]', $config['CompanyName'], $welcomeMessage);
                 $welcomeMessage = str_replace('[[name]]', $d['fullname'], $welcomeMessage);
@@ -905,24 +921,24 @@ switch ($action) {
 
                 $channels = [
                     'sms' => [
-                        'enabled' => isset($_POST['sms']),
+                        'enabled' => $isRequestTruthy('sms'),
                         'method' => 'sendSMS',
                         'args' => [$d['phonenumber'], $welcomeMessage]
                     ],
                     'whatsapp' => [
-                        'enabled' => isset($_POST['wa']),
+                        'enabled' => $isRequestTruthy('wa'),
                         'method' => 'sendWhatsapp',
                         'args' => [$d['phonenumber'], $welcomeMessage, $waOptions]
                     ],
                     'email' => [
-                        'enabled' => isset($_POST['mail']),
+                        'enabled' => $isRequestTruthy(['mail', 'email']),
                         'method' => 'Message::sendEmail',
-                        'args' => [$d['email'], $subject, $welcomeMessage, $d['email']]
+                        'args' => [$d['email'], $subject, $welcomeMessage]
                     ],
                     'inbox' => [
-                        'enabled' => isset($_POST['inbox']),
+                        'enabled' => $isRequestTruthy('inbox'),
                         'method' => 'Message::addToInbox',
-                        'args' => $d['id'], $subject, $welcomeMessage, $from = 'Admin'
+                        'args' => [$d['id'], $subject, $welcomeMessage, 'Admin']
                     ],
                 ];
 
@@ -930,7 +946,7 @@ switch ($action) {
                     if ($message['enabled']) {
                         try {
                             call_user_func_array($message['method'], $message['args']);
-                        } catch (Exception $e) {
+                        } catch (Throwable $e) {
                             // Log the error and handle the failure
                             _log("Failed to send welcome message via $channel: " . $e->getMessage());
                         }

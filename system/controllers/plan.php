@@ -50,6 +50,23 @@ $applyPlanRouterScope = function ($query, $routerColumn = 'routers', $radiusColu
     $query->where_raw('(' . $radiusColumn . ' = 1 OR ' . $routerColumn . ' IN (' . $placeholders . '))', $accessibleRouterNames);
     return $query;
 };
+
+$isRequestTruthy = static function ($keys, array $source = null) {
+    if (!is_array($keys)) {
+        $keys = [$keys];
+    }
+    if ($source === null) {
+        $source = $_POST;
+    }
+    foreach ($keys as $key) {
+        if (!array_key_exists($key, $source)) {
+            continue;
+        }
+        return Package::isTruthyValue($source[$key]);
+    }
+    return false;
+};
+
 switch ($action) {
     case 'sync':
         if (!in_array($admin['user_type'], ['SuperAdmin', 'Admin'])) {
@@ -958,9 +975,9 @@ switch ($action) {
             }
 
             // Send  Notifications
-            if (isset($_POST['notify']) && $_POST['notify'] == true) {
+            if ($isRequestTruthy('notify')) {
                 $templateKey = 'plan_change_message';
-	                if ($oldPlanID != $id_plan) {
+		                if ($oldPlanID != $id_plan) {
 	                    $oldPlan = ORM::for_table('tbl_plans')->find_one($oldPlanID);
 	                    $oldPlanName = $oldPlan ? $oldPlan['name_plan'] : 'Old Plan';
 	                    // plan_change_message is treated as global (no per plan/category override).
@@ -1005,22 +1022,22 @@ switch ($action) {
 
                 $channels = [
                     'sms' => [
-                        'enabled' => isset($_POST['sms']),
+                        'enabled' => $isRequestTruthy('sms'),
                         'method' => 'sendSMS',
                         'args' => [$customer['phonenumber'], $notifyMessage]
                     ],
                     'whatsapp' => [
-                        'enabled' => isset($_POST['wa']),
+                        'enabled' => $isRequestTruthy('wa'),
                         'method' => 'sendWhatsapp',
                         'args' => [$customer['phonenumber'], $notifyMessage, $waOptions]
                     ],
                     'email' => [
-                        'enabled' => isset($_POST['mail']),
+                        'enabled' => $isRequestTruthy(['mail', 'email']),
                         'method' => 'Message::sendEmail',
-                        'args' => [$customer['email'], $subject, $notifyMessage, $d['email']]
+                        'args' => [$customer['email'], $subject, $notifyMessage]
                     ],
                     'inbox' => [
-                        'enabled' => isset($_POST['inbox']),
+                        'enabled' => $isRequestTruthy('inbox'),
                         'method' => 'Message::addToInbox',
                         'args' => [$customer['id'], $subject, $notifyMessage, 'Admin']
                     ],

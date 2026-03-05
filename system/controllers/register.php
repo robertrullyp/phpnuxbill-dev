@@ -223,13 +223,13 @@ switch ($do) {
 	                            _log('Failed to send welcome message via SMS: ' . $e->getMessage());
 	                        }
 	                    }
-	                    if ($viaEmail && $emailTarget !== '' && Validator::Email($emailTarget)) {
-	                        try {
-	                            Message::sendEmail($emailTarget, $subject, $welcomeMessage, $emailTarget);
-	                        } catch (Throwable $e) {
-	                            _log('Failed to send welcome message via Email: ' . $e->getMessage());
-	                        }
-	                    }
+		                    if ($viaEmail && $emailTarget !== '' && Validator::Email($emailTarget)) {
+		                        try {
+		                            Message::sendEmail($emailTarget, $subject, $welcomeMessage);
+		                        } catch (Throwable $e) {
+		                            _log('Failed to send welcome message via Email: ' . $e->getMessage());
+		                        }
+		                    }
 	                    if ($viaInbox) {
 	                        try {
 	                            Message::addToInbox($user, $subject, $welcomeMessage);
